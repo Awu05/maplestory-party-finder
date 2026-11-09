@@ -9,11 +9,29 @@ import { LocalDiskStorage } from './storage/storage.js';
 
 const config = loadConfig(process.env);
 mkdirSync(config.uploadDir, { recursive: true });
+const prisma = new PrismaClient({ datasources: { db: { url: config.databaseUrl } } });
 const app = await buildApp({
   config,
   nexon: new HttpNexonClient({}),
-  prisma: new PrismaClient({ datasources: { db: { url: config.databaseUrl } } }),
+  prisma,
   discord: new HttpDiscordOAuth(config),
   storage: new LocalDiskStorage(config.uploadDir),
 });
 await app.listen({ port: config.port, host: '0.0.0.0' });
+
+let shuttingDown = false;
+async function shutdown(signal: NodeJS.Signals): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  app.log.info({ signal }, 'Shutting down');
+  try {
+    await app.close();
+    await prisma.$disconnect();
+    process.exit(0);
+  } catch (err) {
+    app.log.error({ err }, 'Error during shutdown');
+    process.exit(1);
+  }
+}
+process.once('SIGTERM', shutdown);
+process.once('SIGINT', shutdown);

@@ -28,4 +28,4 @@ COPY --from=build /app/server/dist server/dist
 COPY --from=build /app/web/dist web/dist
 WORKDIR /app/server
 EXPOSE 3000
-CMD ["sh", "-c", "npx prisma migrate deploy && npx prisma db seed && node dist/index.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy && npx prisma db seed && exec node dist/index.js"]
