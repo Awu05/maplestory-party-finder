@@ -118,9 +118,15 @@ export async function listBoard(prisma: PrismaClient, f: BoardFilter, now: Date)
 export async function getVisiblePost(prisma: PrismaClient, id: string, viewer: Viewer | null, now: Date): Promise<PostRow> {
   const row = await prisma.post.findUnique({ where: { id }, include: postInclude });
   if (!row) throw new AppError(404, 'NOT_FOUND', 'Post not found');
-  if (effectivePostStatus(row, now) !== 'closed') return row;
+  assertVisible(row, viewer, now);
+  return row;
+}
+
+/** Throws the same 404 as getVisiblePost when `viewer` may not see `row`. */
+export function assertVisible(row: PostRow, viewer: Viewer | null, now: Date): void {
+  if (effectivePostStatus(row, now) !== 'closed') return;
   const uid = viewer?.user.id;
-  if (viewer && (viewer.isAdmin || row.posterUserId === uid || row.members.some((m) => m.userId === uid))) return row;
+  if (viewer && (viewer.isAdmin || row.posterUserId === uid || row.members.some((m) => m.userId === uid))) return;
   throw new AppError(404, 'NOT_FOUND', 'Post not found');
 }
 
