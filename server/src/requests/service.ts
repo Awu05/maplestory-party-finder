@@ -57,6 +57,45 @@ export async function createJoinRequest(
   }
 }
 
+export async function createInvite(
+  prisma: PrismaClient,
+  viewer: Viewer,
+  lfpPostId: string,
+  recruitingPostId: string,
+  now: Date,
+): Promise<RequestRow> {
+  try {
+    return await prisma.$transaction(async (tx) => {
+      // Lock order everywhere: recruiting post first, then the LFP post.
+      const recruiting = await loadPostForUpdate(tx, recruitingPostId);
+      const lfp = await loadPostForUpdate(tx, lfpPostId);
+      if (lfp.deletedAt !== null) assertVisible(lfp, viewer, now);
+      if (lfp.type !== 'lfp') throw new AppError(409, 'WRONG_POST_TYPE', 'Invites come from looking-for-party posts');
+      assertOpen(lfp, now);
+      if (recruiting.posterUserId !== viewer.user.id) throw new AppError(403, 'NOT_OWNER', 'You do not own that post');
+      if (recruiting.type !== 'recruiting') throw new AppError(409, 'WRONG_POST_TYPE', 'Invites go onto recruiting posts');
+      assertOpen(recruiting, now);
+      if (recruiting.worldId !== lfp.worldId) throw new AppError(400, 'WRONG_WORLD', 'The posts are on different worlds');
+      const characterId = lfp.posterCharacterId;
+      // The poster's character is nulled out when it is deleted.
+      const character = characterId === null ? null : await tx.character.findUnique({ where: { id: characterId } });
+      if (!character) throw new AppError(409, 'POST_CLOSED', 'That post is no longer available');
+      if (isMember(recruiting, character.id)) throw new AppError(409, 'ALREADY_MEMBER', 'That character is already in the party');
+      const pending = await tx.request.count({ where: { postId: recruitingPostId, characterId: character.id, status: 'pending' } });
+      if (pending > 0) throw new AppError(409, 'ALREADY_PENDING', 'That character already has a pending request');
+      return tx.request.create({
+        data: { kind: 'invite', postId: recruitingPostId, characterId: character.id, lfpPostId, createdByUserId: viewer.user.id },
+        include: requestInclude,
+      });
+    }, TX_OPTIONS);
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      throw new AppError(409, 'ALREADY_PENDING', 'That character already has a pending request');
+    }
+    throw err;
+  }
+}
+
 async function findPostIdOfRequest(prisma: PrismaClient, id: string): Promise<string> {
   const row = await prisma.request.findUnique({ where: { id }, select: { postId: true } });
   if (!row) throw new AppError(404, 'NOT_FOUND', 'Request not found');
@@ -82,7 +121,7 @@ function assertPending(request: RequestRow): void {
 }
 
 export type AcceptResult =
-  | { ok: true; post: PostRow; declinedRequestIds: string[] }
+  | { ok: true; post: PostRow; declinedRequestIds: string[]; closedLfpPostId: string | null }
   | { ok: false; declinedRequestId: string };
 
 /**
@@ -93,7 +132,13 @@ export type AcceptResult =
 export async function acceptRequest(prisma: PrismaClient, viewer: Viewer, id: string, now: Date): Promise<AcceptResult> {
   const postId = await findPostIdOfRequest(prisma, id);
   return prisma.$transaction(async (tx): Promise<AcceptResult> => {
-    const { post, request } = await lockRequest(tx, id, postId);
+    let { post, request } = await lockRequest(tx, id, postId);
+    // An invite also touches its LFP post: lock it second (never the reverse), then re-read the request.
+    let lfp: PostRow | null = null;
+    if (request.kind === 'invite' && request.lfpPostId !== null) {
+      lfp = await loadPostForUpdate(tx, request.lfpPostId);
+      request = await tx.request.findUniqueOrThrow({ where: { id }, include: requestInclude });
+    }
     assertDecider(post, request, viewer);
     assertPending(request);
     assertOpen(post, now);
@@ -102,6 +147,8 @@ export async function acceptRequest(prisma: PrismaClient, viewer: Viewer, id: st
       await tx.request.update({ where: { id }, data: { status: 'declined', decidedAt: now } });
       return { ok: false, declinedRequestId: id };
     }
+    // Defensive: status should already say full, but never exceed the party size.
+    if (post.partySize !== null && post.members.length >= post.partySize) throw new AppError(409, 'POST_FULL', 'Post is full');
 
     const { character } = request;
     await tx.postMember.create({
@@ -121,8 +168,17 @@ export async function acceptRequest(prisma: PrismaClient, viewer: Viewer, id: st
       await tx.post.update({ where: { id: postId }, data: { status: 'full', closedReason: 'full' } });
       declinedRequestIds = await autoDeclinePending(tx, { postId });
     }
+
+    let closedLfpPostId: string | null = null;
+    if (lfp) {
+      if (lfp.status !== 'closed' && lfp.deletedAt === null) {
+        await tx.post.update({ where: { id: lfp.id }, data: { status: 'closed', closedReason: 'lfp_matched' } });
+        closedLfpPostId = lfp.id;
+      }
+      declinedRequestIds = declinedRequestIds.concat(await autoDeclinePending(tx, { lfpPostId: lfp.id, id: { not: id } }));
+    }
     const updated = await tx.post.findUniqueOrThrow({ where: { id: postId }, include: postInclude });
-    return { ok: true, post: updated, declinedRequestIds };
+    return { ok: true, post: updated, declinedRequestIds, closedLfpPostId };
   }, TX_OPTIONS);
 }
 
