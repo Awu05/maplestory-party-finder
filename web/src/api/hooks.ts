@@ -77,6 +77,12 @@ function useInvalidateCharacters() {
   return () => qc.invalidateQueries({ queryKey: ['characters'] });
 }
 
+/** Characters plus posts, which embed character cards and close when their poster's character is deleted. */
+function useInvalidateCharactersAndPosts() {
+  const qc = useQueryClient();
+  return () => Promise.all([qc.invalidateQueries({ queryKey: ['characters'] }), qc.invalidateQueries({ queryKey: ['posts'] })]);
+}
+
 export function useCreateCharacter() {
   const invalidate = useInvalidateCharacters();
   return useMutation({
@@ -86,7 +92,7 @@ export function useCreateCharacter() {
 }
 
 export function useUpdateCharacter(id: string) {
-  const invalidate = useInvalidateCharacters();
+  const invalidate = useInvalidateCharactersAndPosts();
   return useMutation({
     mutationFn: (input: UpdateCharacterInput) =>
       api<CharacterDTO>(`/api/characters/${id}`, { method: 'PATCH', json: input }),
@@ -95,7 +101,7 @@ export function useUpdateCharacter(id: string) {
 }
 
 export function useDeleteCharacter() {
-  const invalidate = useInvalidateCharacters();
+  const invalidate = useInvalidateCharactersAndPosts();
   return useMutation({
     mutationFn: (id: string) => api<void>(`/api/characters/${id}`, { method: 'DELETE' }),
     onSuccess: invalidate,
@@ -124,7 +130,7 @@ export function useLookupCharacter() {
 }
 
 export function useRefreshCharacter(id: string) {
-  const invalidate = useInvalidateCharacters();
+  const invalidate = useInvalidateCharactersAndPosts();
   return useMutation({
     mutationFn: () => api<CharacterDTO>(`/api/characters/${id}/refresh`, { method: 'POST' }),
     onSuccess: invalidate,
