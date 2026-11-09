@@ -1,5 +1,6 @@
 import fs from 'node:fs';
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Storage } from '../src/storage/storage.js';
 import type { FastifyInstance } from 'fastify';
 import {
   buildTestApp, loginAs, makeBossDifficulty, makeCharacter, makeGuild, makeWorld, prisma, resetDb, type FakeNexon,
@@ -13,6 +14,7 @@ const PNG = Buffer.from(
 let app: FastifyInstance;
 let nexon: FakeNexon;
 let uploadDir: string;
+let storage: Storage;
 let cookie: string;
 let ownerId: string;
 let worldId: number;
@@ -20,7 +22,7 @@ let guildId: string;
 
 beforeEach(async () => {
   await resetDb();
-  ({ app, nexon, uploadDir } = await buildTestApp());
+  ({ app, nexon, uploadDir, storage } = await buildTestApp());
   worldId = (await makeWorld({ nexonWorldId: 45, name: 'Kronos' })).id;
   guildId = (await makeGuild({ worldIds: [worldId] })).id;
   cookie = await loginAs(app, 'u-1', 'owner');
@@ -216,5 +218,14 @@ describe('characters delete', () => {
     expect(res.statusCode).toBe(204);
     expect(await prisma.character.count()).toBe(0);
     expect(fs.readdirSync(uploadDir)).toEqual([]);
+  });
+
+  it('file removal failure still deletes the row (204)', async () => {
+    const c = await makeCharacter({ ownerId, worldId, guildId });
+    await upload(c.id);
+    vi.spyOn(storage, 'remove').mockRejectedValueOnce(new Error('disk gone'));
+    const res = await app.inject({ method: 'DELETE', url: `/api/characters/${c.id}`, headers: { cookie } });
+    expect(res.statusCode).toBe(204);
+    expect(await prisma.character.count()).toBe(0);
   });
 });

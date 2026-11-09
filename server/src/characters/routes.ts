@@ -76,7 +76,7 @@ export async function characterRoutes(app: FastifyInstance): Promise<void> {
     const { id } = req.params as { id: string };
     const row = await getOwnedCharacter(prisma, id, viewer.user.id);
     await prisma.character.delete({ where: { id } });
-    if (row.screenshotKey) await storage.remove(row.screenshotKey);
+    if (row.screenshotKey) await storage.remove(row.screenshotKey).catch(() => undefined);
     return reply.status(204).send();
   });
 
