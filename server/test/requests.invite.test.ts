@@ -139,3 +139,42 @@ describe('invite decisions', () => {
     expectError(await call(`/api/requests/${id}/accept`, u2), 409, 'POST_FULL');
   });
 });
+
+describe('invite vs LFP-side auto-decline', () => {
+  const terminalEvents = (requestId: string) =>
+    events.events.filter(
+      (e) => (e.type === 'request.declined' || e.type === 'request.cancelled' || e.type === 'request.accepted') && e.requestId === requestId,
+    );
+
+  it('an invite cancelled before the LFP post closes gets no request.declined on close', async () => {
+    const id = (await invite(lfp.id, postA.id, u1)).json().id;
+    expect((await call(`/api/requests/${id}/cancel`, u1)).statusCode).toBe(200);
+    expect((await call(`/api/posts/${lfp.id}/close`, u2)).statusCode).toBe(200);
+    expect(terminalEvents(id)).toEqual([{ type: 'request.cancelled', requestId: id }]);
+    expect((await prisma.request.findUniqueOrThrow({ where: { id } })).status).toBe('cancelled');
+  });
+
+  it('cancel racing the LFP close: exactly one terminal event, matching the final status', async () => {
+    for (let i = 0; i < 8; i++) {
+      const lfpPost = await makePost({ type: 'lfp', partySize: null, posterCharacterId: bob.id });
+      const id = (await invite(lfpPost.id, postA.id, u1)).json().id;
+      events.events.length = 0;
+      const [cancelRes, closeRes] = await Promise.all([
+        call(`/api/requests/${id}/cancel`, u1),
+        call(`/api/posts/${lfpPost.id}/close`, u2),
+      ]);
+      expect(closeRes.statusCode).toBe(200);
+      const status = (await prisma.request.findUniqueOrThrow({ where: { id } })).status;
+      const terminal = terminalEvents(id);
+      expect(terminal).toHaveLength(1);
+      if (cancelRes.statusCode === 200) {
+        expect(status).toBe('cancelled');
+        expect(terminal[0]).toEqual({ type: 'request.cancelled', requestId: id });
+      } else {
+        expect(cancelRes.json().error.code).toBe('NOT_PENDING');
+        expect(status).toBe('declined');
+        expect(terminal[0]).toEqual({ type: 'request.declined', requestId: id, auto: true });
+      }
+    }
+  });
+});

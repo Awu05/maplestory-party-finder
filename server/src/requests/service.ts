@@ -102,12 +102,35 @@ async function findPostIdOfRequest(prisma: PrismaClient, id: string): Promise<st
   return row.postId;
 }
 
-/** Locks the request's post, then re-reads the request so its status is checked under the lock. */
-async function lockRequest(tx: Prisma.TransactionClient, id: string, postId: string): Promise<{ post: PostRow; request: RequestRow }> {
+/**
+ * Locks the request's (recruiting) post and, for an invite, its LFP post second (never the reverse),
+ * then re-reads the request so its status is checked under the locks.
+ */
+async function lockRequest(
+  tx: Prisma.TransactionClient,
+  id: string,
+  postId: string,
+): Promise<{ post: PostRow; request: RequestRow; lfp: PostRow | null }> {
   const post = await loadPostForUpdate(tx, postId);
-  const request = await tx.request.findUnique({ where: { id }, include: requestInclude });
+  let request = await tx.request.findUnique({ where: { id }, include: requestInclude });
   if (!request) throw new AppError(404, 'NOT_FOUND', 'Request not found');
-  return { post, request };
+  let lfp: PostRow | null = null;
+  if (request.kind === 'invite' && request.lfpPostId !== null) {
+    lfp = await loadPostForUpdate(tx, request.lfpPostId);
+    request = await tx.request.findUniqueOrThrow({ where: { id }, include: requestInclude });
+  }
+  return { post, request, lfp };
+}
+
+/** Moves a pending request to `status`; 409 NOT_PENDING if it was decided meanwhile. */
+async function decidePending(
+  tx: Prisma.TransactionClient,
+  id: string,
+  status: 'accepted' | 'declined' | 'cancelled',
+  now: Date,
+): Promise<void> {
+  const { count } = await tx.request.updateMany({ where: { id, status: 'pending' }, data: { status, decidedAt: now } });
+  if (count === 0) throw new AppError(409, 'NOT_PENDING', 'Request is not pending');
 }
 
 /** join_request: the poster decides. invite: the invited character's owner decides. */
@@ -132,19 +155,13 @@ export type AcceptResult =
 export async function acceptRequest(prisma: PrismaClient, viewer: Viewer, id: string, now: Date): Promise<AcceptResult> {
   const postId = await findPostIdOfRequest(prisma, id);
   return prisma.$transaction(async (tx): Promise<AcceptResult> => {
-    let { post, request } = await lockRequest(tx, id, postId);
-    // An invite also touches its LFP post: lock it second (never the reverse), then re-read the request.
-    let lfp: PostRow | null = null;
-    if (request.kind === 'invite' && request.lfpPostId !== null) {
-      lfp = await loadPostForUpdate(tx, request.lfpPostId);
-      request = await tx.request.findUniqueOrThrow({ where: { id }, include: requestInclude });
-    }
+    const { post, request, lfp } = await lockRequest(tx, id, postId);
     assertDecider(post, request, viewer);
     assertPending(request);
     assertOpen(post, now);
     if (request.character.worldId !== post.worldId) throw new AppError(400, 'WRONG_WORLD', "That character is not on the post's world");
     if (isMember(post, request.characterId)) {
-      await tx.request.update({ where: { id }, data: { status: 'declined', decidedAt: now } });
+      await decidePending(tx, id, 'declined', now);
       return { ok: false, declinedRequestId: id };
     }
     // Defensive: status should already say full, but never exceed the party size.
@@ -161,7 +178,7 @@ export async function acceptRequest(prisma: PrismaClient, viewer: Viewer, id: st
         snapshot: { ...memberSnapshot(character) },
       },
     });
-    await tx.request.update({ where: { id }, data: { status: 'accepted', decidedAt: now } });
+    await decidePending(tx, id, 'accepted', now);
 
     let declinedRequestIds: string[] = [];
     if (post.partySize !== null && post.members.length + 1 >= post.partySize) {
@@ -188,7 +205,8 @@ export async function declineRequest(prisma: PrismaClient, viewer: Viewer, id: s
     const { post, request } = await lockRequest(tx, id, postId);
     assertDecider(post, request, viewer);
     assertPending(request);
-    return tx.request.update({ where: { id }, data: { status: 'declined', decidedAt: now }, include: requestInclude });
+    await decidePending(tx, id, 'declined', now);
+    return tx.request.findUniqueOrThrow({ where: { id }, include: requestInclude });
   }, TX_OPTIONS);
 }
 
@@ -200,7 +218,8 @@ export async function cancelRequest(prisma: PrismaClient, viewer: Viewer, id: st
     const canceller = request.kind === 'join_request' ? request.character.ownerId : post.posterUserId;
     if (canceller !== viewer.user.id) throw new AppError(403, 'NOT_ALLOWED', 'You cannot cancel this request');
     assertPending(request);
-    return tx.request.update({ where: { id }, data: { status: 'cancelled', decidedAt: now }, include: requestInclude });
+    await decidePending(tx, id, 'cancelled', now);
+    return tx.request.findUniqueOrThrow({ where: { id }, include: requestInclude });
   }, TX_OPTIONS);
 }
 
