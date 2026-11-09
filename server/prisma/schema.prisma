@@ -1,0 +1,127 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum WorldType {
+  heroic
+  interactive
+}
+
+enum Experience {
+  learning
+  cleared
+  can_carry
+}
+
+enum SyncStatus {
+  ok
+  stale
+}
+
+model User {
+  id         String      @id @default(cuid())
+  discordId  String      @unique
+  username   String
+  avatar     String?
+  banned     Boolean     @default(false)
+  createdAt  DateTime    @default(now())
+  characters Character[]
+}
+
+model World {
+  id           Int          @id @default(autoincrement())
+  nexonWorldId Int          @unique
+  name         String
+  worldType    WorldType
+  active       Boolean      @default(true)
+  guilds       GuildWorld[]
+  characters   Character[]
+}
+
+model Guild {
+  id         String       @id @default(cuid())
+  name       String       @unique
+  iconUrl    String?
+  webhookUrl String?
+  active     Boolean      @default(true)
+  worlds     GuildWorld[]
+  characters Character[]
+}
+
+model GuildWorld {
+  guildId String
+  worldId Int
+  guild   Guild  @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  world   World  @relation(fields: [worldId], references: [id])
+
+  @@id([guildId, worldId])
+}
+
+model Boss {
+  id           Int              @id @default(autoincrement())
+  name         String           @unique
+  imageUrl     String?
+  sortOrder    Int              @default(0)
+  difficulties BossDifficulty[]
+}
+
+model BossDifficulty {
+  id         Int             @id @default(autoincrement())
+  bossId     Int
+  boss       Boss            @relation(fields: [bossId], references: [id], onDelete: Cascade)
+  difficulty String
+  partyCap   Int             @default(6)
+  sortOrder  Int             @default(0)
+  characters CharacterBoss[]
+
+  @@unique([bossId, difficulty])
+}
+
+model Character {
+  id                     String          @id @default(cuid())
+  ownerId                String
+  owner                  User            @relation(fields: [ownerId], references: [id])
+  ign                    String
+  ignLower               String
+  worldId                Int
+  world                  World           @relation(fields: [worldId], references: [id])
+  jobName                String
+  level                  Int
+  imageUrl               String
+  combatPower            BigInt
+  cpUpdatedAt            DateTime
+  guildId                String
+  guild                  Guild           @relation(fields: [guildId], references: [id])
+  screenshotKey          String?
+  note                   String          @default("")
+  playTimes              Int[]           @default([])
+  lastSyncedAt           DateTime
+  syncStatus             SyncStatus      @default(ok)
+  lastRefreshRequestedAt DateTime?
+  createdAt              DateTime        @default(now())
+  bosses                 CharacterBoss[]
+
+  @@unique([ignLower, worldId])
+}
+
+model CharacterBoss {
+  characterId      String
+  character        Character      @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  bossDifficultyId Int
+  bossDifficulty   BossDifficulty @relation(fields: [bossDifficultyId], references: [id])
+  experience       Experience
+
+  @@id([characterId, bossDifficultyId])
+}
+
+model RarityTier {
+  id        Int    @id @default(autoincrement())
+  name      String @unique
+  minCp     BigInt
+  sortOrder Int
+}
