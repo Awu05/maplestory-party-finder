@@ -11,6 +11,8 @@ import type { NexonCharacter, NexonClient } from '../src/nexon/client.js';
 import { NexonUnavailableError } from '../src/nexon/client.js';
 import type { DomainEvent, DomainEvents } from '../src/events.js';
 import { testDatabaseUrl } from './testDatabaseUrl.js';
+import type { SendResult, WebhookSender } from '../src/discord/sender.js';
+import type { WebhookPayload } from '../src/discord/messages.js';
 
 export const prisma = new PrismaClient({ datasources: { db: { url: testDatabaseUrl() } } });
 
@@ -243,4 +245,18 @@ export async function loginAs(app: FastifyInstance, discordId = 'u-1', username 
   });
   if (cb.statusCode !== 302) throw new Error(`loginAs failed: ${cb.statusCode} ${cb.body}`);
   return String(cb.headers['set-cookie']).split(';')[0]!;
+}
+
+export class FakeWebhookSender implements WebhookSender {
+  calls: { url: string; payload: WebhookPayload }[] = [];
+  private results: SendResult[] = [];
+
+  queue(result: SendResult): void {
+    this.results.push(result);
+  }
+
+  async send(url: string, payload: WebhookPayload): Promise<SendResult> {
+    this.calls.push({ url, payload });
+    return this.results.shift() ?? { ok: true };
+  }
 }
