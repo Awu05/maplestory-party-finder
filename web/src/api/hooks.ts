@@ -137,14 +137,14 @@ export const useAdminGuilds = () =>
 export const useAdminWorlds = () =>
   useQuery({ queryKey: ['admin', 'worlds'], queryFn: () => api<WorldDTO[]>('/api/worlds?all=1') });
 
-/** Runs an admin mutation, then refreshes admin lists and the public catalog queries. */
+/** Runs an admin mutation, then refreshes admin lists, the public catalog and character lists (cards embed guild/world). */
 function useAdminMutation<I, O>(fn: (input: I) => Promise<O>) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: fn,
     onSuccess: () =>
       Promise.all(
-        (['admin', 'guilds', 'worlds', 'bosses', 'rarity-tiers'] as const).map((k) =>
+        (['admin', 'guilds', 'worlds', 'bosses', 'rarity-tiers', 'characters'] as const).map((k) =>
           qc.invalidateQueries({ queryKey: [k] }),
         ),
       ),

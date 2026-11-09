@@ -1,4 +1,7 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, renderHook, screen, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactNode } from 'react';
+import { useUpdateGuild } from '../src/api/hooks';
 import { Route, Routes } from 'react-router-dom';
 import { AdminLayout } from '../src/pages/admin/AdminLayout';
 import { GuildsAdmin } from '../src/pages/admin/GuildsAdmin';
@@ -104,5 +107,17 @@ describe('admin pages', () => {
       { name: 'Rare', minCp: 1000, sortOrder: 1 },
     ]);
     expect(await screen.findByRole('alert')).toHaveTextContent(/base tier/i);
+  });
+
+  it('admin mutations also invalidate character queries (guild/world names on cards)', async () => {
+    mockApi({ 'PATCH /api/admin/guilds/g1': { id: 'g1' } });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    const invalidate = vi.spyOn(qc, 'invalidateQueries');
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(() => useUpdateGuild(), { wrapper });
+    await act(() => result.current.mutateAsync({ id: 'g1', name: 'Renamed' }));
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['characters'] });
   });
 });
