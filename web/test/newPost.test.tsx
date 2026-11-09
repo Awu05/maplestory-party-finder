@@ -240,6 +240,38 @@ describe('NewPostPage (edit)', () => {
     expect(size.options[0].value).toBe('2');
   });
 
+  it('locked-type edit PATCH omits type and characterId', async () => {
+    const m = mockApi({ ...base, '/api/posts/p1': makePost({ memberCount: 2 }), 'PATCH /api/posts/p1': makePost() });
+    renderWithProviders(<App />, { route: '/posts/p1/edit' });
+    await waitFor(() => expect(screen.getByLabelText('Note')).toHaveValue('Chill run'));
+    fireEvent.change(screen.getByLabelText('Note'), { target: { value: 'x' } });
+    save();
+    await screen.findByRole('heading', { name: 'Post' });
+    expect(body(writes(m)[0])).toEqual({ note: 'x' });
+  });
+
+  it('LFP to recruiting with default size sends type and partySize', async () => {
+    const lfp = makePost({ type: 'lfp', partySize: null, minCp: null });
+    const m = mockApi({ ...base, '/api/posts/p1': lfp, 'PATCH /api/posts/p1': lfp });
+    renderWithProviders(<App />, { route: '/posts/p1/edit' });
+    await waitFor(() => expect(screen.getByLabelText('Note')).toHaveValue('Chill run'));
+    fireEvent.click(screen.getByRole('button', { name: 'Recruiting' }));
+    save();
+    await screen.findByRole('heading', { name: 'Post' });
+    expect(body(writes(m)[0])).toEqual({ type: 'recruiting', partySize: 4 });
+  });
+
+  it('post whose character was deleted can still be edited', async () => {
+    const orphan = makePost({ poster: { ...poster, characterId: null, character: null } });
+    const m = mockApi({ ...base, '/api/posts/p1': orphan, 'PATCH /api/posts/p1': orphan });
+    renderWithProviders(<App />, { route: '/posts/p1/edit' });
+    await waitFor(() => expect(screen.getByLabelText('Note')).toHaveValue('Chill run'));
+    fireEvent.change(screen.getByLabelText('Note'), { target: { value: 'y' } });
+    save();
+    await screen.findByRole('heading', { name: 'Post' });
+    expect(body(writes(m)[0])).toEqual({ note: 'y' });
+  });
+
   it('non-poster on /posts/:id/edit sees the poster-only message', async () => {
     mockApi({ ...base, '/api/posts/p1': makePost({ isPoster: false }) });
     renderWithProviders(<App />, { route: '/posts/p1/edit' });

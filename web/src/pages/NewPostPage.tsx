@@ -65,9 +65,15 @@ function changedFields(v: Values, orig: Values): UpdatePostInput {
   if (!sameSet(v.bossIds, orig.bossIds)) out.bossDifficultyIds = v.bossIds;
   if (timeChanged(v, orig)) out.scheduledAt = v.flexible ? null : localInputToUtcIso(v.when);
   if (v.type === 'recruiting') {
-    if (v.partySize !== orig.partySize) out.partySize = v.partySize;
     const cp = parseCp(v.minCp);
-    if (cp !== parseCp(orig.minCp)) out.minCp = cp;
+    if (v.type !== orig.type) {
+      // Switching to recruiting: the server requires partySize.
+      out.partySize = v.partySize;
+      if (cp !== null) out.minCp = cp;
+    } else {
+      if (v.partySize !== orig.partySize) out.partySize = v.partySize;
+      if (cp !== parseCp(orig.minCp)) out.minCp = cp;
+    }
   }
   if (v.note !== orig.note) out.note = v.note;
   return out;
@@ -113,7 +119,8 @@ function PostForm({ characters, bosses, post }: FormProps) {
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError('');
-    if (!v.characterId) return setError('Pick a character.');
+    // A deleted poster character (blank on edit) stays blank unless the user picks another.
+    if (!v.characterId && !(post && orig.characterId === '')) return setError('Pick a character.');
     if (v.bossIds.length === 0) return setError('Pick at least one boss.');
     // An edited post keeps its already-scheduled time unvalidated unless the time was changed.
     if (!v.flexible && (!post || timeChanged(v, orig))) {
