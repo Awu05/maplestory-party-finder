@@ -11,12 +11,21 @@ interface Props {
   tiers: RarityTierDTO[];
   onRemove?: (memberId: string) => void;
   onLeave?: (memberId: string) => void;
+  /** Disables Remove/Leave while a mutation is in flight. */
+  busy?: boolean;
 }
 
-export function LineupView({ post, tiers, onRemove, onLeave }: Props) {
+export function LineupView({ post, tiers, onRemove, onLeave, busy = false }: Props) {
   const [open, setOpen] = useState<CharacterDTO | null>(null);
-  const bossContext = post.bosses.map((b) => ({ bossDifficultyId: b.bossDifficultyId, label: bossLabel(b) }));
-  const emptySlots = post.type === 'recruiting' && post.partySize !== null ? Math.max(0, post.partySize - post.members.length) : 0;
+  const bossContext = post.bosses.map((b) => ({
+    bossDifficultyId: b.bossDifficultyId,
+    label: bossLabel(b),
+  }));
+  const showSlots = post.status !== 'closed' && !post.deleted;
+  const emptySlots =
+    showSlots && post.type === 'recruiting' && post.partySize !== null
+      ? Math.max(0, post.partySize - post.members.length)
+      : 0;
 
   const renderMember = (m: PartyMemberDTO) => {
     const c = m.character;
@@ -40,12 +49,12 @@ export function LineupView({ post, tiers, onRemove, onLeave }: Props) {
           {c && c.combatPower !== m.cpAtJoin && ` · now ${formatCp(c.combatPower)}`}
         </div>
         {m.role !== 'poster' && onRemove && (
-          <button type="button" onClick={() => onRemove(m.id)}>
+          <button type="button" disabled={busy} onClick={() => onRemove(m.id)}>
             Remove
           </button>
         )}
         {m.isMine && m.role !== 'poster' && onLeave && (
-          <button type="button" onClick={() => onLeave(m.id)}>
+          <button type="button" disabled={busy} onClick={() => onLeave(m.id)}>
             Leave
           </button>
         )}
