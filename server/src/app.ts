@@ -12,6 +12,7 @@ import type { DiscordOAuth } from './auth/discordOAuth.js';
 import { authRoutes } from './auth/routes.js';
 import { catalogRoutes } from './catalog/routes.js';
 import { characterRoutes } from './characters/routes.js';
+import { postRoutes } from './posts/routes.js';
 import type { DomainEvents } from './events.js';
 import type { Storage } from './storage/storage.js';
 
@@ -67,6 +68,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       await api.register(authRoutes);
       await api.register(catalogRoutes);
       await api.register(characterRoutes);
+      await api.register(postRoutes);
     },
     { prefix: '/api' },
   );
