@@ -7,6 +7,7 @@ import { registerErrorHandler } from './http/errors.js';
 import type { NexonClient } from './nexon/client.js';
 import type { DiscordOAuth } from './auth/discordOAuth.js';
 import { authRoutes } from './auth/routes.js';
+import { catalogRoutes } from './catalog/routes.js';
 
 export interface AppDeps {
   config: Config;
@@ -42,6 +43,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     async (api) => {
       api.get('/health', async () => ({ ok: true }));
       await api.register(authRoutes);
+      await api.register(catalogRoutes);
     },
     { prefix: '/api' },
   );
