@@ -24,13 +24,15 @@ enum SyncStatus {
 }
 
 model User {
-  id         String      @id @default(cuid())
-  discordId  String      @unique
-  username   String
-  avatar     String?
-  banned     Boolean     @default(false)
-  createdAt  DateTime    @default(now())
-  characters Character[]
+  id          String       @id @default(cuid())
+  discordId   String       @unique
+  username    String
+  avatar      String?
+  banned      Boolean      @default(false)
+  createdAt   DateTime     @default(now())
+  characters  Character[]
+  posts       Post[]
+  postMembers PostMember[]
 }
 
 model World {
@@ -43,6 +45,7 @@ model World {
   active       Boolean      @default(true)
   guilds       GuildWorld[]
   characters   Character[]
+  posts        Post[]
 }
 
 model Guild {
@@ -53,6 +56,7 @@ model Guild {
   active     Boolean      @default(true)
   worlds     GuildWorld[]
   characters Character[]
+  posts      Post[]
 }
 
 model GuildWorld {
@@ -80,6 +84,7 @@ model BossDifficulty {
   partyCap   Int             @default(6)
   sortOrder  Int             @default(0)
   characters CharacterBoss[]
+  posts      PostBoss[]
 
   @@unique([bossId, difficulty])
 }
@@ -107,6 +112,9 @@ model Character {
   lastRefreshRequestedAt DateTime?
   createdAt              DateTime        @default(now())
   bosses                 CharacterBoss[]
+  posted                 Post[]          @relation("PostPoster")
+  memberships            PostMember[]
+  requests               Request[]
 
   @@unique([ignLower, worldId])
 }
@@ -126,4 +134,108 @@ model RarityTier {
   name      String @unique
   minCp     BigInt
   sortOrder Int
+}
+
+enum PostType {
+  lfp
+  recruiting
+}
+
+enum PostStatus {
+  open
+  full
+  closed
+}
+
+enum RequestKind {
+  join_request
+  invite
+}
+
+enum RequestStatus {
+  pending
+  accepted
+  declined
+  cancelled
+}
+
+enum MemberRole {
+  poster
+  member
+}
+
+model Post {
+  id                String       @id @default(cuid())
+  type              PostType
+  posterUserId      String
+  posterUser        User         @relation(fields: [posterUserId], references: [id])
+  posterCharacterId String?
+  posterCharacter   Character?   @relation("PostPoster", fields: [posterCharacterId], references: [id], onDelete: SetNull)
+  worldId           Int
+  world             World        @relation(fields: [worldId], references: [id])
+  guildId           String
+  guild             Guild        @relation(fields: [guildId], references: [id])
+  scheduledAt       DateTime?
+  expiresAt         DateTime
+  partySize         Int?
+  minCp             BigInt?
+  note              String       @default("")
+  status            PostStatus   @default(open)
+  /// manual | full | lfp_matched | character_deleted
+  closedReason      String?
+  deletedAt         DateTime?
+  createdAt         DateTime     @default(now())
+  bosses            PostBoss[]
+  members           PostMember[]
+  requests          Request[]    @relation("RequestPost")
+  lfpInvites        Request[]    @relation("RequestLfpPost")
+
+  @@index([status, expiresAt])
+}
+
+model PostBoss {
+  postId           String
+  post             Post           @relation(fields: [postId], references: [id], onDelete: Cascade)
+  bossDifficultyId Int
+  bossDifficulty   BossDifficulty @relation(fields: [bossDifficultyId], references: [id])
+
+  @@id([postId, bossDifficultyId])
+}
+
+model PostMember {
+  id          String     @id @default(cuid())
+  postId      String
+  post        Post       @relation(fields: [postId], references: [id], onDelete: Cascade)
+  characterId String?
+  character   Character? @relation(fields: [characterId], references: [id], onDelete: SetNull)
+  userId      String
+  user        User       @relation(fields: [userId], references: [id])
+  role        MemberRole
+  cpAtJoin    BigInt
+  /// MemberSnapshot
+  snapshot    Json
+  joinedAt    DateTime   @default(now())
+
+  @@unique([postId, characterId])
+  @@index([userId])
+}
+
+model Request {
+  id              String        @id @default(cuid())
+  kind            RequestKind
+  status          RequestStatus @default(pending)
+  /// always the Recruiting post
+  postId          String
+  post            Post          @relation("RequestPost", fields: [postId], references: [id], onDelete: Cascade)
+  /// applicant (join_request) or invitee (invite)
+  characterId     String
+  character       Character     @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  /// invite only: the LFP post the invite answers
+  lfpPostId       String?
+  lfpPost         Post?         @relation("RequestLfpPost", fields: [lfpPostId], references: [id], onDelete: SetNull)
+  createdByUserId String
+  createdAt       DateTime      @default(now())
+  decidedAt       DateTime?
+
+  @@index([characterId, status])
 }

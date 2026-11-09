@@ -5,10 +5,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import { LocalDiskStorage, type Storage } from '../src/storage/storage.js';
 import path from 'node:path';
-import { PrismaClient, type Boss, type BossDifficulty, type Character, type Guild, type Prisma, type User, type World } from '@prisma/client';
+import { PrismaClient, type Boss, type BossDifficulty, type Character, type Guild, type Post, type PostMember, type Prisma, type User, type World } from '@prisma/client';
 import type { Config } from '../src/config.js';
 import type { NexonCharacter, NexonClient } from '../src/nexon/client.js';
 import { NexonUnavailableError } from '../src/nexon/client.js';
+import type { DomainEvent, DomainEvents } from '../src/events.js';
 import { testDatabaseUrl } from './testDatabaseUrl.js';
 
 export const prisma = new PrismaClient({ datasources: { db: { url: testDatabaseUrl() } } });
@@ -94,6 +95,89 @@ export async function makeCharacter(over: Partial<Prisma.CharacterUncheckedCreat
   });
 }
 
+export class RecordingEvents implements DomainEvents {
+  events: DomainEvent[] = [];
+
+  emit(event: DomainEvent): void {
+    this.events.push(event);
+  }
+
+  clear(): void {
+    this.events = [];
+  }
+}
+
+const HOUR = 3_600_000;
+
+export async function makePost(
+  over: Partial<Prisma.PostUncheckedCreateInput> & { bossDifficultyIds?: number[] } = {},
+): Promise<Post> {
+  const { bossDifficultyIds = [], ...rest } = over;
+  const poster = rest.posterCharacterId
+    ? await prisma.character.findUniqueOrThrow({ where: { id: rest.posterCharacterId }, include: { world: true, guild: true } })
+    : await makeCharacter({ ...(rest.posterUserId ? { ownerId: rest.posterUserId } : {}), ...(rest.worldId ? { worldId: rest.worldId } : {}), ...(rest.guildId ? { guildId: rest.guildId } : {}) }).then((c) =>
+        prisma.character.findUniqueOrThrow({ where: { id: c.id }, include: { world: true, guild: true } }),
+      );
+  const scheduledAt = rest.scheduledAt === undefined ? new Date(Date.now() + 24 * HOUR) : rest.scheduledAt;
+  const createdAt = rest.createdAt ? new Date(rest.createdAt) : new Date();
+  const expiresAt = scheduledAt
+    ? new Date(new Date(scheduledAt).getTime() + 3 * HOUR)
+    : new Date(createdAt.getTime() + 7 * 24 * HOUR);
+  const post = await prisma.post.create({
+    data: {
+      type: 'recruiting',
+      partySize: 4,
+      ...rest,
+      scheduledAt,
+      expiresAt: rest.expiresAt ?? expiresAt,
+      posterUserId: rest.posterUserId ?? poster.ownerId,
+      posterCharacterId: poster.id,
+      worldId: rest.worldId ?? poster.worldId,
+      guildId: rest.guildId ?? poster.guildId,
+      bosses: { create: bossDifficultyIds.map((bossDifficultyId) => ({ bossDifficultyId })) },
+    },
+  });
+  await prisma.postMember.create({
+    data: {
+      postId: post.id,
+      characterId: poster.id,
+      userId: poster.ownerId,
+      role: 'poster',
+      cpAtJoin: poster.combatPower,
+      snapshot: {
+        ign: poster.ign,
+        jobName: poster.jobName,
+        level: poster.level,
+        imageUrl: poster.imageUrl,
+        worldName: poster.world.name,
+        guildName: poster.guild.name,
+      },
+    },
+  });
+  return post;
+}
+
+export async function addMember(postId: string, characterId: string): Promise<PostMember> {
+  const c = await prisma.character.findUniqueOrThrow({ where: { id: characterId }, include: { world: true, guild: true } });
+  return prisma.postMember.create({
+    data: {
+      postId,
+      characterId,
+      userId: c.ownerId,
+      role: 'member',
+      cpAtJoin: c.combatPower,
+      snapshot: {
+        ign: c.ign,
+        jobName: c.jobName,
+        level: c.level,
+        imageUrl: c.imageUrl,
+        worldName: c.world.name,
+        guildName: c.guild.name,
+      },
+    },
+  });
+}
+
 export class FakeNexon implements NexonClient {
   private chars: NexonCharacter[] = [];
   private failures = 0;
@@ -130,10 +214,11 @@ export class FakeDiscord implements DiscordOAuth {
 
 export async function buildTestApp(
   over: Partial<AppDeps> = {},
-): Promise<{ app: FastifyInstance; nexon: FakeNexon; storage: Storage; uploadDir: string }> {
+): Promise<{ app: FastifyInstance; nexon: FakeNexon; storage: Storage; uploadDir: string; events: RecordingEvents }> {
   const nexon = new FakeNexon();
   const uploadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pf-uploads-'));
   const storage = over.storage ?? new LocalDiskStorage(uploadDir);
+  const events = (over.events as RecordingEvents | undefined) ?? new RecordingEvents();
   const app = await buildApp({
     config: testConfig({ uploadDir }),
     nexon,
@@ -141,8 +226,9 @@ export async function buildTestApp(
     discord: new FakeDiscord(),
     ...over,
     storage,
+    events,
   });
-  return { app, nexon, storage, uploadDir };
+  return { app, nexon, storage, uploadDir, events };
 }
 
 /** Drives the real redirect + callback flow and returns the session cookie header value. */

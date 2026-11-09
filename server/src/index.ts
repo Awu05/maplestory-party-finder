@@ -5,6 +5,7 @@ import { loadConfig } from './config.js';
 import { buildApp } from './app.js';
 import { HttpNexonClient } from './nexon/client.js';
 import { HttpDiscordOAuth } from './auth/discordOAuth.js';
+import { NoopEvents } from './events.js';
 import { LocalDiskStorage } from './storage/storage.js';
 
 const config = loadConfig(process.env);
@@ -16,6 +17,7 @@ const app = await buildApp({
   prisma,
   discord: new HttpDiscordOAuth(config),
   storage: new LocalDiskStorage(config.uploadDir),
+  events: new NoopEvents(),
 });
 await app.listen({ port: config.port, host: '0.0.0.0' });
 

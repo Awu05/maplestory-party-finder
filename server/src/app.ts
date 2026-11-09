@@ -12,6 +12,7 @@ import type { DiscordOAuth } from './auth/discordOAuth.js';
 import { authRoutes } from './auth/routes.js';
 import { catalogRoutes } from './catalog/routes.js';
 import { characterRoutes } from './characters/routes.js';
+import type { DomainEvents } from './events.js';
 import type { Storage } from './storage/storage.js';
 
 export interface AppDeps {
@@ -20,6 +21,7 @@ export interface AppDeps {
   prisma: PrismaClient;
   discord: DiscordOAuth;
   storage: Storage;
+  events: DomainEvents;
 }
 
 declare module 'fastify' {
