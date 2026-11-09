@@ -143,12 +143,15 @@ export async function updateCharacter(
   if (input.guildId !== undefined && input.guildId !== row.guildId) await requireActiveGuild(prisma, input.guildId);
   if (input.bosses) await validateBosses(prisma, input.bosses);
 
+  // The edit form always sends combatPower; only a real change counts as a CP update.
+  const cpChanged = input.combatPower !== undefined && BigInt(input.combatPower) !== row.combatPower;
+
   return prisma.$transaction(async (tx) => {
     if (input.bosses) await tx.characterBoss.deleteMany({ where: { characterId: row.id } });
     return tx.character.update({
       where: { id: row.id },
       data: {
-        ...(input.combatPower !== undefined ? { combatPower: BigInt(input.combatPower), cpUpdatedAt: new Date() } : {}),
+        ...(cpChanged ? { combatPower: BigInt(input.combatPower!), cpUpdatedAt: new Date() } : {}),
         ...(input.guildId !== undefined ? { guildId: input.guildId } : {}),
         ...(input.note !== undefined ? { note: input.note } : {}),
         ...(input.playTimes ? { playTimes: [...input.playTimes].sort((a, b) => a - b) } : {}),

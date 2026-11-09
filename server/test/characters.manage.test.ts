@@ -111,6 +111,18 @@ describe('characters patch', () => {
     expect(new Date(r2.json().cpUpdatedAt).getTime()).toBeGreaterThan(Date.now() - 60_000);
   });
 
+  it('unchanged combatPower (sent alongside other edits) does not bump cpUpdatedAt', async () => {
+    const old = new Date('2020-01-01T00:00:00Z');
+    const c = await makeCharacter({ ownerId, worldId, guildId, cpUpdatedAt: old, combatPower: 1_500_000n });
+    const r1 = await patch(c.id, { combatPower: 1_500_000, note: 'same cp' });
+    expect(r1.statusCode).toBe(200);
+    expect(r1.json().note).toBe('same cp');
+    expect(r1.json().cpUpdatedAt).toBe(old.toISOString());
+    const r2 = await patch(c.id, { combatPower: 1_500_001, note: 'new cp' });
+    expect(r2.json().combatPower).toBe(1_500_001);
+    expect(new Date(r2.json().cpUpdatedAt).getTime()).toBeGreaterThan(Date.now() - 60_000);
+  });
+
   it('bosses replaces set; validates guild, bosses, playTimes', async () => {
     const a = await makeBossDifficulty({ bossName: 'A' });
     const b = await makeBossDifficulty({ bossName: 'B' });
