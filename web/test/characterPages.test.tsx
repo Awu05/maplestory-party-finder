@@ -221,6 +221,17 @@ describe('CharacterFormPage', () => {
     expect(card).toBeDisabled();
   });
 
+  it('disables a preview whose world is inactive', async () => {
+    // Known world (worldName set) but not in the active /api/worlds list.
+    mockApi({ ...shared, 'POST /api/characters/lookup': [{ ...preview, nexonWorldId: 99, worldName: 'Retired' }] });
+    renderWithProviders(formRoutes(), { route: '/me/characters/new' });
+    fireEvent.change(await screen.findByLabelText('In-game name'), { target: { value: 'Lily' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Find' }));
+    const card = await screen.findByRole('button', { name: /isn't active/ });
+    expect(card).toBeDisabled();
+    expect(screen.queryByLabelText('Combat power')).not.toBeInTheDocument();
+  });
+
   it('ALREADY_CLAIMED shows friendly message', async () => {
     const fetchMock = mockApi({ ...shared, 'POST /api/characters/lookup': [preview] });
     const base = fetchMock.getMockImplementation()!;

@@ -8,6 +8,7 @@ import {
   useCharacter,
   useCreateCharacter,
   useGuilds,
+  useWorlds,
   useLookupCharacter,
   useUpdateCharacter,
 } from '../api/hooks';
@@ -130,13 +131,21 @@ function AddCharacter({ guilds, bosses }: { guilds: GuildDTO[]; bosses: BossDTO[
   const [ign, setIgn] = useState('');
   const [chosen, setChosen] = useState<NexonCharacterPreview | null>(null);
   const previews = lookup.data;
+  // /api/worlds lists only active worlds; a known world missing from it has been deactivated.
+  const worlds = useWorlds();
+  const activeWorldIds = new Set(worlds.data?.map((w) => w.nexonWorldId));
+  const unavailableReason = (p: NexonCharacterPreview): string | null => {
+    if (p.worldName === null) return "This world isn't set up yet — ask the admin";
+    if (worlds.data && !activeWorldIds.has(p.nexonWorldId)) return `${p.worldName} isn't active right now`;
+    return null;
+  };
 
   async function find(e: FormEvent) {
     e.preventDefault();
     if (!ign.trim()) return;
     setChosen(null);
     const result = await lookup.mutateAsync(ign.trim()).catch(() => null);
-    if (result?.length === 1 && result[0].worldName) setChosen(result[0]);
+    if (result?.length === 1 && unavailableReason(result[0]) === null) setChosen(result[0]);
   }
 
   return (
@@ -155,20 +164,20 @@ function AddCharacter({ guilds, bosses }: { guilds: GuildDTO[]; bosses: BossDTO[
       {previews && previews.length > 0 && (
         <div className="previews">
           {previews.map((p) => {
-            const unknown = p.worldName === null;
+            const reason = unavailableReason(p);
             return (
               <button
                 key={`${p.ign}-${p.nexonWorldId}`}
                 type="button"
                 className="preview"
-                disabled={unknown}
+                disabled={reason !== null}
                 aria-pressed={chosen === p}
                 onClick={() => setChosen(p)}
               >
                 <img src={p.imageUrl} alt="" />
                 <strong>{p.ign}</strong>
                 <span>{`Lv. ${p.level} ${p.jobName}`}</span>
-                <span>{unknown ? "This world isn't set up yet — ask the admin" : p.worldName}</span>
+                <span>{reason ?? p.worldName}</span>
               </button>
             );
           })}
