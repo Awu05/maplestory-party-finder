@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { buildTestApp, loginAs, prisma, resetDb } from './helpers.js';
 import { requireUser } from '../src/auth/guards.js';
@@ -19,6 +19,18 @@ describe('auth', () => {
     const me = await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie } });
     expect(me.json()).toMatchObject({ discordUsername: 'andy', isAdmin: false });
     expect(await prisma.user.count()).toBe(1);
+  });
+
+  it('session survives past 24h (30-day expiry)', async () => {
+    const cookie = await loginAs(app, 'u-1', 'andy');
+    const realNow = Date.now();
+    const spy = vi.spyOn(Date, 'now').mockReturnValue(realNow + 25 * 60 * 60 * 1000);
+    try {
+      const me = await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie } });
+      expect(me.json()).toMatchObject({ discordUsername: 'andy' });
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('second login updates username', async () => {

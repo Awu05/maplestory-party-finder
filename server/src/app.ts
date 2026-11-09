@@ -33,15 +33,18 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   app.decorate('deps', deps);
   registerErrorHandler(app);
 
+  const sessionMaxAgeSeconds = 60 * 60 * 24 * 30;
   await app.register(secureSession, {
     key: createHash('sha256').update(deps.config.sessionSecret).digest(),
     cookieName: 'pf_session',
+    // Server-side expiry (checked against the session's write time); must match the cookie lifetime.
+    expiry: sessionMaxAgeSeconds,
     cookie: {
       path: '/',
       httpOnly: true,
       sameSite: 'lax',
       secure: deps.config.webOrigin.startsWith('https://'),
-      maxAge: 60 * 60 * 24 * 30,
+      maxAge: sessionMaxAgeSeconds,
     },
   });
 
