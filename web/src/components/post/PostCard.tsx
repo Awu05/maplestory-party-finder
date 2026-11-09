@@ -3,6 +3,7 @@ import { POST_TYPE_LABELS } from '@pf/shared';
 import type { PostSummaryDTO, RarityTierDTO } from '@pf/shared';
 import { CharacterCard } from '../card/CharacterCard';
 import { formatCp } from '../card/format';
+import { bossLabel } from './labels';
 import { formatWhen } from './time';
 import './post.css';
 
@@ -32,7 +33,7 @@ export function PostCard({ post, tiers, onOpen }: Props) {
       )}
       <ul className="post-card__bosses">
         {post.bosses.map((b) => (
-          <li key={b.bossDifficultyId}>{`${b.difficulty} ${b.bossName}`}</li>
+          <li key={b.bossDifficultyId}>{bossLabel(b)}</li>
         ))}
       </ul>
       <div className="post-card__meta">

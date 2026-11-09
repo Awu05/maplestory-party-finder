@@ -93,7 +93,7 @@ afterEach(() => vi.useRealTimers());
 
 describe('NewPostPage (create)', () => {
   it('recruiting submit', async () => {
-    const m = mockApi({ ...base, 'POST /api/posts': makePost() });
+    const m = mockApi({ ...base, '/api/posts/p1': makePost(), 'POST /api/posts': makePost() });
     renderWithProviders(<App />, { route: '/posts/new' });
     await pickCharacter();
     await pickBoss('Hard Lucid');
@@ -101,7 +101,7 @@ describe('NewPostPage (create)', () => {
     fireEvent.change(screen.getByLabelText('Party size'), { target: { value: '4' } });
     fireEvent.change(screen.getByLabelText('Min CP'), { target: { value: '300,000,000' } });
     save();
-    await screen.findByRole('heading', { name: 'Post' });
+    await screen.findByRole('heading', { name: 'Lineup' });
     expect(writes(m)).toHaveLength(1);
     expect(body(writes(m)[0])).toEqual({
       type: 'recruiting',
@@ -115,7 +115,7 @@ describe('NewPostPage (create)', () => {
   });
 
   it('LFP hides party size and min CP and omits them from the body', async () => {
-    const m = mockApi({ ...base, 'POST /api/posts': makePost({ type: 'lfp' }) });
+    const m = mockApi({ ...base, '/api/posts/p1': makePost(), 'POST /api/posts': makePost({ type: 'lfp' }) });
     renderWithProviders(<App />, { route: '/posts/new' });
     fireEvent.click(await screen.findByRole('button', { name: 'Looking for party' }));
     expect(screen.queryByLabelText('Party size')).not.toBeInTheDocument();
@@ -124,7 +124,7 @@ describe('NewPostPage (create)', () => {
     await pickBoss('Hard Lucid');
     setWhen('2026-11-10T20:00');
     save();
-    await screen.findByRole('heading', { name: 'Post' });
+    await screen.findByRole('heading', { name: 'Lineup' });
     expect(body(writes(m)[0])).toEqual({
       type: 'lfp',
       characterId: 'c1',
@@ -135,14 +135,14 @@ describe('NewPostPage (create)', () => {
   });
 
   it('flexible sends scheduledAt null', async () => {
-    const m = mockApi({ ...base, 'POST /api/posts': makePost() });
+    const m = mockApi({ ...base, '/api/posts/p1': makePost(), 'POST /api/posts': makePost() });
     renderWithProviders(<App />, { route: '/posts/new' });
     await pickCharacter();
     await pickBoss('Hard Lucid');
     fireEvent.click(screen.getByLabelText('Flexible'));
     expect(screen.getByLabelText('When')).toBeDisabled();
     save();
-    await screen.findByRole('heading', { name: 'Post' });
+    await screen.findByRole('heading', { name: 'Lineup' });
     expect(body(writes(m)[0]).scheduledAt).toBeNull();
   });
 
@@ -205,7 +205,7 @@ describe('NewPostPage (edit)', () => {
     fireEvent.change(screen.getByLabelText('Note'), { target: { value: 'New note' } });
     fireEvent.change(screen.getByLabelText('Party size'), { target: { value: '5' } });
     save();
-    await screen.findByRole('heading', { name: 'Post' });
+    await screen.findByRole('heading', { name: 'Lineup' });
     expect(body(writes(m)[0])).toEqual({ partySize: 5, note: 'New note' });
   });
 
@@ -224,7 +224,7 @@ describe('NewPostPage (edit)', () => {
     await waitFor(() => expect(screen.getByLabelText('Min CP')).toHaveValue('300,000,000'));
     fireEvent.change(screen.getByLabelText('Min CP'), { target: { value: '' } });
     save();
-    await screen.findByRole('heading', { name: 'Post' });
+    await screen.findByRole('heading', { name: 'Lineup' });
     expect(body(writes(m)[0])).toEqual({ minCp: null });
   });
 
@@ -246,7 +246,7 @@ describe('NewPostPage (edit)', () => {
     await waitFor(() => expect(screen.getByLabelText('Note')).toHaveValue('Chill run'));
     fireEvent.change(screen.getByLabelText('Note'), { target: { value: 'x' } });
     save();
-    await screen.findByRole('heading', { name: 'Post' });
+    await screen.findByRole('heading', { name: 'Lineup' });
     expect(body(writes(m)[0])).toEqual({ note: 'x' });
   });
 
@@ -257,7 +257,7 @@ describe('NewPostPage (edit)', () => {
     await waitFor(() => expect(screen.getByLabelText('Note')).toHaveValue('Chill run'));
     fireEvent.click(screen.getByRole('button', { name: 'Recruiting' }));
     save();
-    await screen.findByRole('heading', { name: 'Post' });
+    await screen.findByRole('heading', { name: 'Lineup' });
     expect(body(writes(m)[0])).toEqual({ type: 'recruiting', partySize: 4 });
   });
 
@@ -268,7 +268,7 @@ describe('NewPostPage (edit)', () => {
     await waitFor(() => expect(screen.getByLabelText('Note')).toHaveValue('Chill run'));
     fireEvent.change(screen.getByLabelText('Note'), { target: { value: 'y' } });
     save();
-    await screen.findByRole('heading', { name: 'Post' });
+    await screen.findByRole('heading', { name: 'Lineup' });
     expect(body(writes(m)[0])).toEqual({ note: 'y' });
   });
 
