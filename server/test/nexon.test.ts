@@ -71,6 +71,17 @@ describe('HttpNexonClient', () => {
     await expect(client.findByName('lily')).rejects.toBeInstanceOf(NexonUnavailableError);
   });
 
+  it('times out a hung request → throws NexonUnavailableError', async () => {
+    const hang = vi.fn<typeof fetch>(
+      (_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(init.signal!.reason));
+        }),
+    );
+    const client = new HttpNexonClient({ fetch: hang, timeoutMs: 20 });
+    await expect(client.findByName('lily')).rejects.toBeInstanceOf(NexonUnavailableError);
+  });
+
   it('wrong-shaped body → throws NexonUnavailableError', async () => {
     const client = new HttpNexonClient({ fetch: stub('{"unexpected":true}') });
     await expect(client.findByName('lily')).rejects.toBeInstanceOf(NexonUnavailableError);

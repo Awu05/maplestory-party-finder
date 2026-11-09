@@ -38,12 +38,14 @@ export class HttpNexonClient implements NexonClient {
   private readonly fetchFn: typeof fetch;
   private readonly cacheTtlMs: number;
   private readonly now: () => number;
+  private readonly timeoutMs: number;
   private readonly cache = new Map<string, { expires: number; value: NexonCharacter[] }>();
 
-  constructor(opts: { fetch?: typeof fetch; cacheTtlMs?: number; now?: () => number }) {
+  constructor(opts: { fetch?: typeof fetch; cacheTtlMs?: number; now?: () => number; timeoutMs?: number }) {
     this.fetchFn = opts.fetch ?? fetch;
     this.cacheTtlMs = opts.cacheTtlMs ?? 600_000;
     this.now = opts.now ?? Date.now;
+    this.timeoutMs = opts.timeoutMs ?? 8000;
   }
 
   async findByName(ign: string): Promise<NexonCharacter[]> {
@@ -60,7 +62,10 @@ export class HttpNexonClient implements NexonClient {
     const url = `${ENDPOINT}?type=overall&id=weekly&reboot_index=0&page_index=1&character_name=${encodeURIComponent(ign)}`;
     let body: unknown;
     try {
-      const res = await this.fetchFn(url, { headers: { 'User-Agent': 'party-finder/1.0' } });
+      const res = await this.fetchFn(url, {
+        headers: { 'User-Agent': 'party-finder/1.0' },
+        signal: AbortSignal.timeout(this.timeoutMs),
+      });
       if (!res.ok) throw new NexonUnavailableError(`Nexon responded ${res.status}`);
       body = await res.json();
     } catch (err) {
