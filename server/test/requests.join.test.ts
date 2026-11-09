@@ -177,6 +177,7 @@ describe('accept', () => {
     expect((await prisma.request.findUniqueOrThrow({ where: { id: third.requestId } })).status).toBe('declined');
     expect(events.events).toEqual([
       { type: 'request.accepted', requestId: second.requestId },
+      { type: 'post.closed', postId: post.id, reason: 'full' },
       { type: 'request.declined', requestId: third.requestId, auto: true },
     ]);
 

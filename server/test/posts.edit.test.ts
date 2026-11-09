@@ -96,6 +96,7 @@ describe('PATCH /api/posts/:id', () => {
     expect(await prisma.post.findUniqueOrThrow({ where: { id: p.id } })).toMatchObject({ status: 'full', closedReason: 'full', partySize: 2 });
     expect(await reqStatus(r.id)).toBe('declined');
     expect(events.events).toContainEqual({ type: 'request.declined', requestId: r.id, auto: true });
+    expect(events.events).toContainEqual({ type: 'post.closed', postId: p.id, reason: 'full' });
   });
 
   it('an edit that leaves members == unchanged partySize also makes it full', async () => {
@@ -104,6 +105,11 @@ describe('PATCH /api/posts/:id', () => {
     // stored open with members == partySize (inconsistent); any edit resolves it to full
     expect((await patch(p.id, { note: 'n' })).statusCode).toBe(200);
     expect((await prisma.post.findUniqueOrThrow({ where: { id: p.id } })).status).toBe('full');
+    expect(events.events.filter((e) => e.type === 'post.closed')).toEqual([{ type: 'post.closed', postId: p.id, reason: 'full' }]);
+    events.clear();
+    // Already full: a further edit is no new transition.
+    expect((await patch(p.id, { note: 'm' })).statusCode).toBe(200);
+    expect(events.events.some((e) => e.type === 'post.closed')).toBe(false);
   });
 
   it('raising partySize on a full post reopens it', async () => {

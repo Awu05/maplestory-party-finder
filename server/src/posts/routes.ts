@@ -70,6 +70,7 @@ export async function postRoutes(app: FastifyInstance): Promise<void> {
     emitDeclined(r.declinedRequestIds);
     events.emit({ type: 'post.updated', postId: id });
     if (r.reopened) events.emit({ type: 'post.reopened', postId: id });
+    if (r.becameFull) events.emit({ type: 'post.closed', postId: id, reason: 'full' });
     return toPostDetailDTO(r.post, viewer, storage, now);
   });
 

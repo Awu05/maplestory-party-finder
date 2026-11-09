@@ -42,6 +42,7 @@ export async function requestRoutes(app: FastifyInstance): Promise<void> {
       throw new AppError(409, 'ALREADY_MEMBER', 'That character is already in the party');
     }
     events.emit({ type: 'request.accepted', requestId: id });
+    if (result.becameFull) events.emit({ type: 'post.closed', postId: result.post.id, reason: 'full' });
     if (result.closedLfpPostId) events.emit({ type: 'post.closed', postId: result.closedLfpPostId, reason: 'lfp_matched' });
     result.declinedRequestIds.forEach((requestId) => events.emit({ type: 'request.declined', requestId, auto: true }));
     return toPostDetailDTO(result.post, viewer, storage, now);

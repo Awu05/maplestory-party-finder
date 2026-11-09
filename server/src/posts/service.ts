@@ -291,6 +291,7 @@ export interface EditResult {
   post: PostRow;
   declinedRequestIds: string[];
   reopened: boolean;
+  becameFull: boolean;
 }
 
 /** Poster edits any field. The resulting post is validated as a whole, then applied. */
@@ -336,14 +337,14 @@ export async function editPost(prisma: PrismaClient, viewer: Viewer, id: string,
       minCp = input.minCp === undefined ? row.minCp : input.minCp === null ? null : BigInt(input.minCp);
     }
 
-    const becomesFull = type === 'recruiting' && row.status === 'open' && partySize === memberCount;
+    const becameFull = type === 'recruiting' && row.status === 'open' && partySize === memberCount;
     const reopened =
       type === 'recruiting' && row.status === 'full' && partySize !== null && memberCount < partySize && expiresAt.getTime() > now.getTime();
 
     // Type or world changes void everything tied to the post; an LFP post's invites name its character,
     // so a new character voids them too; filling it only voids its own requests.
     const declineWhere =
-      typeChanged || worldChanged || (characterChanged && type === 'lfp') ? postRequests(id) : becomesFull ? { postId: id } : null;
+      typeChanged || worldChanged || (characterChanged && type === 'lfp') ? postRequests(id) : becameFull ? { postId: id } : null;
     const declinedRequestIds = declineWhere ? await autoDeclinePending(tx, declineWhere) : [];
 
     if (character) {
@@ -366,10 +367,10 @@ export async function editPost(prisma: PrismaClient, viewer: Viewer, id: string,
         ...(bossesChanged
           ? { bosses: { deleteMany: {}, create: input.bossDifficultyIds!.map((bossDifficultyId) => ({ bossDifficultyId })) } }
           : {}),
-        ...(becomesFull ? { status: 'full', closedReason: 'full' } : reopened ? { status: 'open', closedReason: null } : {}),
+        ...(becameFull ? { status: 'full', closedReason: 'full' } : reopened ? { status: 'open', closedReason: null } : {}),
       },
       include: postInclude,
     });
-    return { post, declinedRequestIds, reopened };
+    return { post, declinedRequestIds, reopened, becameFull };
   });
 }

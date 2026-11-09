@@ -157,7 +157,7 @@ function assertPending(request: RequestRow): void {
 }
 
 export type AcceptResult =
-  | { ok: true; post: PostRow; declinedRequestIds: string[]; closedLfpPostId: string | null }
+  | { ok: true; post: PostRow; becameFull: boolean; declinedRequestIds: string[]; closedLfpPostId: string | null }
   | { ok: false; declinedRequestId: string };
 
 /**
@@ -194,7 +194,8 @@ export async function acceptRequest(prisma: PrismaClient, viewer: Viewer, id: st
     await decidePending(tx, id, 'accepted', now);
 
     let declinedRequestIds: string[] = [];
-    if (post.partySize !== null && post.members.length + 1 >= post.partySize) {
+    const becameFull = post.partySize !== null && post.members.length + 1 >= post.partySize;
+    if (becameFull) {
       await tx.post.update({ where: { id: postId }, data: { status: 'full', closedReason: 'full' } });
       declinedRequestIds = await autoDeclinePending(tx, { postId });
     }
@@ -208,7 +209,7 @@ export async function acceptRequest(prisma: PrismaClient, viewer: Viewer, id: st
       declinedRequestIds = declinedRequestIds.concat(await autoDeclinePending(tx, { lfpPostId: lfp.id, id: { not: id } }));
     }
     const updated = await tx.post.findUniqueOrThrow({ where: { id: postId }, include: postInclude });
-    return { ok: true, post: updated, declinedRequestIds, closedLfpPostId };
+    return { ok: true, post: updated, becameFull, declinedRequestIds, closedLfpPostId };
   }, TX_OPTIONS);
 }
 
