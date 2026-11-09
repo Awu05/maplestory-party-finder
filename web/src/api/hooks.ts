@@ -1,5 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { BossDTO, CharacterDTO, GuildDTO, MeDTO, RarityTierDTO, WorldDTO } from '@pf/shared';
+import type {
+  BossDTO,
+  CharacterDTO,
+  GuildDTO,
+  MeDTO,
+  NexonCharacterPreview,
+  RarityTierDTO,
+  WorldDTO,
+} from '@pf/shared';
 import { api } from './client';
 
 const FIVE_MIN = 5 * 60 * 1000;
@@ -92,15 +100,24 @@ export function useDeleteCharacter() {
   });
 }
 
+export function uploadScreenshot(id: string, file: File) {
+  const body = new FormData();
+  body.append('file', file);
+  return api<CharacterDTO>(`/api/characters/${id}/screenshot`, { method: 'PUT', body });
+}
+
 export function useUploadScreenshot(id: string) {
   const invalidate = useInvalidateCharacters();
   return useMutation({
-    mutationFn: (file: File) => {
-      const body = new FormData();
-      body.append('file', file);
-      return api<CharacterDTO>(`/api/characters/${id}/screenshot`, { method: 'PUT', body });
-    },
+    mutationFn: (file: File) => uploadScreenshot(id, file),
     onSuccess: invalidate,
+  });
+}
+
+export function useLookupCharacter() {
+  return useMutation({
+    mutationFn: (ign: string) =>
+      api<NexonCharacterPreview[]>('/api/characters/lookup', { method: 'POST', json: { ign } }),
   });
 }
 
