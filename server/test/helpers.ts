@@ -1,7 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { buildApp, type AppDeps } from '../src/app.js';
 import type { DiscordOAuth } from '../src/auth/discordOAuth.js';
+import fs from 'node:fs';
 import os from 'node:os';
+import { LocalDiskStorage, type Storage } from '../src/storage/storage.js';
 import path from 'node:path';
 import { PrismaClient, type Boss, type BossDifficulty, type Character, type Guild, type Prisma, type User, type World } from '@prisma/client';
 import type { Config } from '../src/config.js';
@@ -126,16 +128,21 @@ export class FakeDiscord implements DiscordOAuth {
   }
 }
 
-export async function buildTestApp(over: Partial<AppDeps> = {}): Promise<{ app: FastifyInstance; nexon: FakeNexon }> {
+export async function buildTestApp(
+  over: Partial<AppDeps> = {},
+): Promise<{ app: FastifyInstance; nexon: FakeNexon; storage: Storage; uploadDir: string }> {
   const nexon = new FakeNexon();
+  const uploadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pf-uploads-'));
+  const storage = over.storage ?? new LocalDiskStorage(uploadDir);
   const app = await buildApp({
-    config: testConfig(),
+    config: testConfig({ uploadDir }),
     nexon,
     prisma,
     discord: new FakeDiscord(),
     ...over,
+    storage,
   });
-  return { app, nexon };
+  return { app, nexon, storage, uploadDir };
 }
 
 /** Drives the real redirect + callback flow and returns the session cookie header value. */
