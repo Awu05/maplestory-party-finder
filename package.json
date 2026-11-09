@@ -5,7 +5,8 @@
   "workspaces": ["shared", "server", "web"],
   "scripts": {
     "test": "npm test -ws --if-present",
-    "dev:db": "docker compose up -d db"
+    "dev:db": "docker compose up -d db",
+    "db:setup": "npm run db:setup -w server"
   },
   "devDependencies": {
     "typescript": "^5.9.3"

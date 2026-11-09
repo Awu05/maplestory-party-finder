@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "predev": "prisma generate",
     "dev": "tsx watch src/index.ts",
+    "db:setup": "prisma migrate deploy && prisma db seed",
     "build": "prisma generate && tsup",
     "pretest": "prisma generate",
     "test": "vitest run"
