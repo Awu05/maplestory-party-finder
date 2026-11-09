@@ -19,7 +19,13 @@ function Actions({ id, onMessage }: { id: string; onMessage: (m: string) => void
         disabled={refresh.isPending}
         onClick={() => {
           onMessage('');
-          refresh.mutate(undefined, { onError: (e) => onMessage(friendlyError(e)) });
+          refresh.mutate(undefined, {
+            onSuccess: (c) =>
+              onMessage(
+                c.syncStatus === 'stale' ? "Couldn't reach Nexon — showing last known data" : 'Synced from Nexon',
+              ),
+            onError: (e) => onMessage(friendlyError(e)),
+          });
         }}
       >
         Refresh from Nexon

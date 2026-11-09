@@ -120,6 +120,21 @@ describe('MyCharactersPage', () => {
     );
     expect(screen.getByRole('link', { name: 'Add character' })).toBeInTheDocument();
   });
+
+  it.each([
+    ['ok', 'Synced from Nexon'],
+    ['stale', "Couldn't reach Nexon — showing last known data"],
+  ] as const)('refresh returning syncStatus=%s shows "%s"', async (syncStatus, text) => {
+    mockApi({
+      ...shared,
+      '/api/auth/me': { id: 'u1', discordUsername: 'lily#1', avatarUrl: null, isAdmin: false },
+      '/api/characters?mine=1': [character],
+      'POST /api/characters/c1/refresh': { ...character, syncStatus },
+    });
+    renderWithProviders(<MyCharactersPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Refresh from Nexon' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(text);
+  });
 });
 
 function formRoutes() {
