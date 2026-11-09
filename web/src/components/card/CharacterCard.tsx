@@ -21,6 +21,8 @@ export function CharacterCard({ character: c, tiers, bossContext, onOpen }: Prop
   const rarity = rarityFor(c.combatPower, tiers);
   const classes = ['card', `card--${archetype}`];
   if (rarity) classes.push(`card--rank-${rarity.rank}`);
+  // Count-independent hook so every rank >= 3 gets the highest non-top finish, however many tiers exist.
+  if (rarity && rarity.rank >= 3) classes.push('card--rank-high');
   if (rarity?.isTop) classes.push('card--foil');
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {

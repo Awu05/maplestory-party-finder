@@ -76,7 +76,7 @@
   --frame-b: #5e5e5e;
 }
 
-/* ---- Rarity finishes: rank 0 plain, 1 shine, 2 metallic, 3+ glow, top tier foil. ---- */
+/* ---- Rarity finishes: rank 0 plain, 1 shine, 2 metallic, 3+ glow (card--rank-high, any count), top tier foil. ---- */
 .card--rank-1 {
   box-shadow:
     inset 0 0 0 1px rgb(255 255 255 / 0.55),
@@ -84,7 +84,7 @@
     0 4px 12px rgb(0 0 0 / 0.15);
 }
 .card--rank-2,
-.card:is(.card--rank-3, .card--rank-4, .card--rank-5, .card--rank-6, .card--rank-7, .card--rank-8, .card--rank-9),
+.card--rank-high,
 .card--foil {
   --sheen: linear-gradient(
     115deg,
@@ -100,7 +100,7 @@
     0 1px 2px rgb(0 0 0 / 0.3),
     0 4px 12px rgb(0 0 0 / 0.2);
 }
-.card:is(.card--rank-3, .card--rank-4, .card--rank-5, .card--rank-6, .card--rank-7, .card--rank-8, .card--rank-9),
+.card--rank-high,
 .card--foil {
   box-shadow:
     inset 0 0 0 1px rgb(255 255 255 / 0.7),

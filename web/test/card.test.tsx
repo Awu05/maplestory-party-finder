@@ -71,6 +71,25 @@ describe('CharacterCard', () => {
     expect(card).not.toHaveClass('card--foil');
   });
 
+  it('rank >= 3 gets card--rank-high regardless of tier count; lower ranks do not', () => {
+    const many: RarityTierDTO[] = Array.from({ length: 12 }, (_, i) => ({
+      id: i + 1,
+      name: `Tier ${i}`,
+      minCp: i * 1_000_000,
+      sortOrder: i,
+    }));
+    const { rerender } = render(
+      <CharacterCard character={makeCharacter({ combatPower: 10_500_000 })} tiers={many} onOpen={() => {}} />,
+    );
+    const card = screen.getByRole('button');
+    expect(card).toHaveClass('card--rank-10', 'card--rank-high');
+    expect(card).not.toHaveClass('card--foil');
+
+    rerender(<CharacterCard character={makeCharacter({ combatPower: 2_500_000 })} tiers={many} onOpen={() => {}} />);
+    expect(screen.getByRole('button')).toHaveClass('card--rank-2');
+    expect(screen.getByRole('button')).not.toHaveClass('card--rank-high');
+  });
+
   it('xenon gets card--xenon', () => {
     render(<CharacterCard character={makeCharacter({ jobName: 'Xenon' })} tiers={tiers} onOpen={() => {}} />);
     expect(screen.getByRole('button')).toHaveClass('card--xenon');
