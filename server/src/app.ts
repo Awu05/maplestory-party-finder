@@ -14,6 +14,7 @@ import { catalogRoutes } from './catalog/routes.js';
 import { characterRoutes } from './characters/routes.js';
 import { postRoutes } from './posts/routes.js';
 import { requestRoutes } from './requests/routes.js';
+import { notificationRoutes } from './notifications/routes.js';
 import type { DomainEvents } from './events.js';
 import type { Storage } from './storage/storage.js';
 
@@ -71,6 +72,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       await api.register(characterRoutes);
       await api.register(postRoutes);
       await api.register(requestRoutes);
+      await api.register(notificationRoutes);
     },
     { prefix: '/api' },
   );
