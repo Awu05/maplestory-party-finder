@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { CharacterDTO, PartyMemberDTO, PostDetailDTO, PostSummaryDTO, RequestDTO } from '@pf/shared';
+import type { CharacterDTO, PartyMemberDTO, PostDetailDTO, PostSummaryDTO, RequestDTO, RequestWithPostDTO } from '@pf/shared';
 import { PostDetailPage } from '../src/pages/PostDetailPage';
 import { mockApi, renderWithProviders } from './setup';
 
@@ -97,6 +97,7 @@ const mine = [character('k1', 'KronosMain'), character('s1', 'ScaniaAlt', 1_500_
 
 function renderPage(routes: Record<string, unknown>) {
   const fetchMock = mockApi({ ...base, ...routes });
+
   renderWithProviders(
     <Routes>
       <Route path="/posts/:id" element={<PostDetailPage />} />
@@ -357,5 +358,76 @@ describe('stale error clearing', () => {
     expect(await screen.findByText('There is already a pending request for that character.')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+  });
+});
+
+describe('invites on the post page', () => {
+  const invite = (id: string, over: Partial<RequestDTO> = {}): RequestDTO => ({
+    id,
+    kind: 'invite',
+    status: 'pending',
+    postId: 'p1',
+    lfpPostId: 'lfp1',
+    character: { ...mine[0]!, isOwner: true },
+    createdAt: '2026-11-09T00:00:00Z',
+    decidedAt: null,
+    ...over,
+  });
+  const withPost = (r: RequestDTO, postId: string): RequestWithPostDTO => ({
+    ...r,
+    postId,
+    post: { ...post(), id: postId, bosses: [{ bossDifficultyId: 9, bossName: 'Will', difficulty: 'Hard' }] },
+  });
+  const lfpPost = (over: Partial<PostDetailDTO> = {}) =>
+    post({ type: 'lfp', partySize: null, minCp: null, memberCount: 1, members: [member('m1', 'Lily', 'poster')], ...over });
+
+  it('invitee on the recruiting post sees Accept/Decline, not Cancel', async () => {
+    const fetchMock = renderPage({
+      '/api/posts/p1': post({ myPending: [invite('r5')] }),
+      'POST /api/requests/r5/accept': post(),
+      'POST /api/requests/r5/decline': {},
+    });
+    const actions = await screen.findByRole('region', { name: 'Your actions' });
+    await within(actions).findByText(/Invite pending: KronosMain/);
+    expect(within(actions).queryByRole('button', { name: 'Cancel' })).toBeNull();
+    fireEvent.click(within(actions).getByRole('button', { name: 'Decline' }));
+    await waitFor(() => expect(called(fetchMock, '/api/requests/r5/decline', 'POST')).toBe(true));
+    fireEvent.click(within(actions).getByRole('button', { name: 'Accept' }));
+    await waitFor(() => expect(called(fetchMock, '/api/requests/r5/accept', 'POST')).toBe(true));
+  });
+
+  it('LFP poster sees received invites linking to the recruiting post; Accept opens it, Decline declines', async () => {
+    const fetchMock = renderPage({
+      '/api/posts/p1': lfpPost({ isPoster: true, receivedInvites: [withPost(invite('r6'), 'p9')] }),
+      'POST /api/requests/r6/accept': post({ id: 'p9' }),
+      'POST /api/requests/r6/decline': {},
+      '/api/posts/p9': post({ id: 'p9', note: 'Recruiting page' }),
+    });
+    const region = await screen.findByRole('region', { name: 'Invites received' });
+    expect(within(region).getByRole('link', { name: /Hard Will/ })).toHaveAttribute('href', '/posts/p9');
+    fireEvent.click(within(region).getByRole('button', { name: 'Decline' }));
+    await waitFor(() => expect(called(fetchMock, '/api/requests/r6/decline', 'POST')).toBe(true));
+    fireEvent.click(within(region).getByRole('button', { name: 'Accept' }));
+    await waitFor(() => expect(called(fetchMock, '/api/requests/r6/accept', 'POST')).toBe(true));
+    expect(await screen.findByText('Recruiting page')).toBeInTheDocument();
+  });
+
+  it('recruiter sees "Invite sent from" with Cancel, and that post is not offered again', async () => {
+    const fetchMock = renderPage({
+      '/api/posts/p1': lfpPost({ sentInvitesToThis: [withPost(invite('r7', { postId: 'mine1' }), 'mine1')] }),
+      '/api/me/posts': [
+        { ...post(), id: 'mine1', isPoster: true },
+        { ...post(), id: 'mine2', isPoster: true, bosses: [{ bossDifficultyId: 8, bossName: 'Gloom', difficulty: 'Chaos' }] },
+      ],
+      'POST /api/requests/r7/cancel': {},
+    });
+    const actions = await screen.findByRole('region', { name: 'Your actions' });
+    expect(await within(actions).findByText(/Invite sent from Hard Will/)).toBeInTheDocument();
+    fireEvent.click(within(actions).getByRole('button', { name: 'Invite' }));
+    const list = await screen.findByRole('list', { name: 'Your open recruiting posts' });
+    expect(within(list).getAllByRole('button')).toHaveLength(1);
+    expect(within(list).getByRole('button')).toHaveTextContent('Chaos Gloom');
+    fireEvent.click(within(actions).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(called(fetchMock, '/api/requests/r7/cancel', 'POST')).toBe(true));
   });
 });

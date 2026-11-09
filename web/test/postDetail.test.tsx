@@ -183,8 +183,14 @@ describe('PostDetailPage poster controls', () => {
   });
 
   it('Renew shown only for flexible posts', async () => {
-    renderPage({ '/api/posts/p1': post({ isPoster: true, scheduledAt: null }) });
+    renderPage({ '/api/posts/p1': post({ isPoster: true, scheduledAt: null, canRenew: true }) });
     expect(await screen.findByRole('button', { name: 'Renew' })).toBeInTheDocument();
+  });
+
+  it('Renew shown on an expired flexible post (effectively closed, still renewable)', async () => {
+    renderPage({ '/api/posts/p1': post({ isPoster: true, scheduledAt: null, status: 'closed', canRenew: true }) });
+    expect(await screen.findByText('This party has ended')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Renew' })).toBeInTheDocument();
   });
 
   it('Renew hidden for scheduled posts', async () => {

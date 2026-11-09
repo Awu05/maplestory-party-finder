@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { POST_TYPE_LABELS } from '@pf/shared';
-import type { PostDetailDTO, RarityTierDTO, RequestDTO } from '@pf/shared';
+import type { PostDetailDTO, PostSummaryDTO, RarityTierDTO, RequestDTO } from '@pf/shared';
 import { useCharacters, useMe, useRarityTiers } from '../api/hooks';
 import {
   useAcceptRequest,
@@ -29,6 +29,10 @@ import { formatWhen } from '../components/post/time';
 import { useLastActionError } from '../components/post/useLastActionError';
 import '../components/post/post.css';
 
+/** "Hard Lucid, Normal Will · Dec 1, 8:00 PM · 2/4" */
+const postLabel = (p: PostSummaryDTO) =>
+  `${p.bosses.map(bossLabel).join(', ')} · ${formatWhen(p.scheduledAt)} · ${p.memberCount}/${p.partySize}`;
+
 function ViewerActions({ post }: { post: PostDetailDTO }) {
   const { data: me, isLoading } = useMe();
   const loggedIn = !!me;
@@ -36,21 +40,26 @@ function ViewerActions({ post }: { post: PostDetailDTO }) {
   const requestJoin = useRequestJoin(post.id);
   const invite = useInvite(post.id);
   const cancel = useCancelRequest();
+  const accept = useAcceptRequest();
+  const decline = useDeclineRequest();
   const open = post.status === 'open' && !post.deleted;
   const canRequest = loggedIn && open && post.type === 'recruiting';
   const canInvite = loggedIn && open && post.type === 'lfp';
   const characters = useCharacters({ mine: true }, { enabled: canRequest && panel === 'request' });
   const myParties = useMyParties();
   const myPosts = useMyPosts();
-  const { error, run } = useLastActionError({ requestJoin, invite, cancel });
+  const { error, run } = useLastActionError({ requestJoin, invite, cancel, accept, decline });
 
   if (isLoading) return null;
   if (!loggedIn) return <p>Log in with Discord to join.</p>;
 
+  // A recruiting post that already has a pending invite to this LFP post is not offered again.
+  const alreadyInvited = new Set(post.sentInvitesToThis.map((r) => r.postId));
   const inviteTargets = (myPosts.data ?? []).filter(
-    (mp) => mp.type === 'recruiting' && mp.status === 'open' && !mp.deleted && mp.world.id === post.world.id,
+    (mp) =>
+      mp.type === 'recruiting' && mp.status === 'open' && !mp.deleted && mp.world.id === post.world.id && !alreadyInvited.has(mp.id),
   );
-  const busy = requestJoin.isPending || invite.isPending || cancel.isPending;
+  const busy = requestJoin.isPending || invite.isPending || cancel.isPending || accept.isPending || decline.isPending;
 
   return (
     <section aria-label="Your actions">
@@ -61,6 +70,31 @@ function ViewerActions({ post }: { post: PostDetailDTO }) {
           {post.myPending.map((r) => (
             <li key={r.id}>
               {`${r.kind === 'invite' ? 'Invite' : 'Request'} pending: ${r.character.ign} `}
+              {r.kind === 'invite' ? (
+                // Only the inviting poster may cancel an invite; the invitee decides on it.
+                <>
+                  <button type="button" disabled={busy} onClick={() => run('accept', () => accept.mutate(r.id))}>
+                    Accept
+                  </button>
+                  <button type="button" disabled={busy} onClick={() => run('decline', () => decline.mutate(r.id))}>
+                    Decline
+                  </button>
+                </>
+              ) : (
+                <button type="button" disabled={busy} onClick={() => run('cancel', () => cancel.mutate(r.id))}>
+                  Cancel
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {post.sentInvitesToThis.length > 0 && (
+        <ul aria-label="Invites you sent" style={{ listStyle: 'none', padding: 0 }}>
+          {post.sentInvitesToThis.map((r) => (
+            <li key={r.id}>
+              {`Invite sent from ${r.post.bosses.map(bossLabel).join(', ')} `}
               <button type="button" disabled={busy} onClick={() => run('cancel', () => cancel.mutate(r.id))}>
                 Cancel
               </button>
@@ -117,7 +151,7 @@ function ViewerActions({ post }: { post: PostDetailDTO }) {
                   disabled={busy}
                   onClick={() => run('invite', () => invite.mutate(mp.id, { onSuccess: () => setPanel(null) }))}
                 >
-                  {`${mp.bosses.map(bossLabel).join(', ')} · ${formatWhen(mp.scheduledAt)} · ${mp.memberCount}/${mp.partySize}`}
+                  {postLabel(mp)}
                 </button>
               </li>
             ))}
@@ -244,7 +278,7 @@ export function PostDetailPage() {
               Close
             </button>
           )}
-          {posterActive && p.scheduledAt === null && (
+          {p.canRenew && (
             <button type="button" disabled={renew.isPending} onClick={() => run('renew', () => renew.mutate())}>
               Renew
             </button>
@@ -302,6 +336,33 @@ export function PostDetailPage() {
             </button>
           )}
         />
+      )}
+
+      {p.receivedInvites.length > 0 && (
+        <section aria-label="Invites received">
+          <h2>Invites received</h2>
+          <ul style={{ listStyle: 'none', padding: 0 }}>
+            {p.receivedInvites.map((r) => (
+              <li key={r.id}>
+                <Link to={`/posts/${r.postId}`}>{postLabel(r.post)}</Link>{' '}
+                <button
+                  type="button"
+                  disabled={accept.isPending || decline.isPending}
+                  onClick={() => run('accept', () => accept.mutate(r.id, { onSuccess: () => navigate(`/posts/${r.postId}`) }))}
+                >
+                  Accept
+                </button>
+                <button
+                  type="button"
+                  disabled={accept.isPending || decline.isPending}
+                  onClick={() => run('decline', () => decline.mutate(r.id))}
+                >
+                  Decline
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       {!p.isPoster && !p.deleted && <ViewerActions post={p} />}
