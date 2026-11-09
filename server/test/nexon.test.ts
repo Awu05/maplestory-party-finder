@@ -108,3 +108,15 @@ describe('HttpNexonClient', () => {
     expect(fetchStub).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('HttpNexonClient fresh option', () => {
+  it('fresh:true bypasses the cache read (2 fetches) but still writes it', async () => {
+    const fetchStub = stub(JSON.stringify({ ranks: [rank('Lily')] }));
+    const client = new HttpNexonClient({ fetch: fetchStub });
+    await client.findByName('lily');
+    await client.findByName('lily', { fresh: true });
+    expect(fetchStub).toHaveBeenCalledTimes(2);
+    await client.findByName('lily');
+    expect(fetchStub).toHaveBeenCalledTimes(2);
+  });
+});

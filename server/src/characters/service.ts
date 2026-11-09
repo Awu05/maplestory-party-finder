@@ -168,13 +168,14 @@ export async function syncCharacterFromNexon(
   prisma: PrismaClient,
   nexon: NexonClient,
   characterId: string,
+  opts?: { fresh?: boolean },
 ): Promise<'ok' | 'stale'> {
   const row = await prisma.character.findUnique({ where: { id: characterId }, include: { world: true } });
   if (!row) throw new AppError(404, 'NOT_FOUND', 'Character not found');
 
   let match: NexonCharacter | undefined;
   try {
-    match = (await nexon.findByName(row.ign)).find((c) => c.nexonWorldId === row.world.nexonWorldId);
+    match = (await nexon.findByName(row.ign, opts)).find((c) => c.nexonWorldId === row.world.nexonWorldId);
   } catch (err) {
     if (!(err instanceof NexonUnavailableError)) throw err;
   }

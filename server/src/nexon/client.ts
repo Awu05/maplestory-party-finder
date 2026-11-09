@@ -9,8 +9,8 @@ export interface NexonCharacter {
 }
 
 export interface NexonClient {
-  /** Exact case-insensitive name matches (possibly several worlds); [] when not found. */
-  findByName(ign: string): Promise<NexonCharacter[]>;
+  /** Exact case-insensitive name matches (possibly several worlds); [] when not found. `fresh` skips the cache read (still writes it). */
+  findByName(ign: string, opts?: { fresh?: boolean }): Promise<NexonCharacter[]>;
 }
 
 export class NexonUnavailableError extends Error {
@@ -57,9 +57,9 @@ export class HttpNexonClient implements NexonClient {
     this.region = opts.region ?? 'na';
   }
 
-  async findByName(ign: string): Promise<NexonCharacter[]> {
+  async findByName(ign: string, opts?: { fresh?: boolean }): Promise<NexonCharacter[]> {
     const key = ign.toLowerCase();
-    const hit = this.cache.get(key);
+    const hit = opts?.fresh ? undefined : this.cache.get(key);
     if (hit && hit.expires > this.now()) return hit.value;
 
     const value = await this.fetchCharacters(ign);

@@ -184,6 +184,8 @@ export async function addMember(postId: string, characterId: string): Promise<Po
 export class FakeNexon implements NexonClient {
   private chars: NexonCharacter[] = [];
   private failures = 0;
+  /** Every findByName call, in order (ign + the `fresh` option as passed). */
+  calls: { ign: string; fresh: boolean }[] = [];
 
   set(chars: NexonCharacter[]): void {
     this.chars = chars;
@@ -193,7 +195,8 @@ export class FakeNexon implements NexonClient {
     this.failures++;
   }
 
-  async findByName(ign: string): Promise<NexonCharacter[]> {
+  async findByName(ign: string, opts?: { fresh?: boolean }): Promise<NexonCharacter[]> {
+    this.calls.push({ ign, fresh: opts?.fresh === true });
     if (this.failures > 0) {
       this.failures--;
       throw new NexonUnavailableError('FakeNexon failure');
