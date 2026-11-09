@@ -9,6 +9,7 @@ import type { NexonClient } from './nexon/client.js';
 import type { DiscordOAuth } from './auth/discordOAuth.js';
 import { authRoutes } from './auth/routes.js';
 import { catalogRoutes } from './catalog/routes.js';
+import { characterRoutes } from './characters/routes.js';
 import type { Storage } from './storage/storage.js';
 
 export interface AppDeps {
@@ -58,6 +59,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       api.get('/health', async () => ({ ok: true }));
       await api.register(authRoutes);
       await api.register(catalogRoutes);
+      await api.register(characterRoutes);
     },
     { prefix: '/api' },
   );
