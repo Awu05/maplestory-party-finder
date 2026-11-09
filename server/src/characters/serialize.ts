@@ -4,8 +4,9 @@ import type { Storage } from '../storage/storage.js';
 
 export const characterInclude = {
   world: true,
-  guild: true,
-  owner: true,
+  // Only the public fields the DTO needs (no guild webhookUrl, no owner discordId/banned).
+  guild: { select: { id: true, name: true, iconUrl: true } },
+  owner: { select: { username: true } },
   bosses: { include: { bossDifficulty: { include: { boss: true } } } },
 } satisfies Prisma.CharacterInclude;
 
