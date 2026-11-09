@@ -1,3 +1,6 @@
+import type { FastifyInstance } from 'fastify';
+import { buildApp, type AppDeps } from '../src/app.js';
+import type { DiscordOAuth } from '../src/auth/discordOAuth.js';
 import os from 'node:os';
 import path from 'node:path';
 import { PrismaClient, type Boss, type BossDifficulty, type Character, type Guild, type Prisma, type User, type World } from '@prisma/client';
@@ -109,4 +112,42 @@ export class FakeNexon implements NexonClient {
     const lower = ign.toLowerCase();
     return this.chars.filter((c) => c.ign.toLowerCase() === lower);
   }
+}
+
+export class FakeDiscord implements DiscordOAuth {
+  authorizeUrl(state: string): string {
+    return `https://discord.test/authorize?state=${state}`;
+  }
+
+  async exchangeCode(code: string) {
+    const [prefix, discordId, username] = code.split(':');
+    if (prefix !== 'fake' || !discordId) throw new Error(`FakeDiscord: bad code ${code}`);
+    return { discordId, username: username ?? discordId, avatarUrl: null };
+  }
+}
+
+export async function buildTestApp(over: Partial<AppDeps> = {}): Promise<{ app: FastifyInstance; nexon: FakeNexon }> {
+  const nexon = new FakeNexon();
+  const app = await buildApp({
+    config: testConfig(),
+    nexon,
+    prisma,
+    discord: new FakeDiscord(),
+    ...over,
+  });
+  return { app, nexon };
+}
+
+/** Drives the real redirect + callback flow and returns the session cookie header value. */
+export async function loginAs(app: FastifyInstance, discordId = 'u-1', username = 'tester'): Promise<string> {
+  const start = await app.inject({ method: 'GET', url: '/api/auth/discord' });
+  const state = new URL(String(start.headers.location)).searchParams.get('state')!;
+  const cookie1 = String(start.headers['set-cookie']).split(';')[0]!;
+  const cb = await app.inject({
+    method: 'GET',
+    url: `/api/auth/discord/callback?code=${encodeURIComponent(`fake:${discordId}:${username}`)}&state=${state}`,
+    headers: { cookie: cookie1 },
+  });
+  if (cb.statusCode !== 302) throw new Error(`loginAs failed: ${cb.statusCode} ${cb.body}`);
+  return String(cb.headers['set-cookie']).split(';')[0]!;
 }

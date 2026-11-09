@@ -8,6 +8,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@fastify/secure-session": "^8.4.2",
     "@pf/shared": "*",
     "@prisma/client": "^6.19.3",
     "dotenv": "^18.0.0",
