@@ -54,6 +54,13 @@ describe('GET /api/notifications', () => {
     expect((await get('/api/notifications?limit=101')).statusCode).toBe(400);
   });
 
+  it('defaults to 30 items when no limit is given', async () => {
+    for (let i = 1; i <= 31; i++) await note(userId, i);
+    const body = (await get('/api/notifications')).json() as NotificationListDTO;
+    expect(body.items).toHaveLength(30);
+    expect(body.unreadCount).toBe(31);
+  });
+
   it('visitor gets 401', async () => {
     expect((await get('/api/notifications', null)).statusCode).toBe(401);
     expect((await markRead({ all: true }, null)).statusCode).toBe(401);
@@ -64,8 +71,8 @@ describe('POST /api/notifications/read', () => {
   it('ids marks those; all marks all; other user is unaffected', async () => {
     const other = await makeUser();
     const a = await note(userId, 1);
-    const b = await note(userId, 2);
-    const c = await note(userId, 3);
+    await note(userId, 2);
+    await note(userId, 3);
     const o = await note(other.id, 4);
     const unread = async () => (await prisma.notification.findMany({ where: { readAt: null }, orderBy: { text: 'asc' } })).map((n) => n.text);
 
@@ -74,13 +81,12 @@ describe('POST /api/notifications/read', () => {
 
     expect((await markRead({ all: true })).statusCode).toBe(204);
     expect(await unread()).toEqual(['n4']);
-    expect(b.id).not.toBe(c.id);
   });
 
   it('does not change readAt of already-read notifications', async () => {
     const earlier = new Date('2026-02-02T00:00:00Z');
     const a = await note(userId, 1, { readAt: earlier });
-    await markRead({ all: true });
+    expect((await markRead({ all: true })).statusCode).toBe(204);
     expect((await prisma.notification.findUniqueOrThrow({ where: { id: a.id } })).readAt).toEqual(earlier);
   });
 
