@@ -17,6 +17,8 @@ import { requestRoutes } from './requests/routes.js';
 import { notificationRoutes } from './notifications/routes.js';
 import type { DomainEvents } from './events.js';
 import type { Storage } from './storage/storage.js';
+import type { WebhookSender } from './discord/sender.js';
+import { adminWebhookRoutes } from './admin/webhooks.js';
 
 export interface AppDeps {
   config: Config;
@@ -25,6 +27,7 @@ export interface AppDeps {
   discord: DiscordOAuth;
   storage: Storage;
   events: DomainEvents;
+  webhookSender: WebhookSender;
 }
 
 declare module 'fastify' {
@@ -73,6 +76,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       await api.register(postRoutes);
       await api.register(requestRoutes);
       await api.register(notificationRoutes);
+      await api.register(adminWebhookRoutes);
     },
     { prefix: '/api' },
   );

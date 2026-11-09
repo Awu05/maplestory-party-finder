@@ -217,7 +217,7 @@ export class FakeDiscord implements DiscordOAuth {
 
 export type LogEntry = { obj: object; msg: string };
 
-type TestAppBase = { app: FastifyInstance; nexon: FakeNexon; storage: Storage; uploadDir: string };
+type TestAppBase = { app: FastifyInstance; nexon: FakeNexon; webhookSender: FakeWebhookSender; storage: Storage; uploadDir: string };
 
 /**
  * `events: 'dispatcher'` wires a real EventDispatcher (logs captured in `logs`); the default
@@ -234,6 +234,7 @@ export async function buildTestApp(
 ): Promise<TestAppBase & { events: DomainEvents; logs: LogEntry[] }> {
   const { events: eventsOpt, ...rest } = over;
   const nexon = new FakeNexon();
+  const webhookSender = new FakeWebhookSender();
   const uploadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pf-uploads-'));
   const storage = rest.storage ?? new LocalDiskStorage(uploadDir);
   const config = rest.config ?? testConfig({ uploadDir });
@@ -248,12 +249,13 @@ export async function buildTestApp(
     nexon,
     prisma,
     discord: new FakeDiscord(),
+    webhookSender,
     ...rest,
     config,
     storage,
     events,
   });
-  return { app, nexon, storage, uploadDir, events, logs };
+  return { app, nexon, webhookSender, storage, uploadDir, events, logs };
 }
 
 /** Drives the real redirect + callback flow and returns the session cookie header value. */

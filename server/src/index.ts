@@ -6,6 +6,7 @@ import { buildApp } from './app.js';
 import { HttpNexonClient } from './nexon/client.js';
 import { HttpDiscordOAuth } from './auth/discordOAuth.js';
 import { EventDispatcher } from './notifications/dispatcher.js';
+import { HttpWebhookSender } from './discord/sender.js';
 import { LocalDiskStorage } from './storage/storage.js';
 
 const config = loadConfig(process.env);
@@ -27,6 +28,7 @@ const app = await buildApp({
   discord: new HttpDiscordOAuth(config),
   storage,
   events: dispatcher,
+  webhookSender: new HttpWebhookSender(),
 });
 appLog = app.log;
 await app.listen({ port: config.port, host: '0.0.0.0' });
