@@ -11,6 +11,7 @@ import type { NexonCharacter, NexonClient } from '../src/nexon/client.js';
 import { NexonUnavailableError } from '../src/nexon/client.js';
 import type { DomainEvent, DomainEvents } from '../src/events.js';
 import { testDatabaseUrl } from './testDatabaseUrl.js';
+import { EventDispatcher } from '../src/notifications/dispatcher.js';
 import type { SendResult, WebhookSender } from '../src/discord/sender.js';
 import type { WebhookPayload } from '../src/discord/messages.js';
 
@@ -214,23 +215,45 @@ export class FakeDiscord implements DiscordOAuth {
   }
 }
 
+export type LogEntry = { obj: object; msg: string };
+
+type TestAppBase = { app: FastifyInstance; nexon: FakeNexon; storage: Storage; uploadDir: string };
+
+/**
+ * `events: 'dispatcher'` wires a real EventDispatcher (logs captured in `logs`); the default
+ * records emitted events in a RecordingEvents sink.
+ */
 export async function buildTestApp(
-  over: Partial<AppDeps> = {},
-): Promise<{ app: FastifyInstance; nexon: FakeNexon; storage: Storage; uploadDir: string; events: RecordingEvents }> {
+  over: Omit<Partial<AppDeps>, 'events'> & { events: 'dispatcher' },
+): Promise<TestAppBase & { events: EventDispatcher; logs: LogEntry[] }>;
+export async function buildTestApp(
+  over?: Omit<Partial<AppDeps>, 'events'> & { events?: 'recording' | DomainEvents },
+): Promise<TestAppBase & { events: RecordingEvents; logs: LogEntry[] }>;
+export async function buildTestApp(
+  over: Omit<Partial<AppDeps>, 'events'> & { events?: 'recording' | 'dispatcher' | DomainEvents } = {},
+): Promise<TestAppBase & { events: DomainEvents; logs: LogEntry[] }> {
+  const { events: eventsOpt, ...rest } = over;
   const nexon = new FakeNexon();
   const uploadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pf-uploads-'));
-  const storage = over.storage ?? new LocalDiskStorage(uploadDir);
-  const events = (over.events as RecordingEvents | undefined) ?? new RecordingEvents();
+  const storage = rest.storage ?? new LocalDiskStorage(uploadDir);
+  const config = rest.config ?? testConfig({ uploadDir });
+  const logs: LogEntry[] = [];
+  const events: DomainEvents =
+    eventsOpt === 'dispatcher'
+      ? new EventDispatcher({ prisma, storage, webOrigin: config.webOrigin, log: { error: (obj, msg) => logs.push({ obj, msg }) } })
+      : eventsOpt === undefined || eventsOpt === 'recording'
+        ? new RecordingEvents()
+        : eventsOpt;
   const app = await buildApp({
-    config: testConfig({ uploadDir }),
     nexon,
     prisma,
     discord: new FakeDiscord(),
-    ...over,
+    ...rest,
+    config,
     storage,
     events,
   });
-  return { app, nexon, storage, uploadDir, events };
+  return { app, nexon, storage, uploadDir, events, logs };
 }
 
 /** Drives the real redirect + callback flow and returns the session cookie header value. */
