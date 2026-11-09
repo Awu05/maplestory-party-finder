@@ -40,7 +40,7 @@ const boardQuery = z.object({
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
   flexible: z.enum(['1']).optional(),
-});
+}).refine((q) => !(q.flexible && (q.from || q.to)), 'flexible cannot be combined with from/to');
 
 export async function postRoutes(app: FastifyInstance): Promise<void> {
   const { prisma, storage, events } = app.deps;

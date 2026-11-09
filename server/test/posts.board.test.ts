@@ -73,7 +73,7 @@ describe('GET /api/posts', () => {
   });
 
   it('rejects invalid params', async () => {
-    for (const qs of ['?worldIds=a,b', '?type=x', '?from=nope', '?bossId=x']) {
+    for (const qs of ['?worldIds=a,b', '?type=x', '?from=nope', '?bossId=x', `?flexible=1&from=${new Date().toISOString()}`, `?flexible=1&to=${new Date().toISOString()}`]) {
       const res = await app.inject({ method: 'GET', url: `/api/posts${qs}` });
       expect(res.statusCode).toBe(400);
       expect(res.json().error.code).toBe('VALIDATION');
