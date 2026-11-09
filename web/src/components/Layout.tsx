@@ -30,7 +30,12 @@ export function Layout() {
       // Even if the server call fails, drop the local session so the UI shows logged out.
     }
     qc.setQueryData(['me'], null);
-    await qc.invalidateQueries({ queryKey: ['characters'] });
+    // Post data is viewer-specific (isPoster, myPending, invites): drop it, refetching what's on screen.
+    qc.removeQueries({ queryKey: ['posts'], type: 'inactive' });
+    await Promise.all([
+      qc.resetQueries({ queryKey: ['posts'], type: 'active' }),
+      qc.invalidateQueries({ queryKey: ['characters'] }),
+    ]);
   }
 
   return (

@@ -43,8 +43,12 @@ export function mockApi(routes: Record<string, Handler>) {
   return fetchMock;
 }
 
-export function renderWithProviders(ui: ReactElement, { route = '/' }: { route?: string } = {}) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+export const testQueryClient = () => new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+
+export function renderWithProviders(
+  ui: ReactElement,
+  { route = '/', client = testQueryClient() }: { route?: string; client?: QueryClient } = {},
+) {
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[route]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>

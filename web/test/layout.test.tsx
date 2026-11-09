@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { App } from '../src/App';
-import { mockApi, renderWithProviders } from './setup';
+import { mockApi, renderWithProviders, testQueryClient } from './setup';
 
 const user = { id: 'u1', discordUsername: 'maple_fan', avatarUrl: null, isAdmin: false };
 
@@ -56,6 +56,20 @@ describe('Layout', () => {
     await waitFor(() =>
       expect(fetchMock.mock.calls.some(([u, i]) => String(u) === '/api/auth/logout' && i?.method === 'POST')).toBe(true),
     );
+  });
+
+  it('logout drops cached viewer-specific post data', async () => {
+    mockApi({ '/api/auth/me': user, 'POST /api/auth/logout': undefined });
+    const client = testQueryClient();
+    // Keep unobserved entries cached, as a real session's would be while navigating.
+    client.setQueryDefaults(['posts'], { gcTime: Infinity });
+    client.setQueryData(['posts', 'detail', 'p1'], { id: 'p1', isPoster: true });
+    client.setQueryData(['posts', 'mine', 'requests'], { incomingInvites: [], outgoingRequests: [] });
+    renderWithProviders(<App />, { client });
+    fireEvent.click(await screen.findByRole('button', { name: 'Log out' }));
+    await screen.findByRole('link', { name: 'Log in with Discord' });
+    await waitFor(() => expect(client.getQueryCache().findAll({ queryKey: ['posts', 'detail'] })).toHaveLength(0));
+    expect(client.getQueryData(['posts', 'mine', 'requests'])).toBeUndefined();
   });
 
   it('nav has Board at / and Characters at /characters', async () => {
