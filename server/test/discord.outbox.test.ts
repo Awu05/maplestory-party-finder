@@ -139,6 +139,62 @@ describe('WebhookWorker', () => {
   });
 });
 
+describe('WebhookWorker robustness', () => {
+  it('stops sending past the lease deadline and leaves rows pending', async () => {
+    const ids = [(await setup()).id, (await setup()).id, (await setup()).id];
+    const slow = new FakeWebhookSender();
+    const orig = slow.send.bind(slow);
+    slow.send = async (u, p) => {
+      clock = new Date(clock.getTime() + 30_000);
+      return orig(u, p);
+    };
+    const w = new WebhookWorker({ prisma, sender: slow, now: () => clock, batchSize: 3 });
+    expect(await w.runOnce()).toEqual({ sent: 2, retried: 0, failed: 0 });
+    expect(slow.calls).toHaveLength(2);
+    const rows = await Promise.all(ids.map(get));
+    expect(rows.filter((r) => r.status === 'pending')).toHaveLength(1);
+  });
+
+  it('treats a throwing sender as a retryable failure and continues the batch', async () => {
+    const a = await setup();
+    const b = await setup();
+    let n = 0;
+    const s = new FakeWebhookSender();
+    const orig = s.send.bind(s);
+    s.send = async (u, p) => {
+      if (n++ === 0) throw new TypeError(`boom ${URL_}`);
+      return orig(u, p);
+    };
+    const res = await new WebhookWorker({ prisma, sender: s, now: () => clock }).runOnce();
+    expect(res).toEqual({ sent: 1, retried: 1, failed: 0 });
+    const rows = [await get(a.id), await get(b.id)];
+    const thrown = rows.find((r) => r.attempts === 1)!;
+    expect(thrown.status).toBe('pending');
+    expect(thrown.lastError).toBe('TypeError');
+    expect(thrown.nextAttemptAt).toEqual(at(30_000));
+    expect(rows.filter((r) => r.status === 'sent')).toHaveLength(1);
+  });
+
+  it('clamps 429 retryAfterMs to at least 1s', async () => {
+    const { id } = await setup();
+    sender.queue({ ok: false, status: 429, retryAfterMs: 5, error: 'HTTP 429' });
+    await worker().runOnce();
+    expect((await get(id)).nextAttemptAt).toEqual(at(1000));
+  });
+
+  it('logs a sanitized error when a run throws', async () => {
+    const logged: { obj: object; msg: string }[] = [];
+    const bad = { $transaction: async () => { throw new Error(`db down ${URL_}`); } } as unknown as typeof prisma;
+    const w = new WebhookWorker({ prisma: bad, sender, log: { error: (obj, msg) => logged.push({ obj, msg }) } });
+    w.start(10);
+    await new Promise((r) => setTimeout(r, 100));
+    await w.stop();
+    expect(logged.length).toBeGreaterThan(0);
+    expect(logged[0]).toEqual({ obj: { errName: 'Error' }, msg: 'webhook worker run failed' });
+    expect(JSON.stringify(logged)).not.toContain('webhooks');
+  });
+});
+
 describe('HttpWebhookSender', () => {
   it('reports the error class name without the url', async () => {
     const fetchStub = (async () => {

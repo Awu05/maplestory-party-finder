@@ -6,7 +6,7 @@ export interface WebhookSender {
   send(webhookUrl: string, payload: WebhookPayload): Promise<SendResult>;
 }
 
-const TIMEOUT_MS = 8000;
+export const SEND_TIMEOUT_MS = 8000;
 
 export class HttpWebhookSender implements WebhookSender {
   constructor(private readonly fetchImpl: typeof fetch = fetch) {}
@@ -17,7 +17,7 @@ export class HttpWebhookSender implements WebhookSender {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(TIMEOUT_MS),
+        signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
       });
       if (res.ok) return { ok: true };
       const result: SendResult = { ok: false, status: res.status, error: `HTTP ${res.status}` };
