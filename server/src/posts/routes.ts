@@ -1,8 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { MAX_POST_BOSSES } from '@pf/shared';
-import { getViewer, requireUser } from '../auth/guards.js';
-import { createPost, getVisiblePost, listBoard } from './service.js';
+import { getViewer, requireAdmin, requireUser } from '../auth/guards.js';
+import { adminDeletePost, closePost, createPost, deletePost, getVisiblePost, listBoard, renewPost } from './service.js';
 import { toPostDetailDTO, toPostSummaryDTO } from './serialize.js';
 
 // Field schemas are exported so the edit route can reuse them.
@@ -66,5 +66,41 @@ export async function postRoutes(app: FastifyInstance): Promise<void> {
     const viewer = await getViewer(req);
     const now = new Date();
     return toPostDetailDTO(await getVisiblePost(prisma, id, viewer, now), viewer, storage, now);
+  });
+
+  const emitDeclined = (ids: string[]) => ids.forEach((requestId) => events.emit({ type: 'request.declined', requestId, auto: true }));
+
+  app.post('/posts/:id/close', async (req) => {
+    const viewer = await requireUser(req);
+    const { id } = req.params as { id: string };
+    const { post, declinedRequestIds } = await closePost(prisma, viewer, id);
+    emitDeclined(declinedRequestIds);
+    events.emit({ type: 'post.closed', postId: id, reason: 'manual' });
+    return toPostDetailDTO(post, viewer, storage, new Date());
+  });
+
+  app.delete('/posts/:id', async (req, reply) => {
+    const viewer = await requireUser(req);
+    const { id } = req.params as { id: string };
+    const { hardDeleted, declinedRequestIds } = await deletePost(prisma, viewer, id);
+    emitDeclined(declinedRequestIds);
+    if (!hardDeleted) events.emit({ type: 'post.closed', postId: id, reason: 'deleted' });
+    return reply.status(204).send();
+  });
+
+  app.post('/posts/:id/renew', async (req) => {
+    const viewer = await requireUser(req);
+    const { id } = req.params as { id: string };
+    const now = new Date();
+    const row = await renewPost(prisma, viewer, id, now);
+    events.emit({ type: 'post.updated', postId: id });
+    return toPostDetailDTO(row, viewer, storage, now);
+  });
+
+  app.delete('/admin/posts/:id', async (req, reply) => {
+    await requireAdmin(req);
+    const { id } = req.params as { id: string };
+    emitDeclined(await adminDeletePost(prisma, id));
+    return reply.status(204).send();
   });
 }

@@ -1,11 +1,12 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
 import {
-  effectivePostStatus, MAX_SCHEDULE_AHEAD_MS, maxPartySizeFor, MIN_PARTY_SIZE, postExpiresAt, SCHEDULE_PAST_TOLERANCE_MS,
+  effectivePostStatus, FLEXIBLE_TTL_MS, MAX_SCHEDULE_AHEAD_MS, maxPartySizeFor, MIN_PARTY_SIZE, postExpiresAt, SCHEDULE_PAST_TOLERANCE_MS,
   type PostType,
 } from '@pf/shared';
 import type { Viewer } from '../auth/guards.js';
 import { getOwnedCharacter } from '../characters/service.js';
 import { AppError } from '../http/errors.js';
+import { autoDeclinePending } from '../requests/autoDecline.js';
 import { postInclude, type PostRow } from './serialize.js';
 import { memberSnapshot } from './snapshot.js';
 
@@ -129,4 +130,65 @@ export async function loadPostForUpdate(tx: Prisma.TransactionClient, id: string
   const row = await tx.post.findUnique({ where: { id }, include: postInclude });
   if (!row) throw new AppError(404, 'NOT_FOUND', 'Post not found');
   return row;
+}
+
+function assertPoster(post: PostRow, viewer: Viewer): void {
+  if (post.posterUserId !== viewer.user.id) throw new AppError(403, 'NOT_OWNER', 'Only the poster can do that');
+}
+
+const postRequests = (postId: string): Prisma.RequestWhereInput => ({ OR: [{ postId }, { lfpPostId: postId }] });
+
+export interface LifecycleResult {
+  post: PostRow;
+  declinedRequestIds: string[];
+}
+
+export async function closePost(prisma: PrismaClient, viewer: Viewer, id: string): Promise<LifecycleResult> {
+  return prisma.$transaction(async (tx) => {
+    const row = await loadPostForUpdate(tx, id);
+    assertPoster(row, viewer);
+    if (row.status === 'closed' || row.deletedAt !== null) throw new AppError(409, 'POST_CLOSED', 'Post is already closed');
+    const declinedRequestIds = await autoDeclinePending(tx, postRequests(id));
+    const post = await tx.post.update({ where: { id }, data: { status: 'closed', closedReason: 'manual' }, include: postInclude });
+    return { post, declinedRequestIds };
+  });
+}
+
+/** Hard-deletes a post that only has its poster; otherwise soft-deletes it. */
+export async function deletePost(prisma: PrismaClient, viewer: Viewer, id: string): Promise<{ hardDeleted: boolean; declinedRequestIds: string[] }> {
+  return prisma.$transaction(async (tx) => {
+    const row = await loadPostForUpdate(tx, id);
+    assertPoster(row, viewer);
+    if (row.deletedAt !== null) throw new AppError(404, 'NOT_FOUND', 'Post not found');
+    const declined = await autoDeclinePending(tx, postRequests(id));
+    if (row.members.length <= 1) {
+      await tx.post.delete({ where: { id } });
+      // Requests on this post cascade away; only invites that referenced it as their LFP post survive.
+      const survivors = await tx.request.findMany({ where: { id: { in: declined } }, select: { id: true } });
+      return { hardDeleted: true, declinedRequestIds: survivors.map((r) => r.id) };
+    }
+    await tx.post.update({ where: { id }, data: { deletedAt: new Date() } });
+    return { hardDeleted: false, declinedRequestIds: declined };
+  });
+}
+
+export async function renewPost(prisma: PrismaClient, viewer: Viewer, id: string, now: Date): Promise<PostRow> {
+  return prisma.$transaction(async (tx) => {
+    const row = await loadPostForUpdate(tx, id);
+    assertPoster(row, viewer);
+    if (row.scheduledAt !== null) throw new AppError(409, 'NOT_FLEXIBLE', 'Only flexible posts can be renewed');
+    if (row.status === 'closed' || row.deletedAt !== null) throw new AppError(409, 'POST_CLOSED', 'Post is closed');
+    return tx.post.update({ where: { id }, data: { expiresAt: new Date(now.getTime() + FLEXIBLE_TTL_MS) }, include: postInclude });
+  });
+}
+
+/** Admin hard delete. Requests on the post cascade; invites referencing it as LFP post are declined first. */
+export async function adminDeletePost(prisma: PrismaClient, id: string): Promise<string[]> {
+  return prisma.$transaction(async (tx) => {
+    await loadPostForUpdate(tx, id);
+    const declined = await autoDeclinePending(tx, postRequests(id));
+    await tx.post.delete({ where: { id } });
+    const survivors = await tx.request.findMany({ where: { id: { in: declined } }, select: { id: true } });
+    return survivors.map((r) => r.id);
+  });
 }
