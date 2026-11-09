@@ -76,14 +76,19 @@ describe('leave / remove member', () => {
     expect(events.events).toContainEqual({ type: 'post.reopened', postId: post.id });
   });
 
-  it('leaving an expired full post does not reopen', async () => {
+  it('ended party (expired or manually closed) -> 409 POST_CLOSED, member kept, no events', async () => {
     const { post, member, memberCookie } = await partyWithMember({
       status: 'full', closedReason: 'full', scheduledAt: new Date(Date.now() - 86_400_000), expiresAt: new Date(Date.now() - 1000),
     });
-    const res = await del(`/api/posts/${post.id}/members/${member.id}`, memberCookie);
-    expect(res.statusCode).toBe(200);
-    expect(await prisma.post.findUniqueOrThrow({ where: { id: post.id } })).toMatchObject({ status: 'full' });
-    expect(events.events.some((e) => e.type === 'post.reopened')).toBe(false);
+    const expired = await del(`/api/posts/${post.id}/members/${member.id}`, memberCookie);
+    expect(expired.statusCode).toBe(409);
+    expect(expired.json().error.code).toBe('POST_CLOSED');
+    await prisma.post.update({ where: { id: post.id }, data: { status: 'closed', closedReason: 'manual', expiresAt: new Date(Date.now() + 86_400_000) } });
+    const closed = await del(`/api/posts/${post.id}/members/${member.id}`, posterCookie);
+    expect(closed.statusCode).toBe(409);
+    expect(closed.json().error.code).toBe('POST_CLOSED');
+    expect(await prisma.postMember.findUnique({ where: { id: member.id } })).not.toBeNull();
+    expect(events.events).toEqual([]);
   });
 });
 

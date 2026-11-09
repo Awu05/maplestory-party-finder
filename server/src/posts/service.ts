@@ -250,7 +250,7 @@ export interface LeaveResult {
   removedBy: 'self' | 'poster';
 }
 
-/** The member's owner leaves, or the poster removes them. Reopens a full, unexpired post. */
+/** The member's owner leaves, or the poster removes them, while the party is live. Reopens a full post. */
 export async function removeMember(prisma: PrismaClient, viewer: Viewer, postId: string, memberId: string, now: Date): Promise<LeaveResult> {
   return prisma.$transaction(async (tx) => {
     const row = await loadPostForUpdate(tx, postId);
@@ -259,9 +259,10 @@ export async function removeMember(prisma: PrismaClient, viewer: Viewer, postId:
     const self = member.userId === viewer.user.id;
     if (!self && row.posterUserId !== viewer.user.id) throw new AppError(403, 'NOT_ALLOWED', 'You cannot remove that member');
     if (member.role === 'poster') throw new AppError(409, 'CANNOT_LEAVE_OWN_POST', 'The poster cannot leave their own post');
-    if (row.deletedAt !== null) throw new AppError(409, 'POST_CLOSED', 'Post is closed');
+    // An ended party (deleted, closed or expired) keeps its lineup as a record.
+    if (effectivePostStatus(row, now) === 'closed') throw new AppError(409, 'POST_CLOSED', 'Post is closed');
     await tx.postMember.delete({ where: { id: memberId } });
-    const reopened = row.status === 'full' && row.expiresAt.getTime() > now.getTime();
+    const reopened = row.status === 'full';
     const post = await tx.post.update({
       where: { id: postId },
       data: reopened ? { status: 'open', closedReason: null } : {},
