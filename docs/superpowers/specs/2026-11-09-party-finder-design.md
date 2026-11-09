@@ -125,6 +125,10 @@ Level, class, and image re-sync from Nexon automatically. *My call:* a daily bac
 - Posts close automatically when the scheduled time has passed (*my call*: a few hours of grace) or when a Recruiting post's slots are full.
 - "Flexible" posts expire after a set period (*my call*: 7 days) unless renewed.
 - The poster can close or **delete** their own post at any time (user's decision).
+- **Only the poster can edit their post, and they can change any field** (user's decision): type, character, bosses, time, party size, minimum CP, and note. *My calls*, to keep existing parties valid:
+  - Type and character are locked once others have joined.
+  - Party size can't drop below the current member count. Setting it equal to the member count fills the post; raising it on a full post reopens it.
+  - A change that invalidates pending requests (type, world, or the post becoming full) auto-declines them.
 - **Team comps never disappear** (user's decision). Any post that had at least one accepted member keeps its party record (bosses, time, and lineup) for everyone in it: the poster and every accepted member. This holds whether the post filled, expired, was closed, or was **deleted** by the poster. Deleting only removes the post from the board and stops new requests. *Builder's call:* implement as a soft delete or a separate party snapshot.
 - **"My parties"** page: each player sees their current and past parties across all their characters. Each one opens a read-only party view with the lineup cards. *My call:* the lineup cards show each character's current data, plus the CP they had when the party formed.
 - A post deleted with no accepted members is simply gone for players.
