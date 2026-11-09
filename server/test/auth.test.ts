@@ -41,16 +41,37 @@ describe('auth', () => {
     expect(users[0]!.username).toBe('andy2');
   });
 
-  it('bad state returns 400 BAD_STATE', async () => {
+  const startLogin = async () => {
     const start = await app.inject({ method: 'GET', url: '/api/auth/discord' });
+    const state = new URL(String(start.headers.location)).searchParams.get('state')!;
     const cookie = String(start.headers['set-cookie']).split(';')[0]!;
-    const res = await app.inject({
-      method: 'GET',
-      url: '/api/auth/discord/callback?code=fake:u-1:andy&state=wrong',
-      headers: { cookie },
-    });
-    expect(res.statusCode).toBe(400);
-    expect(res.json().error.code).toBe('BAD_STATE');
+    return { state, cookie };
+  };
+  const callback = (query: string, cookie: string) =>
+    app.inject({ method: 'GET', url: `/api/auth/discord/callback?${query}`, headers: { cookie } });
+  const expectLoginFailed = async (res: Awaited<ReturnType<typeof callback>>) => {
+    expect(res.statusCode).toBe(302);
+    expect(res.headers.location).toBe('http://localhost:5173/?login=failed');
+    expect(await prisma.user.count()).toBe(0);
+  };
+
+  it('bad state → redirect to /?login=failed and clears the stored state', async () => {
+    const { state, cookie } = await startLogin();
+    const res = await callback('code=fake:u-1:andy&state=wrong', cookie);
+    await expectLoginFailed(res);
+    // The original state can no longer be used with the updated session.
+    const cleared = String(res.headers['set-cookie']).split(';')[0]!;
+    await expectLoginFailed(await callback(`code=fake:u-1:andy&state=${state}`, cleared));
+  });
+
+  it('access_denied from Discord → redirect to /?login=failed, no user', async () => {
+    const { state, cookie } = await startLogin();
+    await expectLoginFailed(await callback(`error=access_denied&state=${state}`, cookie));
+  });
+
+  it('exchangeCode failure → redirect to /?login=failed, no user', async () => {
+    const { state, cookie } = await startLogin();
+    await expectLoginFailed(await callback(`code=not-a-fake-code&state=${state}`, cookie));
   });
 
   it('admin by env', async () => {
