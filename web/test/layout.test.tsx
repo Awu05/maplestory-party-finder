@@ -57,4 +57,18 @@ describe('Layout', () => {
       expect(fetchMock.mock.calls.some(([u, i]) => String(u) === '/api/auth/logout' && i?.method === 'POST')).toBe(true),
     );
   });
+
+  it('nav has Board at / and Characters at /characters', async () => {
+    mockApi({ '/api/auth/me': null });
+    renderWithProviders(<App />);
+    expect(await screen.findByRole('link', { name: 'Board' })).toHaveAttribute('href', '/');
+    expect(screen.getByRole('link', { name: 'Characters' })).toHaveAttribute('href', '/characters');
+    expect(screen.queryByRole('link', { name: 'My parties' })).not.toBeInTheDocument();
+  });
+
+  it('My parties shown when logged in', async () => {
+    mockApi({ '/api/auth/me': user });
+    renderWithProviders(<App />);
+    expect(await screen.findByRole('link', { name: 'My parties' })).toHaveAttribute('href', '/me/parties');
+  });
 });

@@ -50,8 +50,16 @@ export function Layout() {
         </button>
         <nav id="main-nav" className={open ? 'nav open' : 'nav'} aria-label="Main">
           <NavLink to="/" end onClick={close}>
+            Board
+          </NavLink>
+          <NavLink to="/characters" onClick={close}>
             Characters
           </NavLink>
+          {me && (
+            <NavLink to="/me/parties" onClick={close}>
+              My parties
+            </NavLink>
+          )}
           {me && (
             <NavLink to="/me/characters" onClick={close}>
               My characters

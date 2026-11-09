@@ -1,0 +1,134 @@
+import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { describe, expect, it } from 'vitest';
+import type { CharacterDTO, PartyMemberDTO, PostSummaryDTO } from '@pf/shared';
+import { App } from '../src/App';
+import { mockApi, renderWithProviders } from './setup';
+
+const user = { id: 'u1', discordUsername: 'maple_fan', avatarUrl: null, isAdmin: false };
+
+const character: CharacterDTO = {
+  id: 'c1',
+  ign: 'Lily',
+  world: { id: 5, name: 'Kronos' },
+  jobName: 'Bishop',
+  level: 280,
+  imageUrl: 'http://img/lily.png',
+  combatPower: 1_500_000_000,
+  cpUpdatedAt: '2026-11-01T00:00:00Z',
+  guild: { id: 'g1', name: 'Maple Guild', iconUrl: null },
+  screenshotUrl: null,
+  note: '',
+  playTimes: [],
+  bosses: [],
+  owner: { discordUsername: 'lily#1' },
+  isOwner: false,
+  syncStatus: 'ok',
+  lastSyncedAt: '2026-11-01T00:00:00Z',
+};
+
+const poster: PartyMemberDTO = {
+  id: 'm1',
+  role: 'poster',
+  characterId: 'c1',
+  cpAtJoin: 1_500_000_000,
+  joinedAt: '2026-11-09T00:00:00Z',
+  character,
+  snapshot: { ign: 'Lily', jobName: 'Bishop', level: 280, imageUrl: 'http://img/lily.png', worldName: 'Kronos', guildName: 'Maple Guild' },
+  isMine: false,
+};
+
+const post: PostSummaryDTO = {
+  id: 'p1',
+  type: 'recruiting',
+  world: { id: 5, name: 'Kronos' },
+  guild: { id: 'g1', name: 'Maple Guild' },
+  poster,
+  bosses: [{ bossDifficultyId: 7, bossName: 'Lucid', difficulty: 'Hard' }],
+  scheduledAt: null,
+  expiresAt: '2026-11-16T00:00:00Z',
+  createdAt: '2026-11-09T00:00:00Z',
+  partySize: 4,
+  memberCount: 2,
+  minCp: 300_000_000,
+  note: 'Chill run',
+  status: 'open',
+  deleted: false,
+  isPoster: false,
+};
+
+const base = {
+  '/api/worlds': [{ id: 5, nexonWorldId: 5, name: 'Kronos', worldType: 'normal', active: true }],
+  '/api/guilds': [],
+  '/api/bosses': [{ id: 1, name: 'Lucid', difficulties: [{ id: 7, difficulty: 'Hard', partyCap: 6 }] }],
+  '/api/rarity-tiers': [{ id: 1, name: 'Common', minCp: 0, sortOrder: 0 }],
+};
+
+const postsCalls = (fetchMock: ReturnType<typeof mockApi>) =>
+  fetchMock.mock.calls.map(([u]) => String(u)).filter((u) => u.startsWith('/api/posts'));
+
+describe('BoardPage', () => {
+  it('renders posts as cards with type badge, bosses, slots 2/4', async () => {
+    mockApi({ ...base, '/api/auth/me': null, '/api/posts': [post] });
+    renderWithProviders(<App />);
+    expect(await screen.findByText('Recruiting', { selector: '.post-badge' })).toBeInTheDocument();
+    expect(screen.getByText('Hard Lucid')).toBeInTheDocument();
+    expect(screen.getByText('2/4')).toBeInTheDocument();
+    expect(screen.getByText(/Min CP 300M/)).toBeInTheDocument();
+    expect(screen.getByText('Flexible', { selector: '.post-card__when' })).toBeInTheDocument();
+  });
+
+  it('logged-in user with a Kronos character sends worldIds on the first request', async () => {
+    const fetchMock = mockApi({
+      ...base,
+      '/api/auth/me': user,
+      '/api/characters?mine=1': [character],
+      '/api/posts?worldIds=5': [post],
+    });
+    renderWithProviders(<App />);
+    expect(await screen.findByText('2/4')).toBeInTheDocument();
+    expect(postsCalls(fetchMock)).toEqual(['/api/posts?worldIds=5']);
+  });
+
+  it('choosing type Recruiting refetches with type=recruiting', async () => {
+    const fetchMock = mockApi({ ...base, '/api/auth/me': null, '/api/posts': [], '/api/posts?type=recruiting': [post] });
+    renderWithProviders(<App />);
+    await screen.findByText('No open posts match. Be the first to post!');
+    fireEvent.change(screen.getByLabelText('Type'), { target: { value: 'recruiting' } });
+    expect(await screen.findByText('2/4')).toBeInTheDocument();
+    expect(postsCalls(fetchMock)).toContain('/api/posts?type=recruiting');
+  });
+
+  it('When=Flexible sends flexible=1', async () => {
+    const fetchMock = mockApi({ ...base, '/api/auth/me': null, '/api/posts': [], '/api/posts?flexible=1': [post] });
+    renderWithProviders(<App />);
+    await screen.findByText('No open posts match. Be the first to post!');
+    fireEvent.change(screen.getByLabelText('When'), { target: { value: 'flexible' } });
+    await waitFor(() => expect(postsCalls(fetchMock)).toContain('/api/posts?flexible=1'));
+  });
+
+  it('shows the empty state', async () => {
+    mockApi({ ...base, '/api/auth/me': null, '/api/posts': [] });
+    renderWithProviders(<App />);
+    expect(await screen.findByText('No open posts match. Be the first to post!')).toBeInTheDocument();
+  });
+
+  it('card links to /posts/:id', async () => {
+    mockApi({ ...base, '/api/auth/me': null, '/api/posts': [post] });
+    renderWithProviders(<App />);
+    const card = (await screen.findByText('2/4')).closest('a');
+    expect(card).toHaveAttribute('href', '/posts/p1');
+  });
+
+  it('falls back to the snapshot when the poster character is deleted', async () => {
+    const gone = { ...post, poster: { ...poster, character: null, characterId: null } };
+    mockApi({ ...base, '/api/auth/me': null, '/api/posts': [gone] });
+    renderWithProviders(<App />);
+    expect(await screen.findByText(/Lily · Lv\. 280 Bishop/)).toBeInTheDocument();
+  });
+
+  it('shows New post only when logged in', async () => {
+    mockApi({ ...base, '/api/auth/me': user, '/api/characters?mine=1': [], '/api/posts': [] });
+    renderWithProviders(<App />);
+    expect(await screen.findByRole('link', { name: 'New post' })).toHaveAttribute('href', '/posts/new');
+  });
+});
