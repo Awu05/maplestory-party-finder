@@ -1,0 +1,123 @@
+import { describe, expect, it } from 'vitest';
+import type { PostSummaryDTO } from '@pf/shared';
+import {
+  bossLabel, buildAcceptPing, buildNewPostMessage, buildRequestPing, buildTestMessage, discordTime, neutralize,
+} from '../src/discord/messages';
+
+const ZW = '​';
+const ORIGIN = 'https://pf.example';
+
+function makePost(over: Partial<PostSummaryDTO> = {}): PostSummaryDTO {
+  return {
+    id: 'p1', type: 'recruiting', world: { id: 1, name: 'Scania' }, guild: { id: 'g1', name: 'Maple Guild' },
+    poster: {
+      id: 'm1', role: 'poster', characterId: 'c1', cpAtJoin: 1_500_000_000, joinedAt: '2025-11-09T00:00:00Z',
+      character: { owner: { discordUsername: 'alice' } } as never,
+      snapshot: { ign: 'Alice', jobName: 'Hero', level: 280, imageUrl: 'https://img/a.png', worldName: 'Scania', guildName: 'Maple Guild' },
+      isMine: false,
+    },
+    bosses: [
+      { bossDifficultyId: 1, bossName: 'Lucid', difficulty: 'Hard' },
+      { bossDifficultyId: 2, bossName: 'Will', difficulty: 'Hard' },
+    ],
+    scheduledAt: '2025-11-10T20:00:00Z', expiresAt: '2025-11-11T00:00:00Z', createdAt: '2025-11-09T00:00:00Z',
+    partySize: 4, memberCount: 2, minCp: 50_000_000, note: 'bring pots',
+    status: 'open', deleted: false, isPoster: false,
+    ...over,
+  } as PostSummaryDTO;
+}
+const fields = (p: ReturnType<typeof buildNewPostMessage>) =>
+  Object.fromEntries((p.embeds![0] as any).fields.map((f: any) => [f.name, f.value]));
+
+describe('helpers', () => {
+  it('bossLabel', () => expect(bossLabel(makePost().bosses[0])).toBe('Hard Lucid'));
+  it('discordTime', () => {
+    expect(discordTime('2025-11-10T20:00:00Z')).toBe('<t:1762804800:F> (<t:1762804800:R>)');
+    expect(discordTime(null)).toBe('Flexible');
+  });
+  it('neutralize', () => {
+    expect(neutralize('@everyone @here <@1>')).toBe(`@${ZW}everyone @${ZW}here <@${ZW}1>`);
+  });
+});
+
+describe('buildNewPostMessage', () => {
+  it('builds a recruiting embed', () => {
+    const p = buildNewPostMessage(makePost(), ORIGIN);
+    const e = p.embeds![0] as any;
+    expect(e.title).toBe('Recruiting: Hard Lucid + Hard Will');
+    expect(e.url).toBe(`${ORIGIN}/posts/p1`);
+    expect(e.thumbnail.url).toBe('https://img/a.png');
+    expect(e.color).toBe(0x3b82f6);
+    expect(p.allowed_mentions).toEqual({ parse: [] });
+    const f = fields(p);
+    expect(f.Slots).toBe('2/4');
+    expect(f['Min CP']).toBe('50M');
+    expect(f.Poster).toBe('Alice · Hero · Lv 280 · CP 1.5B');
+    expect(f.Guild).toBe('Maple Guild');
+    expect(f.Discord).toBe('alice');
+    expect(f.World).toBe('Scania');
+    expect(f.When).toBe('<t:1762804800:F> (<t:1762804800:R>)');
+    expect(f.Note).toBe('bring pots');
+  });
+
+  it('neutralizes mentions in the note and other user text', () => {
+    const p = buildNewPostMessage(makePost({ note: '@everyone come <@123> @here' }), ORIGIN);
+    const note = fields(p).Note as string;
+    expect(note).not.toContain('@everyone');
+    expect(note).not.toContain('@here');
+    expect(note).not.toContain('<@123>');
+    expect(p.allowed_mentions).toEqual({ parse: [] });
+    const q = buildNewPostMessage(makePost({ guild: { id: 'g', name: '@everyone' } }), ORIGIN);
+    expect(fields(q).Guild).not.toContain('@everyone');
+  });
+
+  it('truncates the note to 300 chars and omits an empty one', () => {
+    expect((fields(buildNewPostMessage(makePost({ note: 'x'.repeat(500) }), ORIGIN)).Note as string).length).toBeLessThanOrEqual(300);
+    expect(fields(buildNewPostMessage(makePost({ note: '  ' }), ORIGIN))).not.toHaveProperty('Note');
+  });
+
+  it('LFP embed has no Slots/Min CP fields and is green', () => {
+    const p = buildNewPostMessage(makePost({ type: 'lfp', partySize: null, minCp: null }), ORIGIN);
+    const f = fields(p);
+    expect(f).not.toHaveProperty('Slots');
+    expect(f).not.toHaveProperty('Min CP');
+    expect((p.embeds![0] as any).color).toBe(0x22c55e);
+    expect((p.embeds![0] as any).title).toMatch(/^Looking for party: /);
+  });
+
+  it('omits Discord when the poster character is gone; no empty field values', () => {
+    const post = makePost();
+    post.poster.character = null;
+    const f = fields(buildNewPostMessage(post, ORIGIN));
+    expect(f).not.toHaveProperty('Discord');
+    for (const v of Object.values(f)) expect((v as string).length).toBeGreaterThan(0);
+  });
+});
+
+describe('pings', () => {
+  const applicant = { ign: 'Bob', jobName: 'Bishop', level: 275, combatPower: 300_000_000 };
+  it('join request', () => {
+    const p = buildRequestPing({ recipientDiscordId: '555', kind: 'join_request', applicant, post: makePost(), webOrigin: ORIGIN });
+    expect(p.content).toBe(`<@555> Bob (Bishop, 275, CP 300M) wants to join your Hard Lucid + Hard Will run → ${ORIGIN}/posts/p1`);
+    expect(p.allowed_mentions).toEqual({ parse: [], users: ['555'] });
+  });
+  it('invite', () => {
+    const p = buildRequestPing({ recipientDiscordId: '555', kind: 'invite', applicant, post: makePost(), webOrigin: ORIGIN });
+    expect(p.content).toBe(`<@555> Alice invited Bob to their Hard Lucid + Hard Will run → ${ORIGIN}/posts/p1`);
+    expect(p.allowed_mentions).toEqual({ parse: [], users: ['555'] });
+  });
+  it('neutralizes IGNs in pings', () => {
+    const p = buildRequestPing({ recipientDiscordId: '555', kind: 'join_request', applicant: { ...applicant, ign: '@everyone' }, post: makePost(), webOrigin: ORIGIN });
+    expect(p.content).not.toContain('@everyone');
+  });
+  it('accept', () => {
+    const p = buildAcceptPing({ recipientDiscordId: '555', ign: 'Bob', post: makePost(), webOrigin: ORIGIN });
+    expect(p.content).toBe(`<@555> Bob was accepted into Alice's Hard Lucid + Hard Will run → ${ORIGIN}/posts/p1`);
+    expect(p.allowed_mentions).toEqual({ parse: [], users: ['555'] });
+  });
+  it('test message', () => {
+    const p = buildTestMessage('@everyone Guild');
+    expect(p.content).toBe(`✅ Party Finder is connected to @${ZW}everyone Guild.`);
+    expect(p.allowed_mentions).toEqual({ parse: [] });
+  });
+});
