@@ -2,6 +2,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { PrismaClient, type Boss, type BossDifficulty, type Character, type Guild, type Prisma, type User, type World } from '@prisma/client';
 import type { Config } from '../src/config.js';
+import type { NexonCharacter, NexonClient } from '../src/nexon/client.js';
+import { NexonUnavailableError } from '../src/nexon/client.js';
 import { testDatabaseUrl } from './testDatabaseUrl.js';
 
 export const prisma = new PrismaClient({ datasources: { db: { url: testDatabaseUrl() } } });
@@ -85,4 +87,26 @@ export async function makeCharacter(over: Partial<Prisma.CharacterUncheckedCreat
       guildId,
     },
   });
+}
+
+export class FakeNexon implements NexonClient {
+  private chars: NexonCharacter[] = [];
+  private failures = 0;
+
+  set(chars: NexonCharacter[]): void {
+    this.chars = chars;
+  }
+
+  failNext(): void {
+    this.failures++;
+  }
+
+  async findByName(ign: string): Promise<NexonCharacter[]> {
+    if (this.failures > 0) {
+      this.failures--;
+      throw new NexonUnavailableError('FakeNexon failure');
+    }
+    const lower = ign.toLowerCase();
+    return this.chars.filter((c) => c.ign.toLowerCase() === lower);
+  }
 }
