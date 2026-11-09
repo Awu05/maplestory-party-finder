@@ -89,6 +89,20 @@ describe('BoardPage', () => {
     expect(postsCalls(fetchMock)).toEqual(['/api/posts?worldIds=5']);
   });
 
+  it('logged-out users never request their own characters', async () => {
+    const fetchMock = mockApi({ ...base, '/api/auth/me': null, '/api/posts': [post] });
+    renderWithProviders(<App />);
+    await screen.findByText('2/4');
+    expect(fetchMock.mock.calls.map(([u]) => String(u)).some((u) => u.includes('mine=1'))).toBe(false);
+  });
+
+  it('still loads the board (all worlds) when /api/auth/me fails', async () => {
+    const fetchMock = mockApi({ ...base, '/api/posts': [post] });
+    renderWithProviders(<App />);
+    expect(await screen.findByText('2/4')).toBeInTheDocument();
+    expect(postsCalls(fetchMock)).toEqual(['/api/posts']);
+  });
+
   it('choosing type Recruiting refetches with type=recruiting', async () => {
     const fetchMock = mockApi({ ...base, '/api/auth/me': null, '/api/posts': [], '/api/posts?type=recruiting': [post] });
     renderWithProviders(<App />);

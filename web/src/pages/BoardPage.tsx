@@ -9,7 +9,7 @@ import './characters.css';
 
 export function BoardPage() {
   const me = useMe();
-  const mine = useCharacters({ mine: true });
+  const mine = useCharacters({ mine: true }, { enabled: !!me.data });
   const guilds = useGuilds();
   const worlds = useWorlds();
   const bosses = useBosses();
@@ -23,7 +23,7 @@ export function BoardPage() {
   const [pickedWorlds, setPickedWorlds] = useState<number[] | null>(null);
 
   // Wait for the session (and the viewer's characters) so the first board request already has its world default.
-  const defaultsReady = me.data === null || (me.data !== undefined && (mine.data !== undefined || mine.isError));
+  const defaultsReady = me.isError || me.data === null || (me.data !== undefined && (mine.data !== undefined || mine.isError));
   const defaultWorlds = [...new Set((me.data ? (mine.data ?? []) : []).map((c) => c.world.id))].sort((a, b) => a - b);
   const worldIds = pickedWorlds ?? defaultWorlds;
 

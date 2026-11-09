@@ -38,7 +38,7 @@ export interface CharacterFilters {
   mine?: boolean;
 }
 
-export function useCharacters(filters: CharacterFilters = {}) {
+export function useCharacters(filters: CharacterFilters = {}, opts: { enabled?: boolean } = {}) {
   const params = new URLSearchParams();
   if (filters.guildId) params.set('guildId', filters.guildId);
   if (filters.worldId !== undefined) params.set('worldId', String(filters.worldId));
@@ -49,6 +49,7 @@ export function useCharacters(filters: CharacterFilters = {}) {
   return useQuery({
     queryKey: ['characters', 'list', filters],
     queryFn: () => api<CharacterDTO[]>(qs ? `/api/characters?${qs}` : '/api/characters'),
+    enabled: opts.enabled ?? true,
   });
 }
 
