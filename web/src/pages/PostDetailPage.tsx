@@ -24,22 +24,10 @@ import { formatCp } from '../components/card/format';
 import { CharacterPicker } from '../components/post/CharacterPicker';
 import { LineupView } from '../components/post/LineupView';
 import { bossLabel } from '../components/post/labels';
+import { StatusPill } from '../components/post/StatusPill';
 import { formatWhen } from '../components/post/time';
+import { useLastActionError } from '../components/post/useLastActionError';
 import '../components/post/post.css';
-
-const STATUS_LABELS = { open: 'Open', full: 'Full', closed: 'Closed' } as const;
-
-type Mutations = Record<string, { error: Error | null }>;
-
-/** The error of the most recently triggered action only, so a later success clears an earlier failure. */
-function useLastActionError(mutations: Mutations) {
-  const [last, setLast] = useState<string | null>(null);
-  const run = (name: string, fn: () => void) => {
-    setLast(name);
-    fn();
-  };
-  return { error: last ? (mutations[last]?.error ?? null) : null, run };
-}
 
 function ViewerActions({ post }: { post: PostDetailDTO }) {
   const { data: me, isLoading } = useMe();
@@ -210,7 +198,6 @@ export function PostDetailPage() {
   const tierList = tiers.data ?? [];
 
   const closed = p.status === 'closed';
-  const statusText = p.deleted ? 'Deleted' : STATUS_LABELS[p.status];
   const posterCanManage = p.isPoster && !p.deleted;
   const posterActive = posterCanManage && !closed;
 
@@ -227,7 +214,7 @@ export function PostDetailPage() {
     <article>
       <header className="post-detail__head">
         <span className={`post-badge post-badge--${p.type}`}>{POST_TYPE_LABELS[p.type]}</span>
-        <span className={`post-pill post-pill--${p.deleted ? 'deleted' : p.status}`}>{statusText}</span>
+        <StatusPill status={p.status} deleted={p.deleted} />
         <span>{formatWhen(p.scheduledAt)}</span>
       </header>
       <ul className="post-card__bosses">
