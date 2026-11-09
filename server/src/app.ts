@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto';
 import Fastify, { type FastifyInstance } from 'fastify';
 import secureSession from '@fastify/secure-session';
 import multipart from '@fastify/multipart';
+import fastifyStatic from '@fastify/static';
+import path from 'node:path';
 import type { PrismaClient } from '@prisma/client';
 import type { Config } from './config.js';
 import { registerErrorHandler } from './http/errors.js';
@@ -63,6 +65,15 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     },
     { prefix: '/api' },
   );
+
+  if (deps.config.webDist) {
+    await app.register(fastifyStatic, { root: path.resolve(deps.config.webDist) });
+    app.setNotFoundHandler(async (req, reply) => {
+      const isApiOrUploads = /^\/(api|uploads)(\/|\?|$)/.test(req.url);
+      if (req.method === 'GET' && !isApiOrUploads) return reply.type('text/html').sendFile('index.html');
+      return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'Not found' } });
+    });
+  }
 
   return app;
 }

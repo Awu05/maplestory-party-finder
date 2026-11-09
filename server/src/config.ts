@@ -8,6 +8,8 @@ export interface Config {
   webOrigin: string;
   adminDiscordIds: string[];
   uploadDir: string;
+  /** Built web app directory; when set, the server serves it (production only). */
+  webDist?: string;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv): Config {
@@ -31,5 +33,6 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
       .map((s) => s.trim())
       .filter(Boolean),
     uploadDir: env.UPLOAD_DIR ?? './uploads',
+    webDist: env.WEB_DIST || undefined,
   };
 }

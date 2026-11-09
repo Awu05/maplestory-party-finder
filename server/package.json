@@ -5,11 +5,17 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "build": "prisma generate && tsup",
+    "pretest": "prisma generate",
     "test": "vitest run"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
     "@fastify/multipart": "^10.1.8",
     "@fastify/secure-session": "^8.4.2",
+    "@fastify/static": "^10.1.10",
     "@pf/shared": "*",
     "@prisma/client": "^6.19.3",
     "dotenv": "^18.0.0",
@@ -19,6 +25,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "tsup": "^9.0.0",
     "tsx": "^4.0.0",
     "vitest": "^5.1.0"
   }
