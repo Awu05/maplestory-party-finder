@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
+  AdminGuildDTO,
   BossDTO,
   CharacterDTO,
   GuildDTO,
@@ -128,3 +129,70 @@ export function useRefreshCharacter(id: string) {
     onSuccess: invalidate,
   });
 }
+
+// ---- Admin ----
+
+export const useAdminGuilds = () =>
+  useQuery({ queryKey: ['admin', 'guilds'], queryFn: () => api<AdminGuildDTO[]>('/api/admin/guilds') });
+export const useAdminWorlds = () =>
+  useQuery({ queryKey: ['admin', 'worlds'], queryFn: () => api<WorldDTO[]>('/api/worlds?all=1') });
+
+/** Runs an admin mutation, then refreshes admin lists and the public catalog queries. */
+function useAdminMutation<I, O>(fn: (input: I) => Promise<O>) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: () =>
+      Promise.all(
+        (['admin', 'guilds', 'worlds', 'bosses', 'rarity-tiers'] as const).map((k) =>
+          qc.invalidateQueries({ queryKey: [k] }),
+        ),
+      ),
+  });
+}
+
+export interface GuildInput {
+  name?: string;
+  iconUrl?: string | null;
+  webhookUrl?: string | null;
+  active?: boolean;
+  worldIds?: number[];
+}
+export const useCreateGuild = () =>
+  useAdminMutation((input: GuildInput) => api<AdminGuildDTO>('/api/admin/guilds', { method: 'POST', json: input }));
+export const useUpdateGuild = () =>
+  useAdminMutation(({ id, ...json }: GuildInput & { id: string }) =>
+    api<AdminGuildDTO>(`/api/admin/guilds/${id}`, { method: 'PATCH', json }),
+  );
+
+export interface WorldInput {
+  name?: string;
+  worldType?: WorldDTO['worldType'];
+  active?: boolean;
+}
+export const useCreateWorld = () =>
+  useAdminMutation((input: WorldInput & { nexonWorldId: number }) =>
+    api<WorldDTO>('/api/admin/worlds', { method: 'POST', json: input }),
+  );
+export const useUpdateWorld = () =>
+  useAdminMutation(({ id, ...json }: WorldInput & { id: number }) =>
+    api<WorldDTO>(`/api/admin/worlds/${id}`, { method: 'PATCH', json }),
+  );
+
+export interface BossInput {
+  name?: string;
+  difficulties?: { difficulty: string; partyCap: number; sortOrder: number }[];
+}
+export const useCreateBoss = () =>
+  useAdminMutation((input: BossInput) => api<BossDTO>('/api/admin/bosses', { method: 'POST', json: input }));
+export const useUpdateBoss = () =>
+  useAdminMutation(({ id, ...json }: BossInput & { id: number }) =>
+    api<BossDTO>(`/api/admin/bosses/${id}`, { method: 'PATCH', json }),
+  );
+export const useDeleteBoss = () =>
+  useAdminMutation((id: number) => api<void>(`/api/admin/bosses/${id}`, { method: 'DELETE' }));
+
+export const useSaveTiers = () =>
+  useAdminMutation((tiers: { name: string; minCp: number; sortOrder: number }[]) =>
+    api<RarityTierDTO[]>('/api/admin/rarity-tiers', { method: 'PUT', json: { tiers } }),
+  );

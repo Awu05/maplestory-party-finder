@@ -1,0 +1,20 @@
+.admin__tabs { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
+.admin__tabs a { padding: 0.4rem 0.8rem; border-radius: 6px; text-decoration: none; border: 1px solid currentColor; }
+.admin__tabs a.active { font-weight: 700; text-decoration: underline; }
+.admin__table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+.admin__table th, .admin__table td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid rgba(128, 128, 128, 0.4); }
+.admin__form { display: grid; gap: 0.75rem; max-width: 32rem; margin: 1rem 0; }
+.admin__form label { display: grid; gap: 0.2rem; }
+.admin__row { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: end; }
+.admin__checks { display: flex; flex-wrap: wrap; gap: 0.75rem; border: 0; padding: 0; }
+.admin__checks label { display: flex; gap: 0.3rem; align-items: center; }
+.admin__error { color: #c0392b; }
+.admin__card { border: 1px solid rgba(128, 128, 128, 0.4); border-radius: 8px; padding: 0.75rem; margin: 0.75rem 0; display: grid; gap: 0.5rem; }
+.admin__previews { display: flex; flex-wrap: wrap; gap: 1rem; }
+@media (max-width: 640px) {
+  .admin__table, .admin__table tbody, .admin__table tr, .admin__table td { display: block; width: 100%; box-sizing: border-box; }
+  .admin__table thead { position: absolute; left: -9999px; }
+  .admin__table tr { border: 1px solid rgba(128, 128, 128, 0.4); border-radius: 8px; margin-bottom: 0.75rem; padding: 0.25rem 0; }
+  .admin__table td { border: 0; display: flex; justify-content: space-between; gap: 1rem; }
+  .admin__table td::before { content: attr(data-label); font-weight: 600; }
+}
