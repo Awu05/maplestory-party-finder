@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatWhen, localInputToUtcIso, overlaps } from '../src/components/post/time';
+import { formatWhen, localInputToUtcIso, overlaps, utcIsoToLocalInput } from '../src/components/post/time';
 
 describe('post time helpers', () => {
   it('formatWhen(null) is Flexible', () => {
@@ -21,6 +21,11 @@ describe('post time helpers', () => {
 
   it('localInputToUtcIso treats the value as local time', () => {
     expect(localInputToUtcIso('2026-11-10T20:00')).toBe(new Date(2026, 10, 10, 20, 0).toISOString());
+  });
+
+  it('utcIsoToLocalInput round-trips with localInputToUtcIso', () => {
+    expect(utcIsoToLocalInput(localInputToUtcIso('2026-11-10T20:00'))).toBe('2026-11-10T20:00');
+    expect(utcIsoToLocalInput(localInputToUtcIso('2026-01-02T03:04'))).toBe('2026-01-02T03:04');
   });
 
   it('overlaps is true under 3h apart, false at 3h, false with a null', () => {

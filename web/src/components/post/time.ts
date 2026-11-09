@@ -31,6 +31,13 @@ export function localInputToUtcIso(value: string): string {
   return new Date(value).toISOString();
 }
 
+/** Inverse of localInputToUtcIso: a UTC ISO string to a datetime-local value in browser local time. */
+export function utcIsoToLocalInput(iso: string): string {
+  const d = new Date(iso);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 export function overlaps(a: string | null, b: string | null): boolean {
   if (a === null || b === null) return false;
   return Math.abs(new Date(a).getTime() - new Date(b).getTime()) < OVERLAP_WINDOW_MS;
