@@ -125,7 +125,7 @@ describe('character deletion keeps party records', () => {
     expect(await prisma.request.findUnique({ where: { id: invite.id } })).toBeNull();
     expect(events.events).toContainEqual({ type: 'post.closed', postId: lfp.id, reason: 'character_deleted' });
     expect(events.events).toContainEqual({ type: 'post.closed', postId: rec.id, reason: 'character_deleted' });
-    expect(events.events).toContainEqual({ type: 'request.declined', requestId: join.id, auto: true });
+    expect(events.events).toContainEqual({ type: 'request.declined', requestId: join.id, auto: true, actorUserId: user2.id });
   });
 });
 

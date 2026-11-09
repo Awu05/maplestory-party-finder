@@ -138,6 +138,7 @@ describe('request.accepted', () => {
   it('accept join request -> applicant notified accepted + accept ping to applicant guild', async () => {
     const post = await recruiting();
     const reqId = await join(post.id, bob.id, u2);
+    await events.drain();
     expect((await call('POST', `/api/requests/${reqId}/accept`, u1)).statusCode).toBe(200);
     await events.drain();
     const ns = await notes();
@@ -153,6 +154,7 @@ describe('request.accepted', () => {
     const post = await recruiting();
     const lfp = await makePost({ type: 'lfp', partySize: null, posterCharacterId: bob.id, bossDifficultyIds: [lucid] });
     const reqId = await invite(lfp.id, post.id, u1);
+    await events.drain();
     expect((await call('POST', `/api/requests/${reqId}/accept`, u2)).statusCode).toBe(200);
     await events.drain();
     const ns = await notes();
@@ -166,6 +168,7 @@ describe('request.declined', () => {
   it('manual decline of a join request -> applicant notified declined, no delivery', async () => {
     const post = await recruiting();
     const reqId = await join(post.id, bob.id, u2);
+    await events.drain();
     expect((await call('POST', `/api/requests/${reqId}/decline`, u1)).statusCode).toBe(200);
     await events.drain();
     expect((await notes()).map((n) => [n.userId, n.kind])).toEqual([[u1Id, 'join_request'], [u2Id, 'declined']]);
@@ -176,6 +179,7 @@ describe('request.declined', () => {
     const post = await recruiting();
     const lfp = await makePost({ type: 'lfp', partySize: null, posterCharacterId: bob.id, bossDifficultyIds: [lucid] });
     const reqId = await invite(lfp.id, post.id, u1);
+    await events.drain();
     expect((await call('POST', `/api/requests/${reqId}/decline`, u2)).statusCode).toBe(200);
     await events.drain();
     expect((await notes()).map((n) => [n.userId, n.kind])).toEqual([[u2Id, 'invite'], [u1Id, 'declined']]);
@@ -192,6 +196,22 @@ describe('request.declined', () => {
     expect(auto).toHaveLength(1);
     expect(auto[0]).toMatchObject({ userId: u3Id, text: 'The Hard Lucid party filled or the post closed', link: `/posts/${post.id}` });
     expect((await deliveries()).map((d) => d.eventType).sort()).toEqual(['request.accepted', 'request.created', 'request.created']);
+  });
+
+  it("accepting one invite auto-declines the invitee's other invites without notifying the invitee (the actor) or the inviter", async () => {
+    const alicePost = await recruiting();
+    const carolPost = await makePost({ posterCharacterId: carol.id, partySize: 4, bossDifficultyIds: [lucid] });
+    const lfp = await makePost({ type: 'lfp', partySize: null, posterCharacterId: bob.id, bossDifficultyIds: [lucid] });
+    const fromAlice = await invite(lfp.id, alicePost.id, u1);
+    const fromCarol = await invite(lfp.id, carolPost.id, u3);
+    await events.drain();
+    expect((await call('POST', `/api/requests/${fromAlice}/accept`, u2)).statusCode).toBe(200);
+    await events.drain();
+    expect((await prisma.request.findUniqueOrThrow({ where: { id: fromCarol } })).status).toBe('declined');
+    const ns = await notes();
+    expect(ns.filter((n) => n.kind === 'auto_declined')).toEqual([]);
+    expect(ns.filter((n) => n.userId === u3Id)).toEqual([]);
+    expect(ns.map((n) => [n.userId, n.kind])).toEqual([[u2Id, 'invite'], [u2Id, 'invite'], [u1Id, 'accepted']]);
   });
 
   it('character deletion cascade-deletes the request -> auto decline skipped silently', async () => {
@@ -211,6 +231,7 @@ describe('member.left', () => {
     const bobMember = await addMember(post.id, bob.id);
     const carolMember = await addMember(post.id, carol.id);
     expect((await call('DELETE', `/api/posts/${post.id}/members/${bobMember.id}`, u1)).statusCode).toBe(200);
+    await events.drain();
     expect((await call('DELETE', `/api/posts/${post.id}/members/${carolMember.id}`, u3)).statusCode).toBe(200);
     await events.drain();
     const ns = await notes();
@@ -243,6 +264,7 @@ describe('errors', () => {
     const errorLogs: LogEntry[] = [];
     const broken = {
       post: { findUnique: () => Promise.reject(new TypeError(`boom ${HOOK}`)) },
+      request: { findUnique: () => Promise.reject(Object.assign(new Error(`fk ${HOOK}`), { code: 'P2003' })) },
     } as unknown as PrismaClient;
     const dispatcher = new EventDispatcher({
       prisma: broken, storage, webOrigin: 'http://localhost:5173',
@@ -258,7 +280,14 @@ describe('errors', () => {
     });
     expect(res.statusCode).toBe(201);
     await dispatcher.drain();
-    expect(errorLogs).toEqual([{ obj: { event: 'post.created', errName: 'TypeError' }, msg: 'event dispatch failed' }]);
+    expect(errorLogs).toEqual([{ obj: { event: 'post.created', postId: res.json().id, errName: 'TypeError' }, msg: 'event dispatch failed' }]);
+    expect(JSON.stringify(errorLogs)).not.toContain('discord.test');
+    errorLogs.length = 0;
+    expect(() => dispatcher.emit({ type: 'request.declined', requestId: 'r-1', auto: true, actorUserId: null })).not.toThrow();
+    await dispatcher.drain();
+    expect(errorLogs).toEqual([
+      { obj: { event: 'request.declined', requestId: 'r-1', errName: 'Error', code: 'P2003' }, msg: 'event dispatch failed' },
+    ]);
     expect(JSON.stringify(errorLogs)).not.toContain('discord.test');
     expect(await deliveries()).toEqual([]);
   });

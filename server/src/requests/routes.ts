@@ -38,13 +38,13 @@ export async function requestRoutes(app: FastifyInstance): Promise<void> {
     const now = new Date();
     const result = await acceptRequest(prisma, viewer, id, now);
     if (!result.ok) {
-      events.emit({ type: 'request.declined', requestId: result.declinedRequestId, auto: true });
+      events.emit({ type: 'request.declined', requestId: result.declinedRequestId, auto: true, actorUserId: viewer.user.id });
       throw new AppError(409, 'ALREADY_MEMBER', 'That character is already in the party');
     }
     events.emit({ type: 'request.accepted', requestId: id });
     if (result.becameFull) events.emit({ type: 'post.closed', postId: result.post.id, reason: 'full' });
     if (result.closedLfpPostId) events.emit({ type: 'post.closed', postId: result.closedLfpPostId, reason: 'lfp_matched' });
-    result.declinedRequestIds.forEach((requestId) => events.emit({ type: 'request.declined', requestId, auto: true }));
+    result.declinedRequestIds.forEach((requestId) => events.emit({ type: 'request.declined', requestId, auto: true, actorUserId: viewer.user.id }));
     return toPostDetailDTO(result.post, viewer, storage, now);
   });
 
@@ -52,7 +52,7 @@ export async function requestRoutes(app: FastifyInstance): Promise<void> {
     const viewer = await requireUser(req);
     const { id } = req.params as { id: string };
     const row = await declineRequest(prisma, viewer, id, new Date());
-    events.emit({ type: 'request.declined', requestId: id, auto: false });
+    events.emit({ type: 'request.declined', requestId: id, auto: false, actorUserId: viewer.user.id });
     return toRequestDTO(row, viewer.user.id, storage);
   });
 

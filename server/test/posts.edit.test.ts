@@ -95,7 +95,7 @@ describe('PATCH /api/posts/:id', () => {
     expect((await patch(p.id, { partySize: 2 })).statusCode).toBe(200);
     expect(await prisma.post.findUniqueOrThrow({ where: { id: p.id } })).toMatchObject({ status: 'full', closedReason: 'full', partySize: 2 });
     expect(await reqStatus(r.id)).toBe('declined');
-    expect(events.events).toContainEqual({ type: 'request.declined', requestId: r.id, auto: true });
+    expect(events.events).toContainEqual({ type: 'request.declined', requestId: r.id, auto: true, actorUserId: userId });
     expect(events.events).toContainEqual({ type: 'post.closed', postId: p.id, reason: 'full' });
   });
 
@@ -132,7 +132,7 @@ describe('PATCH /api/posts/:id', () => {
     expect(await prisma.post.findUniqueOrThrow({ where: { id: p.id } })).toMatchObject({ type: 'lfp', partySize: null, minCp: null });
     expect(await reqStatus(r.id)).toBe('declined');
     expect(await reqStatus(inv.id)).toBe('declined');
-    expect(events.events).toContainEqual({ type: 'request.declined', requestId: inv.id, auto: true });
+    expect(events.events).toContainEqual({ type: 'request.declined', requestId: inv.id, auto: true, actorUserId: userId });
     // back to recruiting needs partySize; lfp rejects partySize
     expect((await patch(p.id, { type: 'recruiting' })).statusCode).toBe(400);
     expect((await patch(p.id, { partySize: 3 })).statusCode).toBe(400);
@@ -147,7 +147,7 @@ describe('PATCH /api/posts/:id', () => {
     });
     expect((await patch(lfp.id, { type: 'recruiting', partySize: 3 })).statusCode).toBe(200);
     expect(await reqStatus(inv.id)).toBe('declined');
-    expect(events.events).toContainEqual({ type: 'request.declined', requestId: inv.id, auto: true });
+    expect(events.events).toContainEqual({ type: 'request.declined', requestId: inv.id, auto: true, actorUserId: userId });
   });
 
   it('character change on an LFP post (same world) declines invites for the old character', async () => {
@@ -159,7 +159,7 @@ describe('PATCH /api/posts/:id', () => {
     const other = await makeCharacter({ ownerId: userId, worldId: lfp.worldId, guildId: lfp.guildId });
     expect((await patch(lfp.id, { characterId: other.id })).statusCode).toBe(200);
     expect(await reqStatus(inv.id)).toBe('declined');
-    expect(events.events).toContainEqual({ type: 'request.declined', requestId: inv.id, auto: true });
+    expect(events.events).toContainEqual({ type: 'request.declined', requestId: inv.id, auto: true, actorUserId: userId });
   });
 
   it('character change on a recruiting post (same world) keeps its pending requests', async () => {

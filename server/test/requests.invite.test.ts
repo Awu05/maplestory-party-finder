@@ -8,6 +8,7 @@ let events: RecordingEvents;
 let u1: string;
 let u2: string;
 let u3: string;
+let u2Id: string;
 let u3Id: string;
 let bob: Character;
 let lfp: Post;
@@ -22,6 +23,7 @@ beforeEach(async () => {
   u2 = await loginAs(app, 'u-2', 'two');
   u3 = await loginAs(app, 'u-3', 'three');
   const id = async (d: string) => (await prisma.user.findUniqueOrThrow({ where: { discordId: d } })).id;
+  u2Id = await id('u-2');
   u3Id = await id('u-3');
   const kronos = await makeWorld();
   const bera = await makeWorld({ nexonWorldId: 1, name: 'Bera' });
@@ -125,7 +127,7 @@ describe('invite decisions', () => {
     expect(row).toMatchObject({ status: 'closed', closedReason: 'lfp_matched' });
     expect((await prisma.request.findUniqueOrThrow({ where: { id: inviteB } })).status).toBe('declined');
     expect(events.events).toContainEqual({ type: 'post.closed', postId: lfp.id, reason: 'lfp_matched' });
-    expect(events.events).toContainEqual({ type: 'request.declined', requestId: inviteB, auto: true });
+    expect(events.events).toContainEqual({ type: 'request.declined', requestId: inviteB, auto: true, actorUserId: u2Id });
     const board = await app.inject({ method: 'GET', url: '/api/posts?type=lfp', headers: { cookie: u2 } });
     expect(JSON.stringify(board.json())).not.toContain(lfp.id);
   });
@@ -183,7 +185,7 @@ describe('invite vs LFP-side auto-decline', () => {
       } else {
         expect(cancelRes.json().error.code).toBe('NOT_PENDING');
         expect(status).toBe('declined');
-        expect(terminal[0]).toEqual({ type: 'request.declined', requestId: id, auto: true });
+        expect(terminal[0]).toEqual({ type: 'request.declined', requestId: id, auto: true, actorUserId: u2Id });
       }
     }
   });

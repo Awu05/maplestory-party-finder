@@ -51,7 +51,8 @@ const boardQuery = z.object({
 export async function postRoutes(app: FastifyInstance): Promise<void> {
   const { prisma, storage, events } = app.deps;
 
-  const emitDeclined = (ids: string[]) => ids.forEach((requestId) => events.emit({ type: 'request.declined', requestId, auto: true }));
+  const emitDeclined = (ids: string[], actorUserId: string | null) =>
+    ids.forEach((requestId) => events.emit({ type: 'request.declined', requestId, auto: true, actorUserId }));
 
   app.post('/posts', async (req, reply) => {
     const viewer = await requireUser(req);
@@ -67,7 +68,7 @@ export async function postRoutes(app: FastifyInstance): Promise<void> {
     const input = editPostBody.parse(req.body);
     const now = new Date();
     const r = await editPost(prisma, viewer, id, input, now);
-    emitDeclined(r.declinedRequestIds);
+    emitDeclined(r.declinedRequestIds, viewer.user.id);
     events.emit({ type: 'post.updated', postId: id });
     if (r.reopened) events.emit({ type: 'post.reopened', postId: id });
     if (r.becameFull) events.emit({ type: 'post.closed', postId: id, reason: 'full' });
@@ -93,7 +94,7 @@ export async function postRoutes(app: FastifyInstance): Promise<void> {
     const viewer = await requireUser(req);
     const { id } = req.params as { id: string };
     const { post, declinedRequestIds } = await closePost(prisma, viewer, id);
-    emitDeclined(declinedRequestIds);
+    emitDeclined(declinedRequestIds, viewer.user.id);
     events.emit({ type: 'post.closed', postId: id, reason: 'manual' });
     return toPostDetailDTO(post, viewer, storage, new Date());
   });
@@ -102,7 +103,7 @@ export async function postRoutes(app: FastifyInstance): Promise<void> {
     const viewer = await requireUser(req);
     const { id } = req.params as { id: string };
     const { hardDeleted, declinedRequestIds } = await deletePost(prisma, viewer, id);
-    emitDeclined(declinedRequestIds);
+    emitDeclined(declinedRequestIds, viewer.user.id);
     if (!hardDeleted) events.emit({ type: 'post.closed', postId: id, reason: 'deleted' });
     return reply.status(204).send();
   });
@@ -139,9 +140,9 @@ export async function postRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.delete('/admin/posts/:id', async (req, reply) => {
-    await requireAdmin(req);
+    const admin = await requireAdmin(req);
     const { id } = req.params as { id: string };
-    emitDeclined(await adminDeletePost(prisma, id));
+    emitDeclined(await adminDeletePost(prisma, id), admin.user.id);
     return reply.status(204).send();
   });
 }

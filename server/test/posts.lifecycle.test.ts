@@ -39,7 +39,7 @@ describe('close', () => {
     const req = await prisma.request.findUniqueOrThrow({ where: { id: r.id } });
     expect(req.status).toBe('declined');
     expect(req.decidedAt).not.toBeNull();
-    expect(events.events).toContainEqual({ type: 'request.declined', requestId: r.id, auto: true });
+    expect(events.events).toContainEqual({ type: 'request.declined', requestId: r.id, auto: true, actorUserId: posterUserId });
     expect(events.events).toContainEqual({ type: 'post.closed', postId: p.id, reason: 'manual' });
   });
 
@@ -49,7 +49,7 @@ describe('close', () => {
     const inv = await pendingRequest(rec.id, { kind: 'invite', lfpPostId: lfp.id });
     await call('POST', `/api/posts/${lfp.id}/close`, posterCookie);
     expect((await prisma.request.findUniqueOrThrow({ where: { id: inv.id } })).status).toBe('declined');
-    expect(events.events).toContainEqual({ type: 'request.declined', requestId: inv.id, auto: true });
+    expect(events.events).toContainEqual({ type: 'request.declined', requestId: inv.id, auto: true, actorUserId: posterUserId });
   });
 
   it('non-poster -> 403 NOT_OWNER; twice -> 409 POST_CLOSED', async () => {
@@ -82,7 +82,7 @@ describe('delete', () => {
     expect((await call('DELETE', `/api/posts/${lfp.id}`, posterCookie)).statusCode).toBe(204);
     const row = await prisma.request.findUniqueOrThrow({ where: { id: inv.id } });
     expect(row).toMatchObject({ status: 'declined', lfpPostId: null });
-    expect(events.events).toContainEqual({ type: 'request.declined', requestId: inv.id, auto: true });
+    expect(events.events).toContainEqual({ type: 'request.declined', requestId: inv.id, auto: true, actorUserId: posterUserId });
   });
 
   it('soft-deletes a post with members: hidden from board, visible to members, 404 to strangers', async () => {
@@ -95,7 +95,7 @@ describe('delete', () => {
     expect((await prisma.post.findUniqueOrThrow({ where: { id: p.id } })).deletedAt).not.toBeNull();
     expect((await prisma.request.findUniqueOrThrow({ where: { id: r.id } })).status).toBe('declined');
     expect(events.events).toContainEqual({ type: 'post.closed', postId: p.id, reason: 'deleted' });
-    expect(events.events).toContainEqual({ type: 'request.declined', requestId: r.id, auto: true });
+    expect(events.events).toContainEqual({ type: 'request.declined', requestId: r.id, auto: true, actorUserId: posterUserId });
 
     expect((await call('GET', '/api/posts')).json()).toHaveLength(0);
 

@@ -178,7 +178,7 @@ describe('accept', () => {
     expect(events.events).toEqual([
       { type: 'request.accepted', requestId: second.requestId },
       { type: 'post.closed', postId: post.id, reason: 'full' },
-      { type: 'request.declined', requestId: third.requestId, auto: true },
+      { type: 'request.declined', requestId: third.requestId, auto: true, actorUserId: u1Id },
     ]);
 
     const late = await loginAs(app, 'u-5', 'five');
@@ -211,7 +211,7 @@ describe('decline and cancel', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ id: reqId, status: 'declined' });
     expect(res.json().decidedAt).not.toBeNull();
-    expect(events.events).toEqual([{ type: 'request.declined', requestId: reqId, auto: false }]);
+    expect(events.events).toEqual([{ type: 'request.declined', requestId: reqId, auto: false, actorUserId: u1Id }]);
     expectError(await call(`/api/requests/${reqId}/decline`, u1), 409, 'NOT_PENDING');
     expect((await requestJoin(post.id, bob.id, u2)).statusCode).toBe(201);
   });

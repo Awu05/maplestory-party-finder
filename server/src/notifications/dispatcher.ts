@@ -18,6 +18,13 @@ const requestDispatchInclude = {
 type RequestDispatchRow = Prisma.RequestGetPayload<{ include: typeof requestDispatchInclude }>;
 
 const errName = (err: unknown): string => (err instanceof Error ? err.constructor.name : 'Error');
+/** Safe diagnostics only: the error class, a string code (e.g. Prisma's P2003), and the event's ids. */
+const errCode = (err: unknown): { code?: string } => {
+  const code = (err as { code?: unknown } | null)?.code;
+  return typeof code === 'string' ? { code } : {};
+};
+const eventIds = (e: DomainEvent): { postId?: string; requestId?: string } =>
+  'requestId' in e ? { requestId: e.requestId } : { postId: e.postId };
 const bossesLabel = (post: PostSummaryDTO): string => post.bosses.map(bossLabel).join(' + ');
 const postPath = (postId: string): string => `/posts/${postId}`;
 
@@ -44,7 +51,7 @@ export class EventDispatcher implements DomainEvents {
     const p: Promise<void> = this.handle(e)
       .catch((err) => {
         try {
-          this.log.error({ event: e.type, errName: errName(err) }, 'event dispatch failed');
+          this.log.error({ event: e.type, ...eventIds(e), errName: errName(err), ...errCode(err) }, 'event dispatch failed');
         } catch {
           // A failing logger must not surface as an unhandled rejection.
         }
@@ -69,7 +76,7 @@ export class EventDispatcher implements DomainEvents {
         if (!row) return; // e.g. cascade-deleted with its character
         if (e.type === 'request.created') return this.requestCreated(row);
         if (e.type === 'request.accepted') return this.requestAccepted(row);
-        return this.requestDeclined(row, e.auto);
+        return this.requestDeclined(row, e.auto, e.actorUserId);
       }
       case 'member.left':
         return this.memberLeft(e);
@@ -128,17 +135,17 @@ export class EventDispatcher implements DomainEvents {
     }
   }
 
-  private async requestDeclined(row: RequestDispatchRow, auto: boolean): Promise<void> {
+  private async requestDeclined(row: RequestDispatchRow, auto: boolean, actorUserId: string | null): Promise<void> {
     const post = this.dto(row.post);
     const ch = row.character;
-    const poster = row.post.posterUserId;
     if (auto) {
-      // Auto-declines follow the poster's action on the post (fill, close, edit) or a ban.
-      await this.notify(ch.ownerId, poster, 'auto_declined', `The ${bossesLabel(post)} party filled or the post closed`, row.postId);
+      // Only the applicant or invitee hears about an auto-decline, and never when they caused it
+      // (e.g. accepting one invite auto-declines their other invites).
+      await this.notify(ch.ownerId, actorUserId, 'auto_declined', `The ${bossesLabel(post)} party filled or the post closed`, row.postId);
     } else if (row.kind === 'join_request') {
-      await this.notify(ch.ownerId, poster, 'declined', `${ch.ign}'s request to join the ${bossesLabel(post)} run was declined`, row.postId);
+      await this.notify(ch.ownerId, actorUserId, 'declined', `${ch.ign}'s request to join the ${bossesLabel(post)} run was declined`, row.postId);
     } else {
-      await this.notify(poster, ch.ownerId, 'declined', `${ch.ign} declined your invite`, row.postId);
+      await this.notify(row.post.posterUserId, actorUserId, 'declined', `${ch.ign} declined your invite`, row.postId);
     }
   }
 
@@ -153,7 +160,7 @@ export class EventDispatcher implements DomainEvents {
     }
   }
 
-  private async notify(userId: string, actorUserId: string, kind: NotificationKind, text: string, postId: string): Promise<void> {
+  private async notify(userId: string, actorUserId: string | null, kind: NotificationKind, text: string, postId: string): Promise<void> {
     if (userId === actorUserId) return;
     await this.prisma.notification.create({ data: { userId, kind, text, link: postPath(postId) } });
   }

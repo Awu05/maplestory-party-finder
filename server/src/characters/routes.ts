@@ -77,7 +77,7 @@ export async function characterRoutes(app: FastifyInstance): Promise<void> {
     const row = await getOwnedCharacter(prisma, id, viewer.user.id);
     const { closedPostIds, declinedRequestIds } = await deleteCharacter(prisma, id);
     closedPostIds.forEach((postId) => events.emit({ type: 'post.closed', postId, reason: 'character_deleted' }));
-    declinedRequestIds.forEach((requestId) => events.emit({ type: 'request.declined', requestId, auto: true }));
+    declinedRequestIds.forEach((requestId) => events.emit({ type: 'request.declined', requestId, auto: true, actorUserId: viewer.user.id }));
     if (row.screenshotKey) await storage.remove(row.screenshotKey).catch(() => undefined);
     return reply.status(204).send();
   });
