@@ -1,0 +1,13 @@
+{
+  "name": "party-finder",
+  "private": true,
+  "type": "module",
+  "workspaces": ["shared", "server", "web"],
+  "scripts": {
+    "test": "npm test -ws --if-present",
+    "dev:db": "docker compose up -d db"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}
