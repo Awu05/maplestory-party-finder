@@ -77,4 +77,31 @@ describe('GET /api/me/requests', () => {
     expect(body.outgoingRequests.map((r: { id: string }) => r.id)).toEqual([join.id]);
     expect(body.outgoingRequests[0].post).toMatchObject({ id: recB.id, type: 'recruiting' });
   });
+
+  it('leaves out requests on ended posts and invites whose LFP post has ended', async () => {
+    const mine = await makeCharacter({ ownerId: userId });
+    const past = { scheduledAt: new Date(Date.now() - 86_400_000), expiresAt: new Date(Date.now() - 1000) };
+    const expired = await makePost(past);
+    const closed = await makePost({ status: 'closed', closedReason: 'manual' });
+    const deleted = await makePost({ deletedAt: new Date() });
+    const full = await makePost({ status: 'full', closedReason: 'full' });
+    const live = await makePost();
+    const join = (postId: string) =>
+      prisma.request.create({ data: { kind: 'join_request', postId, characterId: mine.id, createdByUserId: userId } });
+    await join(expired.id);
+    await join(closed.id);
+    await join(deleted.id);
+    const onFull = await join(full.id);
+    const lfp = (over: Record<string, unknown> = {}) => makePost({ posterUserId: userId, posterCharacterId: mine.id, type: 'lfp', partySize: null, ...over });
+    const invite = (postId: string, lfpPostId: string | null) =>
+      prisma.request.create({ data: { kind: 'invite', postId, characterId: mine.id, lfpPostId, createdByUserId: userId } });
+    const recs = await Promise.all([makePost(), makePost(), makePost()]);
+    await invite(recs[0]!.id, (await lfp({ status: 'closed', closedReason: 'manual' })).id);
+    await invite(recs[1]!.id, (await lfp(past)).id);
+    const ok = await invite(recs[2]!.id, (await lfp()).id);
+    const noLfp = await invite(live.id, null);
+    const body = (await get('/api/me/requests')).json();
+    expect(body.outgoingRequests.map((r: { id: string }) => r.id)).toEqual([onFull.id]);
+    expect(body.incomingInvites.map((r: { id: string }) => r.id).sort()).toEqual([ok.id, noLfp.id].sort());
+  });
 });

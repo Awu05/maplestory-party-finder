@@ -238,11 +238,23 @@ export async function cancelRequest(prisma: PrismaClient, viewer: Viewer, id: st
 
 const requestWithPostInclude = { ...requestInclude, post: { include: postSummaryInclude } } satisfies Prisma.RequestInclude;
 
-/** The viewer's pending invites to their characters, and their pending join requests, each with its post summary. */
-export async function listMyRequests(prisma: PrismaClient, userId: string) {
+/** Posts whose effective status is open or full. */
+const livePost = (now: Date): Prisma.PostWhereInput => ({ deletedAt: null, status: { in: ['open', 'full'] }, expiresAt: { gt: now } });
+
+/**
+ * The viewer's pending invites to their characters, and their pending join requests, each with its post
+ * summary. Only requests on live posts; an invite also needs its LFP post (if it still has one) live.
+ */
+export async function listMyRequests(prisma: PrismaClient, userId: string, now: Date) {
   const find = (kind: 'invite' | 'join_request') =>
     prisma.request.findMany({
-      where: { kind, status: 'pending', character: { ownerId: userId } },
+      where: {
+        kind,
+        status: 'pending',
+        character: { ownerId: userId },
+        post: livePost(now),
+        ...(kind === 'invite' ? { OR: [{ lfpPostId: null }, { lfpPost: livePost(now) }] } : {}),
+      },
       include: requestWithPostInclude,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     });

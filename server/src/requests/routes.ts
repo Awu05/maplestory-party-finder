@@ -66,7 +66,7 @@ export async function requestRoutes(app: FastifyInstance): Promise<void> {
   app.get('/me/requests', async (req): Promise<MyRequestsDTO> => {
     const viewer = await requireUser(req);
     const now = new Date();
-    const { incoming, outgoing } = await listMyRequests(prisma, viewer.user.id);
+    const { incoming, outgoing } = await listMyRequests(prisma, viewer.user.id, now);
     const dto = (r: (typeof incoming)[number]) => ({
       ...toRequestDTO(r, viewer.user.id, storage),
       post: toPostSummaryDTO(r.post, viewer.user.id, storage, now),
