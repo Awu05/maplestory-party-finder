@@ -103,6 +103,9 @@ export interface PostDetailDTO extends PostSummaryDTO {
   incomingRequests: RequestDTO[]; // poster only: pending join requests
   sentInvites: RequestDTO[]; // poster only: pending invites from this recruiting post
   myPending: RequestDTO[]; // viewer's own pending join requests/invites involving this post
+  receivedInvites: RequestWithPostDTO[]; // LFP post only: pending invites answering it, to the viewer's characters
+  sentInvitesToThis: RequestWithPostDTO[]; // LFP post only: pending invites answering it that the viewer sent
+  canRenew: boolean; // poster only: flexible, not closed or deleted (expired still renews)
 }
 
 export interface RequestWithPostDTO extends RequestDTO { post: PostSummaryDTO }

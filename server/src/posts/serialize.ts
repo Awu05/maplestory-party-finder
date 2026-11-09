@@ -1,5 +1,7 @@
 import type { Prisma } from '@prisma/client';
-import { effectivePostStatus, type PartyMemberDTO, type PostBossDTO, type PostDetailDTO, type PostSummaryDTO } from '@pf/shared';
+import {
+  effectivePostStatus, type PartyMemberDTO, type PostBossDTO, type PostDetailDTO, type PostSummaryDTO, type RequestWithPostDTO,
+} from '@pf/shared';
 import type { Viewer } from '../auth/guards.js';
 import { characterInclude, toCharacterDTO } from '../characters/serialize.js';
 import { requestInclude, toRequestDTO } from '../requests/serialize.js';
@@ -18,6 +20,12 @@ export const postInclude = {
   ...postSummaryInclude,
   // Pending only; the detail serializer decides who may see which.
   requests: { where: { status: 'pending' }, include: requestInclude, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
+  // LFP posts: pending invites answering this post, each with its recruiting post.
+  lfpInvites: {
+    where: { status: 'pending' },
+    include: { ...requestInclude, post: { include: postSummaryInclude } },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+  },
 } satisfies Prisma.PostInclude;
 
 export type PostRow = Prisma.PostGetPayload<{ include: typeof postInclude }>;
@@ -82,6 +90,13 @@ export function toPostDetailDTO(row: PostRow, viewer: Viewer | null, storage: St
   const isPoster = viewerUserId !== null && row.posterUserId === viewerUserId;
   const requestDTOs = (kind: 'join_request' | 'invite') =>
     isPoster ? row.requests.filter((r) => r.kind === kind).map((r) => toRequestDTO(r, viewerUserId, storage)) : [];
+  // Invites to an ended LFP post, or from an ended recruiting post, can no longer be acted on.
+  const lfpInvites = (keep: (r: PostRow['lfpInvites'][number]) => boolean): RequestWithPostDTO[] =>
+    viewerUserId === null || effectivePostStatus(row, now) === 'closed'
+      ? []
+      : row.lfpInvites
+          .filter((r) => keep(r) && effectivePostStatus(r.post, now) !== 'closed')
+          .map((r) => ({ ...toRequestDTO(r, viewerUserId, storage), post: toPostSummaryDTO(r.post, viewerUserId, storage, now) }));
   const members = [...row.members].sort(
     (a, b) => Number(b.role === 'poster') - Number(a.role === 'poster') || a.joinedAt.getTime() - b.joinedAt.getTime(),
   );
@@ -95,5 +110,8 @@ export function toPostDetailDTO(row: PostRow, viewer: Viewer | null, storage: St
       viewerUserId === null
         ? []
         : row.requests.filter((r) => r.character.ownerId === viewerUserId).map((r) => toRequestDTO(r, viewerUserId, storage)),
+    receivedInvites: lfpInvites((r) => r.character.ownerId === viewerUserId),
+    sentInvitesToThis: lfpInvites((r) => r.createdByUserId === viewerUserId),
+    canRenew: isPoster && row.scheduledAt === null && row.status !== 'closed' && row.deletedAt === null,
   };
 }

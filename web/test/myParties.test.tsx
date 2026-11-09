@@ -60,6 +60,9 @@ const post = (id: string, boss: string, over: Partial<PostDetailDTO> = {}): Post
     incomingRequests: [],
     sentInvites: [],
     myPending: [],
+    receivedInvites: [],
+    sentInvitesToThis: [],
+    canRenew: false,
     ...over,
   };
 };

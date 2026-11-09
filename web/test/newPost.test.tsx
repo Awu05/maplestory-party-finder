@@ -66,6 +66,9 @@ function makePost(over: Partial<PostDetailDTO> = {}): PostDetailDTO {
     incomingRequests: [],
     sentInvites: [],
     myPending: [],
+    receivedInvites: [],
+    sentInvitesToThis: [],
+    canRenew: false,
     ...over,
   };
 }

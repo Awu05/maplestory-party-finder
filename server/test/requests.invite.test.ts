@@ -188,3 +188,36 @@ describe('invite vs LFP-side auto-decline', () => {
     }
   });
 });
+
+describe('LFP post detail invites', () => {
+  it('invitee sees receivedInvites with the recruiting post; each recruiter sees only their own sent invite', async () => {
+    await prisma.guild.updateMany({ data: { webhookUrl: 'https://discord.com/api/webhooks/1/secret' } });
+    const inviteA = (await invite(lfp.id, postA.id, u1)).json().id;
+    const inviteB = (await invite(lfp.id, postB.id, u3)).json().id;
+
+    const asInvitee = await getPost(lfp.id, u2);
+    expect(asInvitee.body).not.toContain('webhook');
+    const dto = asInvitee.json();
+    expect(dto.receivedInvites.map((r: any) => r.id).sort()).toEqual([inviteA, inviteB].sort());
+    expect(dto.receivedInvites.find((r: any) => r.id === inviteA).post).toMatchObject({ id: postA.id, type: 'recruiting' });
+    expect(dto.sentInvitesToThis).toEqual([]);
+
+    const asRecruiter = (await getPost(lfp.id, u1)).json();
+    expect(asRecruiter.receivedInvites).toEqual([]);
+    expect(asRecruiter.sentInvitesToThis.map((r: any) => r.id)).toEqual([inviteA]);
+    expect(asRecruiter.sentInvitesToThis[0].post.id).toBe(postA.id);
+
+    const asVisitor = (await getPost(lfp.id, '')).json();
+    expect(asVisitor.receivedInvites).toEqual([]);
+    expect(asVisitor.sentInvitesToThis).toEqual([]);
+  });
+
+  it('leaves out decided invites and invites from ended recruiting posts', async () => {
+    const inviteA = (await invite(lfp.id, postA.id, u1)).json().id;
+    (await invite(lfp.id, postB.id, u3)).json();
+    await prisma.post.update({ where: { id: postB.id }, data: { expiresAt: new Date(Date.now() - 1000) } });
+    expect((await getPost(lfp.id, u2)).json().receivedInvites.map((r: any) => r.id)).toEqual([inviteA]);
+    await call(`/api/requests/${inviteA}/decline`, u2);
+    expect((await getPost(lfp.id, u2)).json().receivedInvites).toEqual([]);
+  });
+});

@@ -168,3 +168,21 @@ describe('admin', () => {
     expect(await prisma.postMember.count()).toBe(0);
   });
 });
+
+describe('canRenew', () => {
+  it('poster of a flexible, unclosed post can renew, even once expired; not scheduled, closed, deleted or others', async () => {
+    const other = await loginAs(app, 'other-1', 'other');
+    const canRenew = async (over: Record<string, unknown>, cookie = posterCookie) => {
+      const p = await makePost({ posterUserId, ...over });
+      if (over.deletedAt) await addMember(p.id, (await makeCharacter()).id);
+      return (await call('GET', `/api/posts/${p.id}`, cookie)).json().canRenew;
+    };
+    expect(await canRenew({ scheduledAt: null })).toBe(true);
+    expect(await canRenew({ scheduledAt: null, expiresAt: new Date(Date.now() - 1000) })).toBe(true);
+    expect(await canRenew({ scheduledAt: null, status: 'full', closedReason: 'full' })).toBe(true);
+    expect(await canRenew({})).toBe(false);
+    expect(await canRenew({ scheduledAt: null, status: 'closed', closedReason: 'manual' })).toBe(false);
+    expect(await canRenew({ scheduledAt: null, deletedAt: new Date() })).toBe(false);
+    expect(await canRenew({ scheduledAt: null }, other)).toBe(false);
+  });
+});
