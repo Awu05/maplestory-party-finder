@@ -71,6 +71,16 @@ describe('create invite', () => {
     expectError(await invite(postB.id, postA.id, u1), 409, 'WRONG_POST_TYPE');
   });
 
+  it('swapped post ids racing a real invite never deadlock', async () => {
+    for (let i = 0; i < 5; i++) {
+      const lfpPost = await makePost({ type: 'lfp', partySize: null, posterCharacterId: bob.id });
+      const rec = await makePost({ posterCharacterId: postA.posterCharacterId!, partySize: 3 });
+      const [ok, swapped] = await Promise.all([invite(lfpPost.id, rec.id, u1), invite(rec.id, lfpPost.id, u1)]);
+      expect(ok.statusCode).toBe(201);
+      expectError(swapped, 409, 'WRONG_POST_TYPE');
+    }
+  });
+
   it('duplicate invite -> 409 ALREADY_PENDING', async () => {
     expect((await invite(lfp.id, postA.id, u1)).statusCode).toBe(201);
     expectError(await invite(lfp.id, postA.id, u1), 409, 'ALREADY_PENDING');

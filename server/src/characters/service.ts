@@ -207,12 +207,15 @@ export async function deleteCharacter(
   id: string,
 ): Promise<{ closedPostIds: string[]; declinedRequestIds: string[] }> {
   return prisma.$transaction(async (tx) => {
-    const live: Prisma.PostWhereInput = { posterCharacterId: id, status: { in: ['open', 'full'] }, deletedAt: null };
-    const closedPostIds = (await tx.post.findMany({ where: live, select: { id: true } })).map((p) => p.id);
-    await tx.post.updateMany({
-      where: { ...live, id: { in: closedPostIds } },
-      data: { status: 'closed', closedReason: 'character_deleted' },
-    });
+    // Lock the live posts (recruiting before LFP, the global lock order) so a concurrent close can't
+    // make us report a post this call didn't close.
+    const locked = await tx.$queryRaw<{ id: string }[]>`
+      SELECT id FROM "Post"
+      WHERE "posterCharacterId" = ${id} AND "deletedAt" IS NULL AND status IN ('open', 'full')
+      ORDER BY (type = 'lfp'), id
+      FOR UPDATE`;
+    const closedPostIds = locked.map((p) => p.id);
+    await tx.post.updateMany({ where: { id: { in: closedPostIds } }, data: { status: 'closed', closedReason: 'character_deleted' } });
     const declined = await autoDeclinePending(tx, { OR: [{ postId: { in: closedPostIds } }, { lfpPostId: { in: closedPostIds } }] });
     await tx.character.delete({ where: { id } });
     // The character's own requests cascade away with it; only the survivors still need an event.

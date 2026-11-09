@@ -57,6 +57,19 @@ export async function createJoinRequest(
   }
 }
 
+async function loadPost(tx: Prisma.TransactionClient, id: string): Promise<PostRow> {
+  const row = await tx.post.findUnique({ where: { id }, include: postInclude });
+  if (!row) throw new AppError(404, 'NOT_FOUND', 'Post not found');
+  return row;
+}
+
+function assertInviteRoles(lfp: PostRow, recruiting: PostRow, viewer: Viewer, now: Date): void {
+  if (lfp.deletedAt !== null) assertVisible(lfp, viewer, now);
+  if (lfp.type !== 'lfp') throw new AppError(409, 'WRONG_POST_TYPE', 'Invites come from looking-for-party posts');
+  if (recruiting.posterUserId !== viewer.user.id) throw new AppError(403, 'NOT_OWNER', 'You do not own that post');
+  if (recruiting.type !== 'recruiting') throw new AppError(409, 'WRONG_POST_TYPE', 'Invites go onto recruiting posts');
+}
+
 export async function createInvite(
   prisma: PrismaClient,
   viewer: Viewer,
@@ -66,14 +79,14 @@ export async function createInvite(
 ): Promise<RequestRow> {
   try {
     return await prisma.$transaction(async (tx) => {
-      // Lock order everywhere: recruiting post first, then the LFP post.
+      // Check the roles before locking, so ids passed the wrong way round fail fast instead of
+      // locking in the reverse order. Lock order everywhere: recruiting post first, then the LFP post.
+      assertInviteRoles(await loadPost(tx, lfpPostId), await loadPost(tx, recruitingPostId), viewer, now);
       const recruiting = await loadPostForUpdate(tx, recruitingPostId);
       const lfp = await loadPostForUpdate(tx, lfpPostId);
-      if (lfp.deletedAt !== null) assertVisible(lfp, viewer, now);
-      if (lfp.type !== 'lfp') throw new AppError(409, 'WRONG_POST_TYPE', 'Invites come from looking-for-party posts');
+      // Re-checked under the locks: either post may have been edited meanwhile.
+      assertInviteRoles(lfp, recruiting, viewer, now);
       assertOpen(lfp, now);
-      if (recruiting.posterUserId !== viewer.user.id) throw new AppError(403, 'NOT_OWNER', 'You do not own that post');
-      if (recruiting.type !== 'recruiting') throw new AppError(409, 'WRONG_POST_TYPE', 'Invites go onto recruiting posts');
       assertOpen(recruiting, now);
       if (recruiting.worldId !== lfp.worldId) throw new AppError(400, 'WRONG_WORLD', 'The posts are on different worlds');
       const characterId = lfp.posterCharacterId;

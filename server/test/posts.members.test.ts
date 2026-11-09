@@ -123,3 +123,18 @@ describe('character deletion keeps party records', () => {
     expect(events.events).toContainEqual({ type: 'request.declined', requestId: join.id, auto: true });
   });
 });
+
+describe('character deletion racing a close', () => {
+  it('emits post.closed exactly once per post', async () => {
+    for (let i = 0; i < 8; i++) {
+      const c = await makeCharacter({ ownerId: posterUserId });
+      const post = await makePost({ posterUserId, posterCharacterId: c.id });
+      events.events.length = 0;
+      await Promise.all([
+        app.inject({ method: 'POST', url: `/api/posts/${post.id}/close`, headers: { cookie: posterCookie } }),
+        del(`/api/characters/${c.id}`, posterCookie),
+      ]);
+      expect(events.events.filter((e) => e.type === 'post.closed' && e.postId === post.id)).toHaveLength(1);
+    }
+  });
+});
