@@ -10,14 +10,14 @@ export function hourLabel(hour: number): string {
 }
 
 interface Props {
-  /** Selected slots as UTC hour-of-week (0 = Sunday 00:00 UTC … 167). */
+  /** Selected slots as UTC hour-of-week (0 = Sunday 00:00 UTC â€¦ 167). */
   value: number[];
   /** Enables editing (click, drag, Enter/Space) when provided and not readOnly. */
   onChange?: (v: number[]) => void;
   readOnly?: boolean;
 }
 
-/** 7-day × 24-hour grid shown in the viewer's local time zone. */
+/** 7-day Ã— 24-hour grid shown in the viewer's local time zone. */
 export function PlayTimeGrid({ value, onChange, readOnly }: Props) {
   const offset = new Date().getTimezoneOffset();
   const local = utcHoursToLocalHours(value, offset);
@@ -31,6 +31,10 @@ export function PlayTimeGrid({ value, onChange, readOnly }: Props) {
   useEffect(() => {
     const end = () => {
       dragTo.current = null;
+      // A click on the same cell fires before this timeout; any other release must not leave the flag set.
+      setTimeout(() => {
+        mouseHandled.current = false;
+      }, 0);
     };
     window.addEventListener('mouseup', end);
     return () => window.removeEventListener('mouseup', end);

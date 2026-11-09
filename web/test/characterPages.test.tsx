@@ -265,6 +265,17 @@ describe('PlayTimeGrid (interactive)', () => {
     expect(pressed()).toEqual(['Mon 1a']);
   });
 
+  it('a drag released over another cell does not swallow the next keyboard activation', async () => {
+    render(<Harness />);
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'Mon 1a' }));
+    fireEvent.mouseEnter(screen.getByRole('button', { name: 'Mon 2a' }));
+    fireEvent.mouseUp(window);
+    await new Promise((r) => setTimeout(r, 5));
+    const third = screen.getByRole('button', { name: 'Wed 3a' });
+    fireEvent.click(third);
+    expect(third).toHaveAttribute('aria-pressed', 'true');
+  });
+
   it('keyboard activation (click without mouse) toggles', () => {
     render(<Harness />);
     const cell = screen.getByRole('button', { name: 'Tue 5p' });
