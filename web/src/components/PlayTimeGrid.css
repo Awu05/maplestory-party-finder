@@ -1,0 +1,40 @@
+.ptg {
+  max-width: 100%;
+  max-height: 22rem;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  -webkit-overflow-scrolling: touch;
+}
+.ptg__table {
+  border-collapse: separate;
+  border-spacing: 2px;
+  font-size: 0.72rem;
+  min-width: 18rem;
+  width: 100%;
+}
+.ptg__table th {
+  position: sticky;
+  background: var(--surface);
+  color: var(--muted);
+  font-weight: 600;
+  padding: 0 0.25rem;
+}
+.ptg__table thead th {
+  top: 0;
+  z-index: 1;
+}
+.ptg__table tbody th {
+  left: 0;
+  text-align: right;
+  white-space: nowrap;
+}
+.ptg__cell {
+  min-width: 1.75rem;
+  height: 0.9rem;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--border) 45%, var(--surface));
+}
+.ptg__cell--on {
+  background: var(--accent);
+}
