@@ -122,13 +122,13 @@ export async function listCharacters(prisma: PrismaClient, filter: ListCharacter
   return filter.archetype ? rows.filter((r) => classToArchetype(r.jobName) === filter.archetype) : rows;
 }
 
-export async function getCharacter(prisma: PrismaClient, id: string): Promise<CharacterRow> {
+export async function getCharacter(prisma: PrismaClient | Prisma.TransactionClient, id: string): Promise<CharacterRow> {
   const row = await prisma.character.findUnique({ where: { id }, include: characterInclude });
   if (!row) throw new AppError(404, 'NOT_FOUND', 'Character not found');
   return row;
 }
 
-export async function getOwnedCharacter(prisma: PrismaClient, id: string, userId: string): Promise<CharacterRow> {
+export async function getOwnedCharacter(prisma: PrismaClient | Prisma.TransactionClient, id: string, userId: string): Promise<CharacterRow> {
   const row = await getCharacter(prisma, id);
   if (row.ownerId !== userId) throw new AppError(403, 'NOT_OWNER', 'You do not own this character');
   return row;

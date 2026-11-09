@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { MAX_POST_BOSSES } from '@pf/shared';
 import { getViewer, requireAdmin, requireUser } from '../auth/guards.js';
-import { adminDeletePost, closePost, createPost, deletePost, getVisiblePost, listBoard, listMyParties, listMyPosts, removeMember, renewPost } from './service.js';
+import { adminDeletePost, closePost, createPost, deletePost, editPost, getVisiblePost, listBoard, listMyParties, listMyPosts, removeMember, renewPost } from './service.js';
 import { toPostDetailDTO, toPostSummaryDTO } from './serialize.js';
 
 // Field schemas are exported so the edit route can reuse them.
@@ -27,6 +27,12 @@ export const createPostBody = z.object({
   note: noteSchema,
 });
 
+// Every create field optional; minCp may be null to clear it. At least one field is required.
+export const editPostBody = createPostBody
+  .partial()
+  .extend({ minCp: minCpSchema.nullable().optional() })
+  .refine((b) => Object.values(b).some((v) => v !== undefined), 'Provide at least one field to change');
+
 const boardQuery = z.object({
   type: postTypeSchema.optional(),
   bossId: z.coerce.number().int().optional(),
@@ -45,12 +51,26 @@ const boardQuery = z.object({
 export async function postRoutes(app: FastifyInstance): Promise<void> {
   const { prisma, storage, events } = app.deps;
 
+  const emitDeclined = (ids: string[]) => ids.forEach((requestId) => events.emit({ type: 'request.declined', requestId, auto: true }));
+
   app.post('/posts', async (req, reply) => {
     const viewer = await requireUser(req);
     const input = createPostBody.parse(req.body);
     const row = await createPost(prisma, viewer.user.id, input);
     events.emit({ type: 'post.created', postId: row.id });
     return reply.status(201).send(toPostDetailDTO(row, viewer, storage, new Date()));
+  });
+
+  app.patch('/posts/:id', async (req) => {
+    const viewer = await requireUser(req);
+    const { id } = req.params as { id: string };
+    const input = editPostBody.parse(req.body);
+    const now = new Date();
+    const r = await editPost(prisma, viewer, id, input, now);
+    emitDeclined(r.declinedRequestIds);
+    events.emit({ type: 'post.updated', postId: id });
+    if (r.reopened) events.emit({ type: 'post.reopened', postId: id });
+    return toPostDetailDTO(r.post, viewer, storage, now);
   });
 
   app.get('/posts', async (req) => {
@@ -67,8 +87,6 @@ export async function postRoutes(app: FastifyInstance): Promise<void> {
     const now = new Date();
     return toPostDetailDTO(await getVisiblePost(prisma, id, viewer, now), viewer, storage, now);
   });
-
-  const emitDeclined = (ids: string[]) => ids.forEach((requestId) => events.emit({ type: 'request.declined', requestId, auto: true }));
 
   app.post('/posts/:id/close', async (req) => {
     const viewer = await requireUser(req);

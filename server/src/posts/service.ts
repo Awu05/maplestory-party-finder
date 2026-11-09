@@ -27,28 +27,51 @@ export function assertScheduleWindow(scheduledAt: Date, now: Date): void {
   if (t > now.getTime() + MAX_SCHEDULE_AHEAD_MS) throw new AppError(400, 'VALIDATION', 'scheduledAt is more than 30 days ahead');
 }
 
-export async function createPost(prisma: PrismaClient, userId: string, input: CreatePostInput): Promise<PostRow> {
-  const character = await getOwnedCharacter(prisma, input.characterId, userId);
-  const guild = await prisma.guild.findUnique({ where: { id: character.guildId } });
+type Db = PrismaClient | Prisma.TransactionClient;
+
+/** Loads the difficulties for `ids`, throwing 400 VALIDATION if any is unknown. */
+async function validateBosses(db: Db, ids: number[]) {
+  const difficulties = await db.bossDifficulty.findMany({ where: { id: { in: ids } } });
+  if (difficulties.length !== ids.length) throw new AppError(400, 'VALIDATION', 'Unknown bossDifficultyId');
+  return difficulties;
+}
+
+/** LFP posts take no partySize/minCp; Recruiting needs a partySize within [MIN_PARTY_SIZE, cap of the boss set]. */
+function validateRecruitingFields(
+  type: PostType,
+  partySize: number | null | undefined,
+  minCp: number | null | undefined,
+  caps: number[],
+): void {
+  if (type === 'lfp') {
+    if ((partySize !== undefined && partySize !== null) || (minCp !== undefined && minCp !== null)) {
+      throw new AppError(400, 'VALIDATION', 'partySize and minCp are only for recruiting posts');
+    }
+    return;
+  }
+  const max = maxPartySizeFor(caps);
+  if (partySize === undefined || partySize === null || partySize < MIN_PARTY_SIZE || partySize > max) {
+    throw new AppError(400, 'VALIDATION', `partySize must be between ${MIN_PARTY_SIZE} and ${max}`);
+  }
+}
+
+/** The caller's own character, which must belong to an active guild in an active world. */
+async function getPostingCharacter(db: Db, characterId: string, userId: string) {
+  const character = await getOwnedCharacter(db, characterId, userId);
+  const guild = await db.guild.findUnique({ where: { id: character.guildId } });
   if (!guild || !guild.active) throw new AppError(400, 'GUILD_INACTIVE', 'That guild is not accepting posts');
   if (!character.world.active) throw new AppError(400, 'WORLD_INACTIVE', 'That world is not active');
+  return character;
+}
+
+export async function createPost(prisma: PrismaClient, userId: string, input: CreatePostInput): Promise<PostRow> {
+  const character = await getPostingCharacter(prisma, input.characterId, userId);
 
   const now = new Date();
   if (input.scheduledAt) assertScheduleWindow(input.scheduledAt, now);
 
-  const difficulties = await prisma.bossDifficulty.findMany({ where: { id: { in: input.bossDifficultyIds } } });
-  if (difficulties.length !== input.bossDifficultyIds.length) throw new AppError(400, 'VALIDATION', 'Unknown bossDifficultyId');
-
-  if (input.type === 'lfp') {
-    if (input.partySize !== undefined || input.minCp !== undefined) {
-      throw new AppError(400, 'VALIDATION', 'partySize and minCp are only for recruiting posts');
-    }
-  } else {
-    const max = maxPartySizeFor(difficulties.map((d) => d.partyCap));
-    if (input.partySize === undefined || input.partySize < MIN_PARTY_SIZE || input.partySize > max) {
-      throw new AppError(400, 'VALIDATION', `partySize must be between ${MIN_PARTY_SIZE} and ${max}`);
-    }
-  }
+  const difficulties = await validateBosses(prisma, input.bossDifficultyIds);
+  validateRecruitingFields(input.type, input.partySize, input.minCp, difficulties.map((d) => d.partyCap));
 
   return prisma.$transaction((tx) =>
     tx.post.create({
@@ -250,5 +273,100 @@ export async function removeMember(prisma: PrismaClient, viewer: Viewer, postId:
       member: { id: member.id, userId: member.userId, ign: parseSnapshot(member.snapshot).ign },
       removedBy: self ? 'self' : 'poster',
     };
+  });
+}
+
+export interface EditPostInput {
+  type?: PostType;
+  characterId?: string;
+  bossDifficultyIds?: number[];
+  scheduledAt?: Date | null;
+  partySize?: number;
+  minCp?: number | null;
+  note?: string;
+}
+
+export interface EditResult {
+  post: PostRow;
+  declinedRequestIds: string[];
+  reopened: boolean;
+}
+
+/** Poster edits any field. The resulting post is validated as a whole, then applied. */
+export async function editPost(prisma: PrismaClient, viewer: Viewer, id: string, input: EditPostInput, now: Date): Promise<EditResult> {
+  return prisma.$transaction(async (tx) => {
+    const row = await loadPostForUpdate(tx, id);
+    assertPoster(row, viewer);
+    if (row.status === 'closed' || row.deletedAt !== null) throw new AppError(409, 'POST_CLOSED', 'Post is closed');
+
+    const type = input.type ?? row.type;
+    const typeChanged = type !== row.type;
+    const characterChanged = input.characterId !== undefined && input.characterId !== row.posterCharacterId;
+    const memberCount = row.members.length;
+    if ((typeChanged || characterChanged) && memberCount > 1) {
+      throw new AppError(409, 'HAS_MEMBERS', 'Type and character cannot change once someone has joined');
+    }
+
+    const character = characterChanged ? await getPostingCharacter(tx, input.characterId!, viewer.user.id) : null;
+    const worldChanged = character !== null && character.worldId !== row.worldId;
+
+    const scheduledAt = input.scheduledAt !== undefined ? input.scheduledAt : row.scheduledAt;
+    if (input.scheduledAt) assertScheduleWindow(input.scheduledAt, now);
+    const expiresAt = postExpiresAt(scheduledAt, now);
+
+    const bossesChanged = input.bossDifficultyIds !== undefined;
+    const caps = bossesChanged
+      ? (await validateBosses(tx, input.bossDifficultyIds!)).map((d) => d.partyCap)
+      : row.bosses.map((b) => b.bossDifficulty.partyCap);
+
+    let partySize: number | null;
+    let minCp: bigint | null;
+    if (type === 'lfp') {
+      validateRecruitingFields(type, input.partySize, input.minCp, caps);
+      partySize = null;
+      minCp = null;
+    } else {
+      const resultingParty = input.partySize ?? row.partySize;
+      if (typeChanged || bossesChanged || input.partySize !== undefined) validateRecruitingFields(type, resultingParty, null, caps);
+      if (resultingParty !== null && resultingParty < memberCount) {
+        throw new AppError(409, 'PARTY_TOO_SMALL', 'partySize is smaller than the current party');
+      }
+      partySize = resultingParty;
+      minCp = input.minCp === undefined ? row.minCp : input.minCp === null ? null : BigInt(input.minCp);
+    }
+
+    const becomesFull = type === 'recruiting' && row.status === 'open' && partySize === memberCount;
+    const reopened =
+      type === 'recruiting' && row.status === 'full' && partySize !== null && memberCount < partySize && expiresAt.getTime() > now.getTime();
+
+    // Type or world changes void everything tied to the post; filling it only voids its own requests.
+    const declineWhere = typeChanged || worldChanged ? postRequests(id) : becomesFull ? { postId: id } : null;
+    const declinedRequestIds = declineWhere ? await autoDeclinePending(tx, declineWhere) : [];
+
+    if (character) {
+      await tx.postMember.updateMany({
+        where: { postId: id, role: 'poster' },
+        data: { characterId: character.id, cpAtJoin: character.combatPower, snapshot: { ...memberSnapshot(character) } },
+      });
+    }
+
+    const post = await tx.post.update({
+      where: { id },
+      data: {
+        type,
+        scheduledAt,
+        expiresAt,
+        partySize,
+        minCp,
+        ...(input.note !== undefined ? { note: input.note } : {}),
+        ...(character ? { posterCharacterId: character.id, worldId: character.worldId, guildId: character.guildId } : {}),
+        ...(bossesChanged
+          ? { bosses: { deleteMany: {}, create: input.bossDifficultyIds!.map((bossDifficultyId) => ({ bossDifficultyId })) } }
+          : {}),
+        ...(becomesFull ? { status: 'full', closedReason: 'full' } : reopened ? { status: 'open', closedReason: null } : {}),
+      },
+      include: postInclude,
+    });
+    return { post, declinedRequestIds, reopened };
   });
 }
