@@ -111,3 +111,13 @@ export interface PostDetailDTO extends PostSummaryDTO {
 export interface RequestWithPostDTO extends RequestDTO { post: PostSummaryDTO }
 
 export interface MyRequestsDTO { incomingInvites: RequestWithPostDTO[]; outgoingRequests: RequestWithPostDTO[] }
+
+export interface NotificationDTO { id: string; kind: string; text: string; link: string; createdAt: string; read: boolean }
+export interface NotificationListDTO { items: NotificationDTO[]; unreadCount: number }
+export interface WebhookFailureDTO { id: string; eventType: string; attempts: number; lastError: string | null; createdAt: string }
+export interface WebhookHealthDTO {
+  guildId: string; guildName: string; hasWebhook: boolean; active: boolean;
+  lastSentAt: string | null; pending: number; failedLast24h: number; recentFailures: WebhookFailureDTO[]; // <= 10
+}
+export interface AdminUserDTO { id: string; discordUsername: string; avatarUrl: string | null; banned: boolean; isAdmin: boolean; createdAt: string; characterCount: number }
+export interface AdminPostDTO extends PostSummaryDTO { deletedAt: string | null; closedReason: string | null; posterDiscordUsername: string }

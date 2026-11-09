@@ -24,15 +24,16 @@ enum SyncStatus {
 }
 
 model User {
-  id          String       @id @default(cuid())
-  discordId   String       @unique
-  username    String
-  avatar      String?
-  banned      Boolean      @default(false)
-  createdAt   DateTime     @default(now())
-  characters  Character[]
-  posts       Post[]
-  postMembers PostMember[]
+  id            String         @id @default(cuid())
+  discordId     String         @unique
+  username      String
+  avatar        String?
+  banned        Boolean        @default(false)
+  createdAt     DateTime       @default(now())
+  characters    Character[]
+  posts         Post[]
+  postMembers   PostMember[]
+  notifications Notification[]
 }
 
 model World {
@@ -49,14 +50,15 @@ model World {
 }
 
 model Guild {
-  id         String       @id @default(cuid())
-  name       String       @unique
-  iconUrl    String?
-  webhookUrl String?
-  active     Boolean      @default(true)
-  worlds     GuildWorld[]
-  characters Character[]
-  posts      Post[]
+  id                String            @id @default(cuid())
+  name              String            @unique
+  iconUrl           String?
+  webhookUrl        String?
+  active            Boolean           @default(true)
+  worlds            GuildWorld[]
+  characters        Character[]
+  posts             Post[]
+  webhookDeliveries WebhookDelivery[]
 }
 
 model GuildWorld {
@@ -238,4 +240,50 @@ model Request {
   decidedAt       DateTime?
 
   @@index([characterId, status])
+}
+
+enum DeliveryStatus {
+  pending
+  sent
+  failed
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// join_request | invite | accepted | declined | auto_declined | removed | member_left
+  kind      String
+  text      String
+  /// app-relative path, e.g. /posts/abc
+  link      String
+  createdAt DateTime  @default(now())
+  readAt    DateTime?
+
+  @@index([userId, readAt, createdAt])
+}
+
+model WebhookDelivery {
+  id            String         @id @default(cuid())
+  guildId       String
+  guild         Guild          @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  /// post.created | request.created | request.accepted | test
+  eventType     String
+  /// full Discord execute-webhook body
+  payload       Json
+  status        DeliveryStatus @default(pending)
+  attempts      Int            @default(0)
+  nextAttemptAt DateTime       @default(now())
+  lastError     String?
+  createdAt     DateTime       @default(now())
+  sentAt        DateTime?
+
+  @@index([status, nextAttemptAt])
+  @@index([guildId, createdAt])
+}
+
+model JobRun {
+  name       String   @id
+  lastRunAt  DateTime
+  lastResult Json?
 }
