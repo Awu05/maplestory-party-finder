@@ -339,8 +339,10 @@ export async function editPost(prisma: PrismaClient, viewer: Viewer, id: string,
     const reopened =
       type === 'recruiting' && row.status === 'full' && partySize !== null && memberCount < partySize && expiresAt.getTime() > now.getTime();
 
-    // Type or world changes void everything tied to the post; filling it only voids its own requests.
-    const declineWhere = typeChanged || worldChanged ? postRequests(id) : becomesFull ? { postId: id } : null;
+    // Type or world changes void everything tied to the post; an LFP post's invites name its character,
+    // so a new character voids them too; filling it only voids its own requests.
+    const declineWhere =
+      typeChanged || worldChanged || (characterChanged && type === 'lfp') ? postRequests(id) : becomesFull ? { postId: id } : null;
     const declinedRequestIds = declineWhere ? await autoDeclinePending(tx, declineWhere) : [];
 
     if (character) {

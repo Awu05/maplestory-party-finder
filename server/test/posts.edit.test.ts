@@ -133,6 +133,37 @@ describe('PATCH /api/posts/:id', () => {
     expect((await patch(p.id, { type: 'recruiting', partySize: 3 })).statusCode).toBe(200);
   });
 
+  it('type change on an LFP post declines pending invites that answer it', async () => {
+    const lfp = await makePost({ posterUserId: userId, type: 'lfp', partySize: null });
+    const rec = await makePost();
+    const inv = await prisma.request.create({
+      data: { kind: 'invite', postId: rec.id, characterId: lfp.posterCharacterId!, lfpPostId: lfp.id, createdByUserId: rec.posterUserId },
+    });
+    expect((await patch(lfp.id, { type: 'recruiting', partySize: 3 })).statusCode).toBe(200);
+    expect(await reqStatus(inv.id)).toBe('declined');
+    expect(events.events).toContainEqual({ type: 'request.declined', requestId: inv.id, auto: true });
+  });
+
+  it('character change on an LFP post (same world) declines invites for the old character', async () => {
+    const lfp = await makePost({ posterUserId: userId, type: 'lfp', partySize: null });
+    const rec = await makePost();
+    const inv = await prisma.request.create({
+      data: { kind: 'invite', postId: rec.id, characterId: lfp.posterCharacterId!, lfpPostId: lfp.id, createdByUserId: rec.posterUserId },
+    });
+    const other = await makeCharacter({ ownerId: userId, worldId: lfp.worldId, guildId: lfp.guildId });
+    expect((await patch(lfp.id, { characterId: other.id })).statusCode).toBe(200);
+    expect(await reqStatus(inv.id)).toBe('declined');
+    expect(events.events).toContainEqual({ type: 'request.declined', requestId: inv.id, auto: true });
+  });
+
+  it('character change on a recruiting post (same world) keeps its pending requests', async () => {
+    const p = await makePost({ posterUserId: userId });
+    const r = await pending(p.id);
+    const other = await makeCharacter({ ownerId: userId, worldId: p.worldId, guildId: p.guildId });
+    expect((await patch(p.id, { characterId: other.id })).statusCode).toBe(200);
+    expect(await reqStatus(r.id)).toBe('pending');
+  });
+
   it('type or character change with a member -> 409 HAS_MEMBERS', async () => {
     const p = await makePost({ posterUserId: userId });
     await addMember(p.id, (await makeCharacter()).id);
