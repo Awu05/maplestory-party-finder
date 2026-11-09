@@ -63,3 +63,48 @@ export type BossDTO = {
 export type RarityTierDTO = { id: number; name: string; minCp: number; sortOrder: number };
 
 export type MeDTO = { id: string; discordUsername: string; avatarUrl: string | null; isAdmin: boolean } | null;
+
+export type PostType = 'lfp' | 'recruiting';
+export type PostStatus = 'open' | 'full' | 'closed';
+export type RequestKind = 'join_request' | 'invite';
+export type RequestStatus = 'pending' | 'accepted' | 'declined' | 'cancelled';
+
+export const POST_TYPE_LABELS: Record<PostType, string> = { lfp: 'Looking for party', recruiting: 'Recruiting' };
+
+export interface PostBossDTO { bossDifficultyId: number; bossName: string; difficulty: string }
+
+export interface MemberSnapshot { ign: string; jobName: string; level: number; imageUrl: string; worldName: string; guildName: string }
+
+export interface PartyMemberDTO {
+  id: string; role: 'poster' | 'member'; characterId: string | null;
+  cpAtJoin: number; joinedAt: string;
+  character: CharacterDTO | null; // null once the character is deleted
+  snapshot: MemberSnapshot;
+  isMine: boolean;
+}
+
+export interface PostSummaryDTO {
+  id: string; type: PostType; world: { id: number; name: string }; guild: { id: string; name: string };
+  poster: PartyMemberDTO; bosses: PostBossDTO[];
+  scheduledAt: string | null; expiresAt: string; createdAt: string;
+  partySize: number | null; memberCount: number; minCp: number | null; note: string;
+  status: PostStatus; // effective
+  deleted: boolean; isPoster: boolean;
+}
+
+export interface RequestDTO {
+  id: string; kind: RequestKind; status: RequestStatus; postId: string; lfpPostId: string | null;
+  character: CharacterDTO; createdAt: string; decidedAt: string | null;
+}
+
+export interface PostDetailDTO extends PostSummaryDTO {
+  members: PartyMemberDTO[]; // poster first, then by joinedAt
+  isMember: boolean;
+  incomingRequests: RequestDTO[]; // poster only: pending join requests
+  sentInvites: RequestDTO[]; // poster only: pending invites from this recruiting post
+  myPending: RequestDTO[]; // viewer's own pending join requests/invites involving this post
+}
+
+export interface RequestWithPostDTO extends RequestDTO { post: PostSummaryDTO }
+
+export interface MyRequestsDTO { incomingInvites: RequestWithPostDTO[]; outgoingRequests: RequestWithPostDTO[] }
