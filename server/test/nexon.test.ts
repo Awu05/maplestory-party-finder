@@ -38,6 +38,15 @@ describe('HttpNexonClient', () => {
     expect((init?.headers as Record<string, string>)['User-Agent']).toBe('party-finder/1.0');
   });
 
+  it('uses the region in the ranking path (default na)', async () => {
+    const naStub = stub(JSON.stringify({ ranks: [] }));
+    await new HttpNexonClient({ fetch: naStub }).findByName('lily');
+    expect(String(naStub.mock.calls[0]![0])).toContain('/ranking/v2/na?');
+    const euStub = stub(JSON.stringify({ ranks: [] }));
+    await new HttpNexonClient({ fetch: euStub, region: 'eu' }).findByName('lily');
+    expect(String(euStub.mock.calls[0]![0])).toContain('/ranking/v2/eu?');
+  });
+
   it('url-encodes the ign', async () => {
     const fetchStub = stub(JSON.stringify({ ranks: [] }));
     await new HttpNexonClient({ fetch: fetchStub }).findByName('a b&c');

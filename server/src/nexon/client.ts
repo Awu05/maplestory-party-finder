@@ -32,20 +32,29 @@ const responseSchema = z.object({
   ),
 });
 
-const ENDPOINT = 'https://www.nexon.com/api/maplestory/no-auth/ranking/v2/na';
+const ENDPOINT_BASE = 'https://www.nexon.com/api/maplestory/no-auth/ranking/v2';
 
 export class HttpNexonClient implements NexonClient {
   private readonly fetchFn: typeof fetch;
   private readonly cacheTtlMs: number;
   private readonly now: () => number;
   private readonly timeoutMs: number;
+  private readonly region: string;
   private readonly cache = new Map<string, { expires: number; value: NexonCharacter[] }>();
 
-  constructor(opts: { fetch?: typeof fetch; cacheTtlMs?: number; now?: () => number; timeoutMs?: number }) {
+  constructor(opts: {
+    fetch?: typeof fetch;
+    cacheTtlMs?: number;
+    now?: () => number;
+    timeoutMs?: number;
+    /** Nexon ranking region path segment (spec §13); 'na' today. */
+    region?: string;
+  }) {
     this.fetchFn = opts.fetch ?? fetch;
     this.cacheTtlMs = opts.cacheTtlMs ?? 600_000;
     this.now = opts.now ?? Date.now;
     this.timeoutMs = opts.timeoutMs ?? 8000;
+    this.region = opts.region ?? 'na';
   }
 
   async findByName(ign: string): Promise<NexonCharacter[]> {
@@ -59,7 +68,7 @@ export class HttpNexonClient implements NexonClient {
   }
 
   private async fetchCharacters(ign: string): Promise<NexonCharacter[]> {
-    const url = `${ENDPOINT}?type=overall&id=weekly&reboot_index=0&page_index=1&character_name=${encodeURIComponent(ign)}`;
+    const url = `${ENDPOINT_BASE}/${encodeURIComponent(this.region)}?type=overall&id=weekly&reboot_index=0&page_index=1&character_name=${encodeURIComponent(ign)}`;
     let body: unknown;
     try {
       const res = await this.fetchFn(url, {

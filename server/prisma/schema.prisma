@@ -38,6 +38,8 @@ model World {
   nexonWorldId Int          @unique
   name         String
   worldType    WorldType
+  /// Nexon ranking region this world belongs to (spec §13).
+  region       String       @default("na")
   active       Boolean      @default(true)
   guilds       GuildWorld[]
   characters   Character[]
