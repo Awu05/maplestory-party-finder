@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, NavLink, Outlet } from 'react-router-dom';
+import { Link, NavLink, Outlet, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useMe } from '../api/hooks';
 import { api } from '../api/client';
@@ -9,10 +9,27 @@ export function Layout() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const close = () => setOpen(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const loginFailed = searchParams.get('login') === 'failed';
+
+  function dismissLoginFailed() {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('login');
+        return next;
+      },
+      { replace: true },
+    );
+  }
 
   async function logout() {
-    await api<void>('/api/auth/logout', { method: 'POST' });
-    await qc.invalidateQueries({ queryKey: ['me'] });
+    try {
+      await api<void>('/api/auth/logout', { method: 'POST' });
+    } catch {
+      // Even if the server call fails, drop the local session so the UI shows logged out.
+    }
+    qc.setQueryData(['me'], null);
     await qc.invalidateQueries({ queryKey: ['characters'] });
   }
 
@@ -63,6 +80,14 @@ export function Layout() {
           )}
         </nav>
       </header>
+      {loginFailed && (
+        <div className="banner" role="alert">
+          <span>Login with Discord failed — try again</span>
+          <button type="button" aria-label="Dismiss" onClick={dismissLoginFailed}>
+            ×
+          </button>
+        </div>
+      )}
       <main className="app-main">
         <Outlet />
       </main>

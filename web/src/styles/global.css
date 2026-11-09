@@ -95,6 +95,17 @@ a.button {
   display: none;
   margin-left: auto;
 }
+.banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  max-width: 1100px;
+  margin: 1rem auto 0;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
 .app-main {
   max-width: 1100px;
   margin: 0 auto;
