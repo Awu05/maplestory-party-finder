@@ -310,3 +310,49 @@ describe('carried fixes', () => {
     expect(screen.getByRole('button', { name: 'Decline' })).toBeDisabled();
   });
 });
+
+describe('stale error clearing', () => {
+  const req = (id: string, ign: string, kind: RequestDTO['kind'] = 'join_request'): RequestDTO => ({
+    id,
+    kind,
+    status: 'pending',
+    postId: 'p1',
+    lfpPostId: null,
+    character: character(`rc-${id}`, ign),
+    createdAt: '2026-11-09T00:00:00Z',
+    decidedAt: null,
+  });
+  const failPost = (url: string, code: string) => {
+    const real = globalThis.fetch;
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) =>
+      String(input) === url && init?.method === 'POST'
+        ? new Response(JSON.stringify({ error: { code, message: 'x' } }), { status: 409 })
+        : real(input, init),
+    );
+  };
+
+  it('poster: a failed Decline error disappears after a later Accept succeeds', async () => {
+    const p = post({ isPoster: true, incomingRequests: [req('r1', 'Zed'), req('r2', 'Amy')] });
+    renderPage({ '/api/posts/p1': p, 'POST /api/requests/r2/accept': p });
+    failPost('/api/requests/r1/decline', 'NOT_PENDING');
+    const applicants = await screen.findByRole('region', { name: 'Applicants' });
+    fireEvent.click(within(applicants).getAllByRole('button', { name: 'Decline' })[0]);
+    expect(await screen.findByRole('alert')).toHaveTextContent('That request has already been handled.');
+    fireEvent.click(within(applicants).getAllByRole('button', { name: 'Accept' })[1]);
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+  });
+
+  it('viewer: a failed Request error disappears after a later Cancel succeeds', async () => {
+    renderPage({
+      '/api/posts/p1': post({ myPending: [req('r9', 'Other')] }),
+      '/api/characters?mine=1': mine,
+      'POST /api/requests/r9/cancel': {},
+    });
+    failPost('/api/posts/p1/requests', 'ALREADY_PENDING');
+    fireEvent.click(await screen.findByRole('button', { name: 'Request to join' }));
+    fireEvent.click(await screen.findByRole('button', { name: /KronosMain/ }));
+    expect(await screen.findByText('There is already a pending request for that character.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+  });
+});
