@@ -1,0 +1,120 @@
+:root {
+  --bg: #fff8ec;
+  --surface: #ffffff;
+  --text: #3b2a1a;
+  --muted: #7a6650;
+  --border: #e6d5b8;
+  --accent: #c2570c;
+  --accent-text: #ffffff;
+  --header-bg: #fbe3b5;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1c1610;
+    --surface: #2a2118;
+    --text: #f3e6d0;
+    --muted: #b49e80;
+    --border: #4a3b2a;
+    --accent: #f08a3c;
+    --accent-text: #1c1610;
+    --header-bg: #33261a;
+  }
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+a {
+  color: var(--accent);
+}
+button,
+.button {
+  font: inherit;
+  cursor: pointer;
+  text-decoration: none;
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+a.button {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+.app-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.6rem 1rem;
+  background: var(--header-bg);
+  border-bottom: 1px solid var(--border);
+}
+.brand {
+  font-weight: 700;
+  font-size: 1.2rem;
+  color: var(--text);
+  text-decoration: none;
+}
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex: 1;
+}
+.nav a:not(.button) {
+  color: var(--text);
+  text-decoration: none;
+}
+.nav a.active {
+  font-weight: 700;
+  text-decoration: underline;
+}
+.spacer {
+  flex: 1;
+}
+.user {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+}
+.menu-button {
+  display: none;
+  margin-left: auto;
+}
+.app-main {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+@media (max-width: 639px) {
+  .menu-button {
+    display: inline-block;
+  }
+  .nav {
+    display: none;
+    flex-direction: column;
+    align-items: flex-start;
+    width: 100%;
+    flex-basis: 100%;
+  }
+  .nav.open {
+    display: flex;
+  }
+  .spacer {
+    display: none;
+  }
+}
