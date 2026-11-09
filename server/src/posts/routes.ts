@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { MAX_POST_BOSSES } from '@pf/shared';
 import { getViewer, requireAdmin, requireUser } from '../auth/guards.js';
-import { adminDeletePost, closePost, createPost, deletePost, getVisiblePost, listBoard, renewPost } from './service.js';
+import { adminDeletePost, closePost, createPost, deletePost, getVisiblePost, listBoard, listMyParties, listMyPosts, removeMember, renewPost } from './service.js';
 import { toPostDetailDTO, toPostSummaryDTO } from './serialize.js';
 
 // Field schemas are exported so the edit route can reuse them.
@@ -95,6 +95,28 @@ export async function postRoutes(app: FastifyInstance): Promise<void> {
     const row = await renewPost(prisma, viewer, id, now);
     events.emit({ type: 'post.updated', postId: id });
     return toPostDetailDTO(row, viewer, storage, now);
+  });
+
+  app.delete('/posts/:id/members/:memberId', async (req) => {
+    const viewer = await requireUser(req);
+    const { id, memberId } = req.params as { id: string; memberId: string };
+    const now = new Date();
+    const r = await removeMember(prisma, viewer, id, memberId, now);
+    events.emit({ type: 'member.left', postId: id, memberId, userId: r.member.userId, ign: r.member.ign, removedBy: r.removedBy });
+    if (r.reopened) events.emit({ type: 'post.reopened', postId: id });
+    return toPostDetailDTO(r.post, viewer, storage, now);
+  });
+
+  app.get('/me/parties', async (req) => {
+    const viewer = await requireUser(req);
+    const now = new Date();
+    return (await listMyParties(prisma, viewer.user.id)).map((r) => toPostDetailDTO(r, viewer, storage, now));
+  });
+
+  app.get('/me/posts', async (req) => {
+    const viewer = await requireUser(req);
+    const now = new Date();
+    return (await listMyPosts(prisma, viewer.user.id)).map((r) => toPostSummaryDTO(r, viewer.user.id, storage, now));
   });
 
   app.delete('/admin/posts/:id', async (req, reply) => {

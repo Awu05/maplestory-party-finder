@@ -3,7 +3,7 @@ import { effectivePostStatus } from '@pf/shared';
 import type { Viewer } from '../auth/guards.js';
 import { AppError } from '../http/errors.js';
 import { assertVisible, loadPostForUpdate } from '../posts/service.js';
-import { postInclude, type PostRow } from '../posts/serialize.js';
+import { postInclude, postSummaryInclude, type PostRow } from '../posts/serialize.js';
 import { memberSnapshot } from '../posts/snapshot.js';
 import { autoDeclinePending } from './autoDecline.js';
 import { requestInclude, type RequestRow } from './serialize.js';
@@ -202,4 +202,18 @@ export async function cancelRequest(prisma: PrismaClient, viewer: Viewer, id: st
     assertPending(request);
     return tx.request.update({ where: { id }, data: { status: 'cancelled', decidedAt: now }, include: requestInclude });
   }, TX_OPTIONS);
+}
+
+const requestWithPostInclude = { ...requestInclude, post: { include: postSummaryInclude } } satisfies Prisma.RequestInclude;
+
+/** The viewer's pending invites to their characters, and their pending join requests, each with its post summary. */
+export async function listMyRequests(prisma: PrismaClient, userId: string) {
+  const find = (kind: 'invite' | 'join_request') =>
+    prisma.request.findMany({
+      where: { kind, status: 'pending', character: { ownerId: userId } },
+      include: requestWithPostInclude,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    });
+  const [incoming, outgoing] = await Promise.all([find('invite'), find('join_request')]);
+  return { incoming, outgoing };
 }

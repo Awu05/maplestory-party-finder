@@ -7,8 +7,8 @@ import type { Viewer } from '../auth/guards.js';
 import { getOwnedCharacter } from '../characters/service.js';
 import { AppError } from '../http/errors.js';
 import { autoDeclinePending } from '../requests/autoDecline.js';
-import { postInclude, type PostRow } from './serialize.js';
-import { memberSnapshot } from './snapshot.js';
+import { postInclude, postSummaryInclude, type PostRow, type PostSummaryRow } from './serialize.js';
+import { memberSnapshot, parseSnapshot } from './snapshot.js';
 
 export interface CreatePostInput {
   type: PostType;
@@ -91,7 +91,7 @@ export interface BoardFilter {
   flexible?: boolean;
 }
 
-export async function listBoard(prisma: PrismaClient, f: BoardFilter, now: Date): Promise<PostRow[]> {
+export async function listBoard(prisma: PrismaClient, f: BoardFilter, now: Date): Promise<PostSummaryRow[]> {
   const and: Prisma.PostWhereInput[] = [];
   if (f.bossId !== undefined) and.push({ bosses: { some: { bossDifficulty: { bossId: f.bossId } } } });
   if (f.bossDifficultyId !== undefined) and.push({ bosses: { some: { bossDifficultyId: f.bossDifficultyId } } });
@@ -108,10 +108,31 @@ export async function listBoard(prisma: PrismaClient, f: BoardFilter, now: Date)
       ...(f.flexible ? { scheduledAt: null } : {}),
       AND: and,
     },
-    include: postInclude,
+    include: postSummaryInclude,
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     take: 100,
   });
+}
+
+export function listMyPosts(prisma: PrismaClient, userId: string): Promise<PostSummaryRow[]> {
+  return prisma.post.findMany({
+    where: { posterUserId: userId, deletedAt: null },
+    include: postSummaryInclude,
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+  });
+}
+
+/** Parties (>= 2 members) the user belongs to, deleted ones included: scheduledAt desc (nulls last), then createdAt desc. */
+export async function listMyParties(prisma: PrismaClient, userId: string): Promise<PostRow[]> {
+  const ids = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT p.id FROM "Post" p
+    WHERE EXISTS (SELECT 1 FROM "PostMember" m WHERE m."postId" = p.id AND m."userId" = ${userId})
+      AND (SELECT count(*) FROM "PostMember" m2 WHERE m2."postId" = p.id) >= 2
+    ORDER BY p."scheduledAt" DESC NULLS LAST, p."createdAt" DESC, p.id DESC
+    LIMIT 100`;
+  const rows = await prisma.post.findMany({ where: { id: { in: ids.map((r) => r.id) } }, include: postInclude });
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  return ids.map((r) => byId.get(r.id)).filter((r): r is PostRow => r !== undefined);
 }
 
 /** Open/full posts are public; anything else is visible only to the poster, members and admin (else 404). */
@@ -196,5 +217,38 @@ export async function adminDeletePost(prisma: PrismaClient, id: string): Promise
     await tx.post.delete({ where: { id } });
     const survivors = await tx.request.findMany({ where: { id: { in: declined } }, select: { id: true } });
     return survivors.map((r) => r.id);
+  });
+}
+
+export interface LeaveResult {
+  post: PostRow;
+  reopened: boolean;
+  member: { id: string; userId: string; ign: string };
+  removedBy: 'self' | 'poster';
+}
+
+/** The member's owner leaves, or the poster removes them. Reopens a full, unexpired post. */
+export async function removeMember(prisma: PrismaClient, viewer: Viewer, postId: string, memberId: string, now: Date): Promise<LeaveResult> {
+  return prisma.$transaction(async (tx) => {
+    const row = await loadPostForUpdate(tx, postId);
+    const member = row.members.find((m) => m.id === memberId);
+    if (!member) throw new AppError(404, 'NOT_FOUND', 'Member not found');
+    const self = member.userId === viewer.user.id;
+    if (!self && row.posterUserId !== viewer.user.id) throw new AppError(403, 'NOT_ALLOWED', 'You cannot remove that member');
+    if (member.role === 'poster') throw new AppError(409, 'CANNOT_LEAVE_OWN_POST', 'The poster cannot leave their own post');
+    if (row.deletedAt !== null) throw new AppError(409, 'POST_CLOSED', 'Post is closed');
+    await tx.postMember.delete({ where: { id: memberId } });
+    const reopened = row.status === 'full' && row.expiresAt.getTime() > now.getTime();
+    const post = await tx.post.update({
+      where: { id: postId },
+      data: reopened ? { status: 'open', closedReason: null } : {},
+      include: postInclude,
+    });
+    return {
+      post,
+      reopened,
+      member: { id: member.id, userId: member.userId, ign: parseSnapshot(member.snapshot).ign },
+      removedBy: self ? 'self' : 'poster',
+    };
   });
 }

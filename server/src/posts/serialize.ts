@@ -6,18 +6,24 @@ import { requestInclude, toRequestDTO } from '../requests/serialize.js';
 import type { Storage } from '../storage/storage.js';
 import { parseSnapshot } from './snapshot.js';
 
-export const postInclude = {
+export const postSummaryInclude = {
   world: true,
   // Only public fields: never the guild webhookUrl.
   guild: { select: { id: true, name: true } },
   bosses: { include: { bossDifficulty: { include: { boss: true } } } },
   members: { include: { character: { include: characterInclude } }, orderBy: { joinedAt: 'asc' } },
+} satisfies Prisma.PostInclude;
+
+export const postInclude = {
+  ...postSummaryInclude,
   // Pending only; the detail serializer decides who may see which.
   requests: { where: { status: 'pending' }, include: requestInclude, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
 } satisfies Prisma.PostInclude;
 
 export type PostRow = Prisma.PostGetPayload<{ include: typeof postInclude }>;
-type MemberRow = PostRow['members'][number];
+/** A post loaded without its pending requests; every PostRow is also a PostSummaryRow. */
+export type PostSummaryRow = Prisma.PostGetPayload<{ include: typeof postSummaryInclude }>;
+type MemberRow = PostSummaryRow['members'][number];
 
 export function toMemberDTO(m: MemberRow, viewerUserId: string | null, storage: Storage): PartyMemberDTO {
   return {
@@ -32,7 +38,7 @@ export function toMemberDTO(m: MemberRow, viewerUserId: string | null, storage: 
   };
 }
 
-function toBossDTOs(row: PostRow): PostBossDTO[] {
+function toBossDTOs(row: PostSummaryRow): PostBossDTO[] {
   return [...row.bosses]
     .sort(
       (a, b) =>
@@ -48,7 +54,7 @@ function toBossDTOs(row: PostRow): PostBossDTO[] {
     }));
 }
 
-export function toPostSummaryDTO(row: PostRow, viewerUserId: string | null, storage: Storage, now: Date): PostSummaryDTO {
+export function toPostSummaryDTO(row: PostSummaryRow, viewerUserId: string | null, storage: Storage, now: Date): PostSummaryDTO {
   const poster = row.members.find((m) => m.role === 'poster');
   if (!poster) throw new Error(`Post ${row.id} has no poster member`);
   return {

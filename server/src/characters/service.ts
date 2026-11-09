@@ -2,6 +2,7 @@ import { Prisma, type PrismaClient } from '@prisma/client';
 import type { NexonCharacterPreview } from '@pf/shared';
 import { AppError } from '../http/errors.js';
 import { NexonUnavailableError, type NexonClient, type NexonCharacter } from '../nexon/client.js';
+import { autoDeclinePending } from '../requests/autoDecline.js';
 import { classToArchetype, type Archetype } from '@pf/shared';
 import { characterInclude, type CharacterRow } from './serialize.js';
 
@@ -198,4 +199,24 @@ export async function claimRefresh(prisma: PrismaClient, characterId: string): P
     data: { lastRefreshRequestedAt: now },
   });
   if (count === 0) throw new AppError(429, 'TOO_SOON', 'You can refresh a character once every 10 minutes');
+}
+
+/** Closes the character's live posts, auto-declines their pending requests, then deletes the character. */
+export async function deleteCharacter(
+  prisma: PrismaClient,
+  id: string,
+): Promise<{ closedPostIds: string[]; declinedRequestIds: string[] }> {
+  return prisma.$transaction(async (tx) => {
+    const live: Prisma.PostWhereInput = { posterCharacterId: id, status: { in: ['open', 'full'] }, deletedAt: null };
+    const closedPostIds = (await tx.post.findMany({ where: live, select: { id: true } })).map((p) => p.id);
+    await tx.post.updateMany({
+      where: { ...live, id: { in: closedPostIds } },
+      data: { status: 'closed', closedReason: 'character_deleted' },
+    });
+    const declined = await autoDeclinePending(tx, { OR: [{ postId: { in: closedPostIds } }, { lfpPostId: { in: closedPostIds } }] });
+    await tx.character.delete({ where: { id } });
+    // The character's own requests cascade away with it; only the survivors still need an event.
+    const survivors = await tx.request.findMany({ where: { id: { in: declined } }, select: { id: true } });
+    return { closedPostIds, declinedRequestIds: survivors.map((r) => r.id) };
+  });
 }

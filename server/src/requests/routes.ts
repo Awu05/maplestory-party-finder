@@ -1,9 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import type { MyRequestsDTO } from '@pf/shared';
 import { requireUser } from '../auth/guards.js';
 import { AppError } from '../http/errors.js';
-import { toPostDetailDTO } from '../posts/serialize.js';
-import { acceptRequest, cancelRequest, createInvite, createJoinRequest, declineRequest } from './service.js';
+import { toPostDetailDTO, toPostSummaryDTO } from '../posts/serialize.js';
+import { acceptRequest, cancelRequest, createInvite, createJoinRequest, declineRequest, listMyRequests } from './service.js';
 import { toRequestDTO } from './serialize.js';
 
 const createRequestBody = z.object({ characterId: z.string().min(1) });
@@ -60,5 +61,16 @@ export async function requestRoutes(app: FastifyInstance): Promise<void> {
     const row = await cancelRequest(prisma, viewer, id, new Date());
     events.emit({ type: 'request.cancelled', requestId: id });
     return toRequestDTO(row, viewer.user.id, storage);
+  });
+
+  app.get('/me/requests', async (req): Promise<MyRequestsDTO> => {
+    const viewer = await requireUser(req);
+    const now = new Date();
+    const { incoming, outgoing } = await listMyRequests(prisma, viewer.user.id);
+    const dto = (r: (typeof incoming)[number]) => ({
+      ...toRequestDTO(r, viewer.user.id, storage),
+      post: toPostSummaryDTO(r.post, viewer.user.id, storage, now),
+    });
+    return { incomingInvites: incoming.map(dto), outgoingRequests: outgoing.map(dto) };
   });
 }

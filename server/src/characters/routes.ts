@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { getViewer, requireUser } from '../auth/guards.js';
 import { readImageUpload } from '../storage/imageType.js';
 import {
-  claimRefresh, createCharacter, getCharacter, getOwnedCharacter, listCharacters, lookupCharacters,
+  claimRefresh, createCharacter, deleteCharacter, getCharacter, getOwnedCharacter, listCharacters, lookupCharacters,
   syncCharacterFromNexon, updateCharacter,
 } from './service.js';
 import { characterInclude, toCharacterDTO } from './serialize.js';
@@ -35,7 +35,7 @@ const listQuery = z.object({
 });
 
 export async function characterRoutes(app: FastifyInstance): Promise<void> {
-  const { prisma, nexon, storage } = app.deps;
+  const { prisma, nexon, storage, events } = app.deps;
 
   app.post('/characters/lookup', async (req) => {
     await requireUser(req);
@@ -75,7 +75,9 @@ export async function characterRoutes(app: FastifyInstance): Promise<void> {
     const viewer = await requireUser(req);
     const { id } = req.params as { id: string };
     const row = await getOwnedCharacter(prisma, id, viewer.user.id);
-    await prisma.character.delete({ where: { id } });
+    const { closedPostIds, declinedRequestIds } = await deleteCharacter(prisma, id);
+    closedPostIds.forEach((postId) => events.emit({ type: 'post.closed', postId, reason: 'character_deleted' }));
+    declinedRequestIds.forEach((requestId) => events.emit({ type: 'request.declined', requestId, auto: true }));
     if (row.screenshotKey) await storage.remove(row.screenshotKey).catch(() => undefined);
     return reply.status(204).send();
   });
