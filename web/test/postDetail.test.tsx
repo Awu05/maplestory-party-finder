@@ -231,3 +231,24 @@ describe('PostDetailPage errors', () => {
     expect(await screen.findByText("This post isn't available.")).toBeInTheDocument();
   });
 });
+
+describe('PostDetailPage when section', () => {
+  it('finalized post shows "Final time: ..."', async () => {
+    renderPage({ '/api/posts/p1': post({ scheduledAt: '2026-12-01T20:00:00Z' }) });
+    expect(await screen.findByText(/Final time: /)).toBeInTheDocument();
+  });
+
+  it('unfinalized post with free times shows "Time not set yet", the read-only grid and the zone caption', async () => {
+    renderPage({ '/api/posts/p1': post({ scheduledAt: null, freeTimes: [30, 31], freeTimesZone: 'UTC' }) });
+    expect(await screen.findByText('Time not set yet')).toBeInTheDocument();
+    expect(screen.getByText(/^Shown in your time zone \(/)).toBeInTheDocument();
+    expect(screen.getByRole('grid')).toHaveAttribute('aria-readonly', 'true');
+  });
+
+  it('old post with no free times and a null zone shows "Flexible" and no grid', async () => {
+    renderPage({ '/api/posts/p1': post({ scheduledAt: null, freeTimes: [], freeTimesZone: null }) });
+    expect(await screen.findByText('Time not set yet')).toBeInTheDocument();
+    expect(screen.getAllByText('Flexible').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('grid')).toBeNull();
+  });
+});

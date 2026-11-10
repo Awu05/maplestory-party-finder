@@ -103,6 +103,15 @@ export function useRenewPost(id: string) {
   });
 }
 
+export function useFinalizeTime(postId: string) {
+  const invalidate = useInvalidatePosts();
+  return useMutation({
+    mutationFn: (scheduledAt: string) =>
+      api<PostDetailDTO>(`/api/posts/${postId}/final-time`, { method: 'PUT', json: { scheduledAt } }),
+    onSuccess: invalidate,
+  });
+}
+
 export function useRequestJoin(postId: string) {
   const invalidate = useInvalidatePosts();
   return useMutation({

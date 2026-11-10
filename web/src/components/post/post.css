@@ -448,3 +448,16 @@ a.post-card:hover {
   color: var(--muted);
   text-align: center;
 }
+
+.when-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.when-section p {
+  margin: 0;
+}
+.when-section__caption {
+  font-size: 0.85rem;
+  color: var(--muted);
+}

@@ -7,7 +7,8 @@ import { LineupView } from './LineupView';
 import { StatusPill } from './StatusPill';
 import { ViewerActions } from './ViewerActions';
 import { bossLabel } from './labels';
-import { formatWhen } from './time';
+import { WhenSection } from './WhenSection';
+import { whenLabel } from './time';
 import './post.css';
 
 interface PostPreviewProps {
@@ -74,8 +75,9 @@ function PreviewBody({
           <StatusPill status={p.status} deleted={p.deleted} />
         </div>
         <p className="post-preview__meta">
-          {[formatWhen(p.scheduledAt), p.world.name, p.guild.name].join(' · ')}
+          {[whenLabel(p), p.world.name, p.guild.name].join(' · ')}
         </p>
+        <WhenSection post={p} collapsible />
         {p.minCp !== null && <p className="post-preview__meta">{`Min CP ${formatCp(p.minCp)}`}</p>}
         {p.note && <p className="post-preview__note">{p.note}</p>}
         <LineupView post={p} compact />

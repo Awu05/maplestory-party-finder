@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { POST_TYPE_LABELS } from '@pf/shared';
 import type { PostSummaryDTO } from '@pf/shared';
 import { bossLabel } from './labels';
-import { formatWhen } from './time';
+import { whenLabel } from './time';
 import './post.css';
 
 interface Props {
@@ -54,7 +54,7 @@ export const PostRow = forwardRef<HTMLAnchorElement, Props>(function PostRow(
           <span className="post-row__bosses">{post.bosses.map(bossLabel).join(', ')}</span>
         </span>
         <span className="post-row__meta">
-          <span className="post-row__when">{formatWhen(post.scheduledAt)}</span>
+          <span className="post-row__when">{whenLabel(post)}</span>
           <span aria-hidden="true">·</span>
           <span className="post-row__who">{`${ign} · ${post.guild.name}`}</span>
         </span>

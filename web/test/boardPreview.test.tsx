@@ -236,3 +236,15 @@ describe('Board list refetch indicator', () => {
     await waitFor(() => expect(screen.getByRole('listbox', { name: 'Posts' })).not.toHaveAttribute('aria-busy'));
   });
 });
+
+describe('Board preview free times', () => {
+  it('shows "Free times" in the meta and the read-only grid with a zone caption', async () => {
+    const p = { ...p2, freeTimes: [30, 31], freeTimesZone: 'UTC' };
+    mockApi({ ...base, '/api/posts': [p1, p], '/api/posts/p2': detail(p) });
+    renderBoard();
+    const pane = await preview();
+    expect(await within(pane).findByText(/Time not set yet/)).toBeInTheDocument();
+    expect(within(pane).getByText(/^Shown in your time zone \(/)).toBeInTheDocument();
+    expect(within(pane).getByText(/Free times · Kronos/)).toBeInTheDocument();
+  });
+});

@@ -57,3 +57,9 @@ export function relativeTime(iso: string, now: Date = new Date()): string {
 export function browserTimeZone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone;
 }
+
+/** What a post's time column says: the final time, "Free times" when the poster listed some, else "Flexible". */
+export function whenLabel(post: { scheduledAt: string | null; freeTimes: number[] }): string {
+  if (post.scheduledAt !== null) return formatWhen(post.scheduledAt);
+  return post.freeTimes.length > 0 ? 'Free times' : 'Flexible';
+}

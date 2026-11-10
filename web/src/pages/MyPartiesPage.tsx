@@ -14,7 +14,7 @@ import { LineupView } from '../components/post/LineupView';
 import { PostCard } from '../components/post/PostCard';
 import { StatusPill } from '../components/post/StatusPill';
 import { bossLabel } from '../components/post/labels';
-import { formatWhen } from '../components/post/time';
+import { whenLabel } from '../components/post/time';
 import { useLastActionError } from '../components/post/useLastActionError';
 import '../components/post/post.css';
 
@@ -30,7 +30,7 @@ function PartyItem({ party, tiers }: { party: PostDetailDTO; tiers: RarityTierDT
     <li className="post-card">
       <div className="post-card__head">
         <StatusPill status={party.status} deleted={party.deleted} />
-        <span className="post-card__when">{formatWhen(party.scheduledAt)}</span>
+        <span className="post-card__when">{whenLabel(party)}</span>
       </div>
       <ul className="post-card__bosses">
         {party.bosses.map((b) => (

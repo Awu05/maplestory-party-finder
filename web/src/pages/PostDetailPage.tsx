@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { POST_TYPE_LABELS } from '@pf/shared';
 import { useRarityTiers } from '../api/hooks';
@@ -18,7 +19,9 @@ import { LineupView } from '../components/post/LineupView';
 import { bossLabel, postLabel } from '../components/post/labels';
 import { RequestList, ViewerActions } from '../components/post/ViewerActions';
 import { StatusPill } from '../components/post/StatusPill';
-import { formatWhen } from '../components/post/time';
+import { whenLabel } from '../components/post/time';
+import { WhenSection } from '../components/post/WhenSection';
+import { FinalizeTimeDialog } from '../components/post/FinalizeTimeDialog';
 import { useLastActionError } from '../components/post/useLastActionError';
 import '../components/post/post.css';
 
@@ -34,6 +37,9 @@ export function PostDetailPage() {
   const decline = useDeclineRequest();
   const cancel = useCancelRequest();
   const remove = useRemoveMember(id ?? '');
+  const finalizeRef = useRef<HTMLButtonElement>(null);
+  const returnFocus = useRef(false);
+  const [finalizing, setFinalizing] = useState(false);
   const { error: mutationError, run } = useLastActionError({
     close,
     del,
@@ -43,6 +49,18 @@ export function PostDetailPage() {
     cancel,
     remove,
   });
+
+  // Focus the trigger only after the modal has unmounted; while it is open the page behind it is inert.
+  useEffect(() => {
+    if (!finalizing && returnFocus.current) {
+      returnFocus.current = false;
+      finalizeRef.current?.focus();
+    }
+  }, [finalizing]);
+  const closeFinalize = () => {
+    returnFocus.current = true;
+    setFinalizing(false);
+  };
 
   if (post.isLoading) return <p>Loading…</p>;
   if (post.error) {
@@ -78,13 +96,14 @@ export function PostDetailPage() {
           {POST_TYPE_LABELS[p.type]}
         </span>
         <StatusPill status={p.status} deleted={p.deleted} />
-        <span>{formatWhen(p.scheduledAt)}</span>
+        <span>{whenLabel(p)}</span>
       </header>
       <ul className="post-card__bosses">
         {p.bosses.map((b) => (
           <li key={b.bossDifficultyId}>{bossLabel(b)}</li>
         ))}
       </ul>
+      <WhenSection post={p} />
       <div className="post-card__meta">
         {p.world.name} · {p.guild.name}
       </div>
@@ -105,6 +124,16 @@ export function PostDetailPage() {
             <Link className="btn btn--secondary" to={`/posts/${p.id}/edit`}>
               Edit
             </Link>
+          )}
+          {posterActive && p.type === 'recruiting' && (
+            <button
+              ref={finalizeRef}
+              type="button"
+              className="btn btn--secondary"
+              onClick={() => setFinalizing(true)}
+            >
+              {p.scheduledAt ? 'Change time' : 'Finalize time'}
+            </button>
           )}
           {posterActive && (
             <button
@@ -136,6 +165,8 @@ export function PostDetailPage() {
           </button>
         </div>
       )}
+
+      {finalizing && <FinalizeTimeDialog post={p} onClose={closeFinalize} />}
 
       <h2>Lineup</h2>
       <LineupView

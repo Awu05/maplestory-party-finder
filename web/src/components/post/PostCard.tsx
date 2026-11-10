@@ -4,7 +4,7 @@ import type { PostSummaryDTO, RarityTierDTO } from '@pf/shared';
 import { CharacterCard } from '../card/CharacterCard';
 import { formatCp } from '../card/format';
 import { bossLabel } from './labels';
-import { formatWhen } from './time';
+import { whenLabel } from './time';
 import './post.css';
 
 interface Props {
@@ -19,7 +19,7 @@ export function PostCard({ post, tiers, onOpen }: Props) {
     <Link to={`/posts/${post.id}`} className="post-card" onClick={onOpen}>
       <div className="post-card__head">
         <span className={`post-badge post-badge--${post.type}`}>{POST_TYPE_LABELS[post.type]}</span>
-        <span className="post-card__when">{formatWhen(post.scheduledAt)}</span>
+        <span className="post-card__when">{whenLabel(post)}</span>
       </div>
       {poster.character ? (
         <CharacterCard character={poster.character} tiers={tiers} />
