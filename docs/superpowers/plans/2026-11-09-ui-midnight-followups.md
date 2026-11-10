@@ -2,8 +2,8 @@
 
 ## Queued features (user-approved, build next)
 - QUEUED after this plan (user-approved small change): account-level editable Display name — User.displayName nullable; Profile page from header avatar/name; cards/modal/lineups/Discord messages show displayName ?? username; modal also shows real @username small; login keeps displayName; pings unaffected; admin search matches both; update spec "can't be edited" line.
-- QUEUED (user request): manual character fallback when Nexon lookup finds nothing (e.g. Challenger World) — enter name/world/class/level manually; skipped by daily sync; editable. Image question pending with user (upload vs class placeholder).
-- QUEUED spec detail (user answered): manual character fallback uses ONE default character image (card frame still class-colored); user enters name, world, class, level when lookup finds nothing or Nexon unreachable; "added manually" note on card; skipped by daily sync; editable class/level; "Refresh from Nexon" upgrades it to synced if Nexon later finds it.
+- DONE (feat/manual-characters): QUEUED (user request): manual character fallback when Nexon lookup finds nothing (e.g. Challenger World) — enter name/world/class/level manually; skipped by daily sync; editable. Image question pending with user (upload vs class placeholder).
+- DONE (feat/manual-characters): QUEUED spec detail (user answered): manual character fallback uses ONE default character image (card frame still class-colored); user enters name, world, class, level when lookup finds nothing or Nexon unreachable; "added manually" note on card; skipped by daily sync; editable class/level; "Refresh from Nexon" upgrades it to synced if Nexon later finds it.
 
 ## Deferred review findings
 - Task 1: minor (deferred): contrast test hard-codes button text instead of reading --accent-text; danger-hover text untested
