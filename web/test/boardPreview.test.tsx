@@ -2,7 +2,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { CharacterDTO, PartyMemberDTO, PostDetailDTO, PostSummaryDTO } from '@pf/shared';
 import { App } from '../src/App';
-import { mockApi, renderWithProviders } from './setup';
+import { mockApi, renderWithProviders, testQueryClient } from './setup';
 
 const character = (id: string, ign: string): CharacterDTO => ({
   id,
@@ -128,6 +128,51 @@ describe('Board preview', () => {
     await waitFor(() =>
       expect(fetchMock.mock.calls.some(([u, i]) => String(u) === '/api/posts/p2/requests' && i?.method === 'POST')).toBe(true),
     );
+  });
+
+  const loggedIn = {
+    ...base,
+    '/api/auth/me': { id: 'u1', discordUsername: 'me#1', avatarUrl: null, isAdmin: false },
+    '/api/characters?mine=1': [character('k1', 'KronosMain')],
+    '/api/posts?worldIds=5': [p1, p2],
+    '/api/me/parties': [],
+    '/api/me/posts': [],
+  };
+
+  it("hides Request to join on the poster's own recruiting post", async () => {
+    mockApi({ ...loggedIn, '/api/posts/p2': detail({ ...p2, isPoster: true }) });
+    renderBoard();
+    const pane = await preview();
+    await screen.findByText('me#1');
+    expect(await within(pane).findByRole('link', { name: 'Edit' })).toBeInTheDocument();
+    expect(within(pane).queryByRole('button', { name: 'Request to join' })).not.toBeInTheDocument();
+    expect(within(pane).queryByRole('region', { name: 'Your actions' })).not.toBeInTheDocument();
+  });
+
+  it("hides Invite on the poster's own LFP post", async () => {
+    mockApi({ ...loggedIn, '/api/posts/p1': detail({ ...p1, isPoster: true }) });
+    renderBoard('/?post=p1');
+    const pane = await preview();
+    await screen.findByText('me#1');
+    expect(await within(pane).findByRole('link', { name: 'Edit' })).toBeInTheDocument();
+    expect(within(pane).queryByRole('button', { name: 'Invite' })).not.toBeInTheDocument();
+    expect(within(pane).queryByRole('region', { name: 'Your actions' })).not.toBeInTheDocument();
+  });
+
+  it('resets the action error when another (cached) post is selected', async () => {
+    mockApi(loggedIn); // no POST mock: the request fails with not_found
+    const client = testQueryClient();
+    client.setQueryDefaults(['posts'], { gcTime: Infinity });
+    client.setQueryData(['posts', 'detail', 'p1'], detail(p1));
+    renderWithProviders(<App />, { route: '/?post=p2', client });
+    const pane = await preview();
+    fireEvent.click(await within(pane).findByRole('button', { name: 'Request to join' }));
+    fireEvent.click(await within(pane).findByRole('button', { name: /KronosMain/ }));
+    expect(await within(pane).findByRole('alert')).toBeInTheDocument();
+    const rows = within(screen.getByRole('listbox', { name: 'Posts' })).getAllByRole('option');
+    fireEvent.click(rows.find((r) => r.textContent?.includes('Lucid'))!);
+    expect(await within(pane).findByRole('heading', { name: 'Hard Lucid' })).toBeInTheDocument();
+    expect(within(pane).queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('shows Edit for the poster only, and Open post for everyone', async () => {

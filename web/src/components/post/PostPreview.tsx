@@ -12,12 +12,13 @@ import './post.css';
 export function PostPreview({ postId }: { postId: string | null }) {
   return (
     <section className="board__preview panel" aria-label="Post preview">
-      {postId === null ? <p className="board__placeholder">Pick a post to see its party</p> : <PreviewBody postId={postId} />}
+      {postId === null ? <p className="board__placeholder">Pick a post to see its party</p> : <PreviewBody key={postId} postId={postId} />}
     </section>
   );
 }
 
-// Separate component so no (disabled) detail query is registered while nothing is selected.
+// Separate component so no (disabled) detail query is registered while nothing is selected;
+// keyed by post id so action state (errors, open pickers) resets on selection change.
 function PreviewBody({ postId }: { postId: string }) {
   const post = usePost(postId);
 
@@ -54,7 +55,7 @@ function PreviewBody({ postId }: { postId: string }) {
             </Link>
           )}
         </div>
-        <ViewerActions post={p} />
+        {!p.isPoster && !p.deleted && <ViewerActions post={p} />}
       </>
     );
   }
