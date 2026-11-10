@@ -172,6 +172,8 @@ export async function acceptRequest(prisma: PrismaClient, viewer: Viewer, id: st
     assertDecider(post, request, viewer);
     assertPending(request);
     assertOpen(post, now);
+    // An invite answers its LFP post, so it can only be taken while that post is still live.
+    if (lfp && effectivePostStatus(lfp, now) === 'closed') throw new AppError(409, 'POST_CLOSED', 'That post is no longer available');
     if (request.character.worldId !== post.worldId) throw new AppError(400, 'WRONG_WORLD', "That character is not on the post's world");
     if (isMember(post, request.characterId)) {
       await decidePending(tx, id, 'declined', now);
@@ -202,10 +204,9 @@ export async function acceptRequest(prisma: PrismaClient, viewer: Viewer, id: st
 
     let closedLfpPostId: string | null = null;
     if (lfp) {
-      if (lfp.status !== 'closed' && lfp.deletedAt === null) {
-        await tx.post.update({ where: { id: lfp.id }, data: { status: 'closed', closedReason: 'lfp_matched' } });
-        closedLfpPostId = lfp.id;
-      }
+      // Checked open above, under its lock.
+      await tx.post.update({ where: { id: lfp.id }, data: { status: 'closed', closedReason: 'lfp_matched' } });
+      closedLfpPostId = lfp.id;
       declinedRequestIds = declinedRequestIds.concat(await autoDeclinePending(tx, { lfpPostId: lfp.id, id: { not: id } }));
     }
     const updated = await tx.post.findUniqueOrThrow({ where: { id: postId }, include: postInclude });

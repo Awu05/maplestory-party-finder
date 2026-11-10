@@ -132,13 +132,33 @@ describe('invite decisions', () => {
     expect(JSON.stringify(board.json())).not.toContain(lfp.id);
   });
 
-  it('accept still works when the LFP post was already closed', async () => {
+  it('accept after the LFP post was closed -> 409 POST_CLOSED, invite stays pending', async () => {
     const id = (await invite(lfp.id, postA.id, u1)).json().id;
     await prisma.post.update({ where: { id: lfp.id }, data: { status: 'closed', closedReason: 'manual' } });
     events.events.length = 0;
-    expect((await call(`/api/requests/${id}/accept`, u2)).statusCode).toBe(200);
+    expectError(await call(`/api/requests/${id}/accept`, u2), 409, 'POST_CLOSED');
+    expect((await prisma.request.findUniqueOrThrow({ where: { id } })).status).toBe('pending');
     expect((await prisma.post.findUniqueOrThrow({ where: { id: lfp.id } })).closedReason).toBe('manual');
-    expect(events.events.some((e) => e.type === 'post.closed')).toBe(false);
+    expect(await prisma.postMember.count({ where: { postId: postA.id } })).toBe(1);
+    expect(events.events).toEqual([]);
+  });
+
+  it('accept after the LFP post expired -> 409 POST_CLOSED, invite stays pending, nobody joins', async () => {
+    const id = (await invite(lfp.id, postA.id, u1)).json().id;
+    await prisma.post.update({ where: { id: lfp.id }, data: { expiresAt: new Date(Date.now() - 60_000) } });
+    events.events.length = 0;
+    expectError(await call(`/api/requests/${id}/accept`, u2), 409, 'POST_CLOSED');
+    expect((await prisma.request.findUniqueOrThrow({ where: { id } })).status).toBe('pending');
+    expect(await prisma.post.findUniqueOrThrow({ where: { id: lfp.id } })).toMatchObject({ status: 'open', closedReason: null });
+    expect(await prisma.postMember.count({ where: { postId: postA.id } })).toBe(1);
+    expect(events.events).toEqual([]);
+  });
+
+  it('accept after the LFP post was soft-deleted -> 409 POST_CLOSED', async () => {
+    const id = (await invite(lfp.id, postA.id, u1)).json().id;
+    await prisma.post.update({ where: { id: lfp.id }, data: { deletedAt: new Date() } });
+    expectError(await call(`/api/requests/${id}/accept`, u2), 409, 'POST_CLOSED');
+    expect((await prisma.request.findUniqueOrThrow({ where: { id } })).status).toBe('pending');
   });
 
   it('accept when status is open but members == partySize -> 409 POST_FULL', async () => {
