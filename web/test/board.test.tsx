@@ -66,7 +66,7 @@ const base = {
 };
 
 const postsCalls = (fetchMock: ReturnType<typeof mockApi>) =>
-  fetchMock.mock.calls.map(([u]) => String(u)).filter((u) => u.startsWith('/api/posts'));
+  fetchMock.mock.calls.map(([u]) => String(u)).filter((u) => u.startsWith('/api/posts') && !u.startsWith('/api/posts/'));
 
 describe('BoardPage', () => {
   it('renders posts as rows with type badge, bosses, time, slots 2 / 4', async () => {

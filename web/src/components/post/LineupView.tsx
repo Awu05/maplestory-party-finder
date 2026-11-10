@@ -8,14 +8,17 @@ import './post.css';
 
 interface Props {
   post: PostDetailDTO;
-  tiers: RarityTierDTO[];
+  /** Not needed (and ignored) in compact mode. */
+  tiers?: RarityTierDTO[];
+  /** Small sprite thumbnails with IGN and dashed open slots: no CP captions, actions or card modal. */
+  compact?: boolean;
   onRemove?: (memberId: string) => void;
   onLeave?: (memberId: string) => void;
   /** Disables Remove/Leave while a mutation is in flight. */
   busy?: boolean;
 }
 
-export function LineupView({ post, tiers, onRemove, onLeave, busy = false }: Props) {
+export function LineupView({ post, tiers = [], compact = false, onRemove, onLeave, busy = false }: Props) {
   const [open, setOpen] = useState<CharacterDTO | null>(null);
   const bossContext = post.bosses.map((b) => ({
     bossDifficultyId: b.bossDifficultyId,
@@ -61,6 +64,24 @@ export function LineupView({ post, tiers, onRemove, onLeave, busy = false }: Pro
       </li>
     );
   };
+
+  if (compact) {
+    return (
+      <ul className="lineup lineup--compact" aria-label="Lineup">
+        {post.members.map((m) => (
+          <li key={m.id} className="lineup__thumb">
+            <img src={m.character?.imageUrl ?? m.snapshot.imageUrl} alt="" width={48} height={48} />
+            <span className="lineup__ign">{m.character?.ign ?? m.snapshot.ign}</span>
+          </li>
+        ))}
+        {Array.from({ length: emptySlots }, (_, i) => (
+          <li key={`slot-${i}`} className="lineup__thumb lineup__thumb--slot">
+            Open slot
+          </li>
+        ))}
+      </ul>
+    );
+  }
 
   return (
     <>

@@ -64,6 +64,16 @@ const p2: PostSummaryDTO = {
   memberCount: 1,
 };
 
+const detailExtras = {
+  isMember: false,
+  incomingRequests: [],
+  sentInvites: [],
+  myPending: [],
+  receivedInvites: [],
+  sentInvitesToThis: [],
+  canRenew: false,
+};
+
 const base = {
   '/api/auth/me': null,
   '/api/worlds': [{ id: 5, nexonWorldId: 5, name: 'Kronos', worldType: 'normal', active: true }],
@@ -73,8 +83,8 @@ const base = {
     { id: 2, name: 'Will', difficulties: [{ id: 8, difficulty: 'Normal', partyCap: 6 }] },
   ],
   '/api/rarity-tiers': [{ id: 1, name: 'Common', minCp: 0, sortOrder: 0 }],
-  '/api/posts/p1': { ...p1, members: [poster] },
-  '/api/posts/p2': { ...p2, members: [poster] },
+  '/api/posts/p1': { ...detailExtras, ...p1, members: [poster] },
+  '/api/posts/p2': { ...detailExtras, ...p2, members: [poster] },
 };
 
 function Where() {
@@ -225,7 +235,7 @@ describe('Board list', () => {
     await within(await screen.findByRole('listbox', { name: 'Posts' })).findAllByRole('option');
     fireEvent.click(screen.getByRole('radio', { name: 'LFP' }));
     const list = screen.getByRole('listbox', { name: 'Posts' });
-    expect(list).not.toHaveAttribute('aria-busy');
+    expect(list).toHaveAttribute('aria-busy', 'true'); // refetch indicator, rows kept
     expect(within(list).getAllByRole('option')).toHaveLength(2);
     release();
     await waitFor(() => expect(within(screen.getByRole('listbox', { name: 'Posts' })).getAllByRole('option')).toHaveLength(1));

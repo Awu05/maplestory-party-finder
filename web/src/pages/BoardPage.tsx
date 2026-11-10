@@ -7,6 +7,7 @@ import { usePosts, type PostFilters } from '../api/postHooks';
 import { friendlyError } from '../api/errors';
 import { ChipGroup, MenuChip, ToggleChip } from '../components/ui/Chips';
 import { PostRow } from '../components/post/PostRow';
+import { PostPreview } from '../components/post/PostPreview';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 
 export function BoardPage() {
@@ -40,6 +41,20 @@ export function BoardPage() {
     },
     { enabled: defaultsReady },
   );
+
+  const [params, setParams] = useSearchParams();
+  const wanted = params.get('post');
+  const selectedId = posts.data?.some((p) => p.id === wanted) ? wanted : (posts.data?.[0]?.id ?? null);
+  // Only ?post= changes; other params are kept. Replace, not push, so Back leaves the board.
+  const select = (id: string) =>
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set('post', id);
+        return next;
+      },
+      { replace: true },
+    );
 
   const selectedBoss = bosses.data?.find((b) => String(b.id) === bossId);
   const selectedDifficulty = selectedBoss?.difficulties.find((d) => String(d.id) === difficultyId);
@@ -131,12 +146,16 @@ export function BoardPage() {
       </div>
       {posts.isError && <p role="alert">{friendlyError(posts.error)}</p>}
       <div className={isPhone ? 'board' : 'board board--split'}>
-        <PostList posts={posts.data} loading={posts.isPending} isPhone={isPhone} />
-        {!isPhone && !posts.isError && (
-          <section className="board__preview panel" aria-label="Post preview">
-            <p className="board__placeholder">Pick a post to see its party</p>
-          </section>
-        )}
+        <PostList
+          posts={posts.data}
+          loading={posts.isPending}
+          refetching={posts.isPlaceholderData}
+          isPhone={isPhone}
+          selectedId={selectedId}
+          wanted={wanted}
+          select={select}
+        />
+        {!isPhone && !posts.isError && <PostPreview postId={selectedId} />}
       </div>
     </section>
   );
@@ -144,24 +163,20 @@ export function BoardPage() {
 
 const EMPTY = 'No open posts match. Be the first to post!';
 
-function PostList({ posts, loading, isPhone }: { posts?: PostSummaryDTO[]; loading: boolean; isPhone: boolean }) {
-  const [params, setParams] = useSearchParams();
+interface PostListProps {
+  posts?: PostSummaryDTO[];
+  loading: boolean;
+  refetching: boolean;
+  isPhone: boolean;
+  selectedId: string | null;
+  wanted: string | null;
+  select: (id: string) => void;
+}
+
+function PostList({ posts, loading, refetching, isPhone, selectedId, wanted, select }: PostListProps) {
   const navigate = useNavigate();
   const rowRefs = useRef(new Map<string, HTMLAnchorElement>());
   const hintId = useId();
-  const wanted = params.get('post');
-  const selectedId = posts?.some((p) => p.id === wanted) ? wanted : (posts?.[0]?.id ?? null);
-
-  // Only ?post= changes; other params are kept. Replace, not push, so Back leaves the board.
-  const select = (id: string) =>
-    setParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        next.set('post', id);
-        return next;
-      },
-      { replace: true },
-    );
 
   // Default to the first post, and replace a stale id (filtered out, closed, deleted) with it.
   const needsRewrite = !isPhone && selectedId !== null && wanted !== selectedId;
@@ -232,7 +247,13 @@ function PostList({ posts, loading, isPhone }: { posts?: PostSummaryDTO[]; loadi
   return (
     <>
       {hint}
-      <div className="post-list" role="listbox" aria-label="Posts" aria-describedby={hintId}>
+      <div
+        className="post-list"
+        role="listbox"
+        aria-label="Posts"
+        aria-describedby={hintId}
+        aria-busy={refetching || undefined}
+      >
         {posts.map((p, i) => (
           <PostRow
             key={p.id}
