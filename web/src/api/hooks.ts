@@ -1,6 +1,9 @@
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   AdminGuildDTO,
+  AdminPostDTO,
+  AdminUserDTO,
   BossDTO,
   CharacterDTO,
   GuildDTO,
@@ -221,3 +224,64 @@ export function useTestWebhook() {
     onSettled: () => qc.invalidateQueries({ queryKey: ['admin', 'webhooks', 'health'] }),
   });
 }
+
+// ---- Admin moderation ----
+
+export function useDebouncedValue<T>(value: T, ms = 300): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return debounced;
+}
+
+export function useAdminUsers(q: string) {
+  const term = q.trim();
+  return useQuery({
+    queryKey: ['admin', 'users', term],
+    queryFn: () =>
+      api<AdminUserDTO[]>(term ? `/api/admin/users?q=${encodeURIComponent(term)}` : '/api/admin/users'),
+  });
+}
+
+export function useAdminUserCharacters(userId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['admin', 'user-characters', userId],
+    queryFn: () => api<CharacterDTO[]>(`/api/admin/users/${userId}/characters`),
+    enabled,
+  });
+}
+
+export function useAdminPosts(status: string, q: string) {
+  const term = q.trim();
+  const params = new URLSearchParams({ status });
+  if (term) params.set('q', term);
+  return useQuery({
+    queryKey: ['admin', 'posts', status, term],
+    queryFn: () => api<AdminPostDTO[]>(`/api/admin/posts?${params.toString()}`),
+  });
+}
+
+/** Moderation changes users, characters and posts (bans close posts; deletes cascade), so refresh all three. */
+function useModerationMutation<I, O>(fn: (input: I) => Promise<O>) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: () =>
+      Promise.all(['admin', 'characters', 'posts'].map((k) => qc.invalidateQueries({ queryKey: [k] }))),
+  });
+}
+
+export const useSetBanned = () =>
+  useModerationMutation(({ id, banned }: { id: string; banned: boolean }) =>
+    api<AdminUserDTO>(`/api/admin/users/${id}`, { method: 'PATCH', json: { banned } }),
+  );
+export const useReassignCharacter = () =>
+  useModerationMutation(({ id, userId }: { id: string; userId: string }) =>
+    api<CharacterDTO>(`/api/admin/characters/${id}/reassign`, { method: 'POST', json: { userId } }),
+  );
+export const useAdminDeleteCharacter = () =>
+  useModerationMutation((id: string) => api<void>(`/api/admin/characters/${id}`, { method: 'DELETE' }));
+export const useAdminDeletePost = () =>
+  useModerationMutation((id: string) => api<void>(`/api/admin/posts/${id}`, { method: 'DELETE' }));

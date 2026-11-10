@@ -21,3 +21,9 @@
 .pill { display: inline-block; padding: 0.1rem 0.6rem; border-radius: 999px; font-size: 0.85em; color: #fff; background: #2e7d32; }
 .pill--red { background: #c0392b; }
 .pill--gray { background: #7f8c8d; }
+.admin__user { border-bottom: 1px solid rgba(128, 128, 128, 0.4); padding: 0.5rem 0; }
+.admin__user-head { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.admin__avatar { width: 28px; height: 28px; border-radius: 50%; background: rgba(128, 128, 128, 0.4); object-fit: cover; }
+.admin__chars { display: flex; flex-wrap: wrap; gap: 1rem; margin: 0.75rem 0; }
+.admin__char { display: grid; gap: 0.4rem; justify-items: start; }
+.admin__picker { border: 1px solid rgba(128, 128, 128, 0.4); border-radius: 8px; padding: 0.5rem; display: grid; gap: 0.4rem; }

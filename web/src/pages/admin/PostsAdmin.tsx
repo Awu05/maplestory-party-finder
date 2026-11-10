@@ -1,0 +1,73 @@
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { useAdminDeletePost, useAdminPosts, useDebouncedValue } from '../../api/hooks';
+import { friendlyError } from '../../api/errors';
+import { StatusPill } from '../../components/post/StatusPill';
+import { bossLabel } from '../../components/post/labels';
+import { relativeTime } from '../../components/post/time';
+
+const STATUSES = [
+  ['all', 'All'],
+  ['open', 'Open'],
+  ['full', 'Full'],
+  ['closed', 'Closed'],
+  ['deleted', 'Deleted'],
+] as const;
+
+export function PostsAdmin() {
+  const [status, setStatus] = useState<string>('all');
+  const [q, setQ] = useState('');
+  const posts = useAdminPosts(status, useDebouncedValue(q));
+  const remove = useAdminDeletePost();
+
+  return (
+    <div>
+      <h2>Posts</h2>
+      <div className="admin__row">
+        <label>
+          Status
+          <select value={status} onChange={(e) => setStatus(e.target.value)}>
+            {STATUSES.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+          </select>
+        </label>
+        <input type="search" aria-label="Search IGN" placeholder="Search IGN" value={q} onChange={(e) => setQ(e.target.value)} />
+      </div>
+      {posts.isError && <p role="alert" className="admin__error">{friendlyError(posts.error)}</p>}
+      {remove.isError && <p role="alert" className="admin__error">{friendlyError(remove.error)}</p>}
+      <table className="admin__table">
+        <thead>
+          <tr><th>Type</th><th>Bosses</th><th>Poster</th><th>World</th><th>Status</th><th>Closed reason</th><th>Created</th><th /></tr>
+        </thead>
+        <tbody>
+          {posts.data?.map((p) => {
+            const ign = p.poster.snapshot.ign;
+            return (
+              <tr key={p.id}>
+                <td data-label="Type">{p.type === 'recruiting' ? 'Recruiting' : 'Looking for party'}</td>
+                <td data-label="Bosses">{p.bosses.map(bossLabel).join(', ')}</td>
+                <td data-label="Poster">{ign} ({p.posterDiscordUsername})</td>
+                <td data-label="World">{p.world.name}</td>
+                <td data-label="Status"><StatusPill status={p.status} deleted={p.deleted} /></td>
+                <td data-label="Closed reason">{p.closedReason ?? '—'}</td>
+                <td data-label="Created">{relativeTime(p.createdAt)}</td>
+                <td>
+                  <Link to={`/posts/${p.id}`} aria-label={`View ${p.id}`}>View</Link>{' '}
+                  <button
+                    type="button"
+                    aria-label={`Delete permanently ${p.id}`}
+                    disabled={remove.isPending}
+                    onClick={() => {
+                      if (window.confirm(`Permanently delete this post by ${ign}? This cannot be undone.`)) remove.mutate(p.id);
+                    }}
+                  >
+                    Delete permanently
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}

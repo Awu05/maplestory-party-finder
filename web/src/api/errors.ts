@@ -27,6 +27,7 @@ const FRIENDLY: Record<string, string> = {
   PARTY_TOO_SMALL: "Party size can't be smaller than the current number of members.",
   HAS_MEMBERS: 'Others have already joined, so this can no longer be changed.',
   NO_WEBHOOK: 'This guild has no webhook set.',
+  CANNOT_BAN_ADMIN: "Admins can't be banned.",
   WRONG_POST_TYPE: "That isn't allowed for this type of post.",
 };
 
