@@ -69,6 +69,13 @@ describe('POST /api/posts', () => {
     expect(row.expiresAt.getTime()).toBe(row.createdAt.getTime() + 7 * 24 * HOUR);
   });
 
+  it("stores the zone's canonical name", async () => {
+    const res = await post(body({ freeTimes: [20], freeTimesZone: 'america/new_york' }));
+    expect(res.statusCode).toBe(201);
+    expect(res.json().freeTimesZone).toBe('America/New_York');
+    expect((await prisma.post.findUniqueOrThrow({ where: { id: res.json().id } })).freeTimesZone).toBe('America/New_York');
+  });
+
   it('empty free times store no zone', async () => {
     const res = await post(body({ freeTimes: [], freeTimesZone: 'America/New_York' }));
     expect(res.statusCode).toBe(201);
@@ -111,6 +118,8 @@ describe('POST /api/posts', () => {
     ['non-empty freeTimes with no zone', { freeTimes: [20] }],
     ['non-empty freeTimes with a null zone', { freeTimes: [20], freeTimesZone: null }],
     ['zone Mars/Base', { freeTimes: [20], freeTimesZone: 'Mars/Base' }],
+    ['UTC-offset zone +05:30', { freeTimes: [20], freeTimesZone: '+05:30' }],
+    ['UTC-offset zone -08:00', { freeTimes: [20], freeTimesZone: '-08:00' }],
     ['zone Mars/Base with empty freeTimes', { freeTimes: [], freeTimesZone: 'Mars/Base' }],
     ['duplicate bossDifficultyIds', { bossDifficultyIds: [hardLucid, hardLucid] }],
     ['unknown bossDifficultyId', { bossDifficultyIds: [999999] }],

@@ -1,6 +1,6 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
 import {
-  effectivePostStatus, FLEXIBLE_TTL_MS, MAX_SCHEDULE_AHEAD_MS, maxPartySizeFor, MIN_PARTY_SIZE, postExpiresAt, SCHEDULE_PAST_TOLERANCE_MS,
+  canonicalTimeZone, effectivePostStatus, FLEXIBLE_TTL_MS, MAX_SCHEDULE_AHEAD_MS, maxPartySizeFor, MIN_PARTY_SIZE, postExpiresAt, SCHEDULE_PAST_TOLERANCE_MS,
   type PostType,
 } from '@pf/shared';
 import type { Viewer } from '../auth/guards.js';
@@ -26,7 +26,7 @@ function normalizeFreeTimes(freeTimes: number[], zone: string | null | undefined
   const sorted = [...new Set(freeTimes)].sort((a, b) => a - b);
   if (sorted.length === 0) return { freeTimes: [], freeTimesZone: null };
   if (!zone) throw new AppError(400, 'VALIDATION', 'freeTimesZone is required with freeTimes');
-  return { freeTimes: sorted, freeTimesZone: zone };
+  return { freeTimes: sorted, freeTimesZone: canonicalTimeZone(zone) };
 }
 
 /** Throws 400 VALIDATION unless scheduledAt is within [now - 5min, now + 30d]. */

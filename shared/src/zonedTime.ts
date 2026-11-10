@@ -39,14 +39,26 @@ function offsetMs(ms: number, zone: string): number {
   return wallAsUtc - Math.floor(ms / 1000) * 1000;
 }
 
+/** IANA-style names only: a leading letter, then letters, digits, `_`, `+`, `-` and `/` (e.g. Etc/GMT+3). */
+const IANA_NAME = /^[A-Za-z][A-Za-z0-9_+\-/]*$/;
+
+/**
+ * True for an IANA zone name Intl knows. Rejects UTC-offset strings like `+05:30` that Intl
+ * accepts: Postgres reads those with POSIX semantics (sign flipped) in AT TIME ZONE.
+ */
 export function isValidTimeZone(zone: string): boolean {
-  if (!zone) return false;
+  if (!IANA_NAME.test(zone)) return false;
   try {
     new Intl.DateTimeFormat('en-US', { timeZone: zone });
     return true;
   } catch {
     return false;
   }
+}
+
+/** Intl's canonical spelling of a valid zone, e.g. `america/new_york` -> `America/New_York`. */
+export function canonicalTimeZone(zone: string): string {
+  return new Intl.DateTimeFormat('en-US', { timeZone: zone }).resolvedOptions().timeZone;
 }
 
 export function instantToZoned(date: Date, zone: string): WallTime & { dayOfWeek: number } {

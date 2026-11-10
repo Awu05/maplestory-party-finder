@@ -67,15 +67,17 @@ describe('PATCH /api/posts/:id', () => {
     const p = await makePost({ posterUserId: userId, scheduledAt: null, freeTimes: [20], freeTimesZone: 'America/New_York' });
     expect((await patch(p.id, { freeTimes: [21] })).statusCode).toBe(200);
     expect(await prisma.post.findUniqueOrThrow({ where: { id: p.id } })).toMatchObject({ freeTimes: [21], freeTimesZone: 'America/New_York' });
-    expect((await patch(p.id, { freeTimesZone: 'Asia/Kolkata' })).statusCode).toBe(200);
-    expect(await prisma.post.findUniqueOrThrow({ where: { id: p.id } })).toMatchObject({ freeTimes: [21], freeTimesZone: 'Asia/Kolkata' });
+    expect((await patch(p.id, { freeTimesZone: 'europe/berlin' })).statusCode).toBe(200);
+    expect(await prisma.post.findUniqueOrThrow({ where: { id: p.id } })).toMatchObject({ freeTimes: [21], freeTimesZone: 'Europe/Berlin' });
     expect((await patch(p.id, { freeTimes: [] })).statusCode).toBe(200);
     expect(await prisma.post.findUniqueOrThrow({ where: { id: p.id } })).toMatchObject({ freeTimes: [], freeTimesZone: null });
     // No zone stored or sent.
     const noZone = await patch(p.id, { freeTimes: [30] });
     expect(noZone.statusCode).toBe(400);
     expect(noZone.json().error.code).toBe('VALIDATION');
-    for (const body of [{ freeTimes: [30], freeTimesZone: null }, { freeTimes: [30], freeTimesZone: 'Mars/Base' }, { freeTimes: [168] }]) {
+    for (const body of [
+      { freeTimes: [30], freeTimesZone: null }, { freeTimes: [30], freeTimesZone: 'Mars/Base' }, { freeTimes: [30], freeTimesZone: '+05:30' }, { freeTimes: [168] },
+    ]) {
       const res = await patch(p.id, body);
       expect(res.statusCode).toBe(400);
       expect(res.json().error.code).toBe('VALIDATION');

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   freeSlotsForViewer,
   instantToZoned,
+  canonicalTimeZone,
   isValidTimeZone,
   nextOccurrence,
   zonedToInstant,
@@ -14,6 +15,26 @@ describe('isValidTimeZone', () => {
     expect(isValidTimeZone(NY)).toBe(true);
     expect(isValidTimeZone('Mars/Base')).toBe(false);
     expect(isValidTimeZone('')).toBe(false);
+  });
+  it('rejects UTC-offset strings that Intl accepts (Postgres AT TIME ZONE flips their sign)', () => {
+    for (const z of ['+05:30', '-08:00', '+0530', '+05', '-0800']) {
+      expect(isValidTimeZone(z)).toBe(false);
+    }
+    expect(isValidTimeZone('UTC+3')).toBe(false);
+    expect(isValidTimeZone('GMT-05:00')).toBe(false);
+  });
+  it('keeps IANA names, including UTC and Etc/GMT zones', () => {
+    for (const z of ['UTC', NY, 'Asia/Kolkata', 'Etc/GMT+3', 'America/Argentina/Buenos_Aires']) {
+      expect(isValidTimeZone(z)).toBe(true);
+    }
+  });
+});
+
+describe('canonicalTimeZone', () => {
+  it("returns Intl's canonical name", () => {
+    expect(canonicalTimeZone(NY)).toBe(NY);
+    expect(canonicalTimeZone('america/new_york')).toBe(NY);
+    expect(canonicalTimeZone('utc')).toBe('UTC');
   });
 });
 
