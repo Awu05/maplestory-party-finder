@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useCharacters, useGuilds, useRarityTiers, useWorlds } from '../api/hooks';
 import { CharacterCard } from '../components/card/CharacterCard';
 import { CardDetailModal } from '../components/card/CardDetailModal';
+import { MenuChip } from '../components/ui/Chips';
 import './characters.css';
 
 const ARCHETYPE_OPTIONS = [
@@ -41,45 +42,42 @@ export function CharactersPage() {
 
   return (
     <section>
-      <h1>Characters</h1>
+      <div className="page__head">
+        <h1>Characters</h1>
+      </div>
       <div className="filters">
-        <label>
-          Guild
-          <select value={guildId} onChange={(e) => setGuildId(e.target.value)}>
-            <option value="">All guilds</option>
-            {guilds.data?.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          World
-          <select value={worldId} onChange={(e) => setWorldId(e.target.value)}>
-            <option value="">All worlds</option>
-            {worlds.data?.map((w) => (
-              <option key={w.id} value={w.id}>
-                {w.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Archetype
-          <select value={archetype} onChange={(e) => setArchetype(e.target.value)}>
-            <option value="">All archetypes</option>
-            {ARCHETYPE_OPTIONS.map(([v, l]) => (
-              <option key={v} value={v}>
-                {l}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Search IGN
-          <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} />
-        </label>
+        <MenuChip
+          label="Guild"
+          allLabel="All guilds"
+          valueLabel={guilds.data?.find((g) => g.id === guildId)?.name ?? null}
+          value={guildId}
+          onChange={setGuildId}
+          options={(guilds.data ?? []).map((g) => ({ value: g.id, label: g.name }))}
+        />
+        <MenuChip
+          label="World"
+          allLabel="All worlds"
+          valueLabel={worlds.data?.find((w) => String(w.id) === worldId)?.name ?? null}
+          value={worldId}
+          onChange={setWorldId}
+          options={(worlds.data ?? []).map((w) => ({ value: String(w.id), label: w.name }))}
+        />
+        <MenuChip
+          label="Archetype"
+          allLabel="All archetypes"
+          valueLabel={ARCHETYPE_OPTIONS.find(([v]) => v === archetype)?.[1] ?? null}
+          value={archetype}
+          onChange={setArchetype}
+          options={ARCHETYPE_OPTIONS.map(([v, l]) => ({ value: v, label: l }))}
+        />
+        <input
+          type="search"
+          className="filters__search"
+          aria-label="Search IGN"
+          placeholder="Search IGN"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
       </div>
 
       {characters.isError && <p role="alert">Couldn't load characters.</p>}

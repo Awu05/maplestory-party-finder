@@ -64,9 +64,8 @@ describe('CharactersPage', () => {
     expect(await screen.findByLabelText(/Lily, level/)).toBeInTheDocument();
     expect(screen.getByLabelText(/Bob, level/)).toBeInTheDocument();
 
-    fireEvent.change(await screen.findByRole('option', { name: 'Other Guild' }).then((o) => o.parentElement!), {
-      target: { value: 'g2' },
-    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Guild' }));
+    fireEvent.click(await screen.findByRole('option', { name: 'Other Guild' }));
     await waitFor(() => expect(screen.queryByLabelText(/Lily, level/)).not.toBeInTheDocument());
     expect(fetchMock.mock.calls.map((c) => String(c[0]))).toContain('/api/characters?guildId=g2');
   });

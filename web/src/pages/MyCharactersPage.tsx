@@ -10,12 +10,13 @@ function Actions({ id, onMessage }: { id: string; onMessage: (m: string) => void
   const refresh = useRefreshCharacter(id);
   const del = useDeleteCharacter();
   return (
-    <div className="my-card__actions">
-      <button type="button" onClick={() => navigate(`/me/characters/${id}/edit`)}>
+    <div className="actions my-card__actions">
+      <button type="button" className="btn btn--secondary" onClick={() => navigate(`/me/characters/${id}/edit`)}>
         Edit
       </button>
       <button
         type="button"
+        className="btn btn--secondary"
         disabled={refresh.isPending}
         onClick={() => {
           onMessage('');
@@ -32,6 +33,7 @@ function Actions({ id, onMessage }: { id: string; onMessage: (m: string) => void
       </button>
       <button
         type="button"
+        className="btn btn--danger"
         disabled={del.isPending}
         onClick={() => {
           if (!window.confirm('Delete this character?')) return;
@@ -55,7 +57,9 @@ export function MyCharactersPage() {
   if (!me.data) {
     return (
       <section>
-        <h1>My characters</h1>
+        <div className="page__head">
+          <h1>My characters</h1>
+        </div>
         <p>Log in with Discord to manage your characters.</p>
         <a className="button" href="/api/auth/discord">
           Log in with Discord
@@ -66,17 +70,17 @@ export function MyCharactersPage() {
 
   return (
     <section>
-      <h1>My characters</h1>
-      <p>
-        <Link className="button" to="/me/characters/new">
+      <div className="page__head">
+        <h1>My characters</h1>
+        <Link className="btn btn--primary" to="/me/characters/new">
           Add character
         </Link>
-      </p>
+      </div>
       {message && <p role="alert">{message}</p>}
       {characters.data?.length === 0 && <p>You haven't added any characters yet.</p>}
       <div className="card-grid">
         {characters.data?.map((c) => (
-          <div key={c.id}>
+          <div key={c.id} className="my-card">
             <CharacterCard character={c} tiers={tiers.data ?? []} />
             <Actions id={c.id} onMessage={setMessage} />
           </div>

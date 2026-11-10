@@ -37,6 +37,7 @@ interface FormProps {
 }
 
 function DetailsForm({ initial, guilds, bosses, onSubmit }: FormProps) {
+  const navigate = useNavigate();
   const [cp, setCp] = useState(initial ? String(initial.combatPower) : '');
   const [guildId, setGuildId] = useState(initial?.guild.id ?? '');
   const [picked, setPicked] = useState<BossSelection[]>(
@@ -82,31 +83,34 @@ function DetailsForm({ initial, guilds, bosses, onSubmit }: FormProps) {
             ))}
         </select>
       </label>
-      <div className="full">
+      <div>
         <h3>Bosses</h3>
         <BossExperiencePicker value={picked} onChange={setPicked} bosses={bosses} />
       </div>
-      <div className="full">
+      <div>
         <h3>Play times (your time)</h3>
         <PlayTimeGrid value={playTimes} onChange={setPlayTimes} />
       </div>
-      <label className="full">
+      <label>
         Note
         <textarea value={note} maxLength={NOTE_MAX} rows={3} onChange={(e) => setNote(e.target.value)} />
         <small>{`${note.length}/${NOTE_MAX}`}</small>
       </label>
-      <label className="full">
+      <label>
         Scouter screenshot
         <input type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
       </label>
       {error && (
-        <p className="full" role="alert">
+        <p role="alert">
           {error}
         </p>
       )}
-      <div className="full">
-        <button type="submit" disabled={saving}>
+      <div className="actions">
+        <button type="submit" className="btn btn--primary" disabled={saving}>
           Save
+        </button>
+        <button type="button" className="btn btn--secondary" disabled={saving} onClick={() => navigate('/me/characters')}>
+          Cancel
         </button>
       </div>
     </form>
@@ -150,12 +154,12 @@ function AddCharacter({ guilds, bosses }: { guilds: GuildDTO[]; bosses: BossDTO[
 
   return (
     <>
-      <form onSubmit={find} className="filters">
+      <form onSubmit={find} className="filters filters--find">
         <label>
           In-game name
           <input type="text" value={ign} onChange={(e) => setIgn(e.target.value)} />
         </label>
-        <button type="submit" disabled={lookup.isPending}>
+        <button type="submit" className="btn btn--primary" disabled={lookup.isPending}>
           Find
         </button>
       </form>
