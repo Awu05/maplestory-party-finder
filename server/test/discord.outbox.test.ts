@@ -188,26 +188,33 @@ describe('WebhookWorker robustness', () => {
     expect(rows.filter((r) => r.status === 'pending')).toHaveLength(2);
   });
 
-  it('skips and fails a post.created delivery whose post was banned or deleted since', async () => {
+  it('skips and fails a post.created delivery whose post has ended since; live and full posts are sent', async () => {
     const guild = await makeGuild({ webhookUrl: URL_, active: true });
+    // The worker's clock is T0; the posts' expiry is measured against it.
     const banned = await makePost({ status: 'closed', closedReason: 'banned' });
     const deleted = await makePost({ deletedAt: new Date() });
+    const manual = await makePost({ status: 'closed', closedReason: 'manual' });
+    const charDeleted = await makePost({ status: 'closed', closedReason: 'character_deleted' });
+    const expired = await makePost({ expiresAt: at(-1000) });
     const live = await makePost();
+    const full = await makePost({ status: 'full', closedReason: 'full' });
     const ids: string[] = [];
-    for (const post of [banned, deleted, live]) {
+    for (const post of [banned, deleted, manual, charDeleted, expired, live, full]) {
       await enqueueDelivery(prisma, guild.id, 'post.created', payload, post.id);
       const row = await prisma.webhookDelivery.findFirstOrThrow({ where: { postId: post.id } });
       await prisma.webhookDelivery.update({ where: { id: row.id }, data: { nextAttemptAt: T0 } });
       ids.push(row.id);
     }
-    expect(await worker().runOnce()).toEqual({ sent: 1, retried: 0, failed: 2 });
-    expect(sender.calls).toHaveLength(1);
-    for (const id of ids.slice(0, 2)) {
+    expect(await worker().runOnce()).toEqual({ sent: 2, retried: 0, failed: 5 });
+    expect(sender.calls).toHaveLength(2);
+    for (const id of ids.slice(0, 5)) {
       const row = await get(id);
       expect(row.status).toBe('failed');
       expect(row.lastError).toBe('Post no longer available');
+      expect(row.attempts).toBe(1);
     }
-    expect((await get(ids[2]!)).status).toBe('sent');
+    expect((await get(ids[5]!)).status).toBe('sent');
+    expect((await get(ids[6]!)).status).toBe('sent');
   });
 
   it('stops sending past the lease deadline and leaves rows pending', async () => {

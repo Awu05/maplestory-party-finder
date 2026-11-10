@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
+import { effectivePostStatus } from '@pf/shared';
 import type { WebhookPayload } from './messages.js';
 import { SEND_TIMEOUT_MS, type SendResult, type WebhookSender } from './sender.js';
 
@@ -91,8 +92,9 @@ export class WebhookWorker {
       return;
     }
     if (row.eventType === 'post.created' && row.postId) {
-      const post = await this.prisma.post.findUnique({ where: { id: row.postId }, select: { status: true, closedReason: true, deletedAt: true } });
-      if (!post || post.deletedAt || (post.status === 'closed' && post.closedReason === 'banned')) {
+      // Announce only a post that is still live (open or full): not deleted, closed for any reason, or expired.
+      const post = await this.prisma.post.findUnique({ where: { id: row.postId }, select: { status: true, expiresAt: true, deletedAt: true } });
+      if (!post || effectivePostStatus(post, this.now()) === 'closed') {
         await upd({ status: 'failed', attempts: row.attempts + 1, lastError: 'Post no longer available' });
         counts.failed++;
         return;
