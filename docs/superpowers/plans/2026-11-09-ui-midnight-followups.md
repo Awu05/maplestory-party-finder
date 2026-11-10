@@ -19,3 +19,4 @@
 - A deep link that fails, is re-linked, and fails again can show the error pane instead of falling back to the first row (reset effect vs. child onUnavailable ordering). Reset `unavailable` during render or only when it differs from `wanted`.
 - MenuChip: when options change while open, the active option snaps back to the selected value (loses arrow-key position).
 - Selection scroll math ignores the list's 4px padding (no visible effect).
+- Gap fix 1 (reopen guard) reads the other party's membership without locking it; a simultaneous join could still let the LFP post reopen (rare, benign).
