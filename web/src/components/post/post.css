@@ -1,7 +1,7 @@
 .post-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 1rem;
+  gap: var(--space-4);
 }
 @media (max-width: 600px) {
   .post-grid {
@@ -12,11 +12,46 @@
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  padding: 0.75rem;
-  border: 1px solid #ccc;
-  border-radius: 8px;
-  color: inherit;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--text);
   text-decoration: none;
+}
+a.post-card:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+}
+.post-card__link {
+  align-self: flex-start;
+}
+.post-card__when,
+.post-card__meta {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.post-requests,
+.post-list-plain {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: var(--space-3) 0;
+  padding: 0;
+  list-style: none;
+}
+.post-requests > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+.my-tabs {
+  margin-bottom: var(--space-4);
+}
+.btn--compact {
+  padding: var(--space-1) var(--space-3);
+  font-size: 0.85rem;
 }
 .post-card__head {
   display: flex;
@@ -25,13 +60,15 @@
   gap: 0.5rem;
 }
 .post-badge {
-  padding: 0.1rem 0.5rem;
+  padding: var(--space-1) var(--space-2);
   border-radius: 999px;
-  background: #eef;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: #b3a9ff;
   font-size: 0.8rem;
 }
 .post-badge--recruiting {
-  background: #efe;
+  background: color-mix(in srgb, var(--accent-2) 18%, transparent);
+  color: var(--accent-2);
 }
 .post-card__bosses {
   display: flex;
@@ -42,9 +79,10 @@
   list-style: none;
 }
 .post-card__bosses li {
-  padding: 0.1rem 0.5rem;
-  border-radius: 4px;
-  background: #f2f2f2;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
   font-size: 0.85rem;
 }
 .post-card__note {
@@ -95,51 +133,58 @@
 }
 .lineup__cp {
   font-size: 0.8rem;
-  color: #555;
+  color: var(--muted);
 }
 .lineup__slot {
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: 8rem;
-  border: 2px dashed #ccc;
-  border-radius: 8px;
-  color: #777;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  color: var(--muted);
 }
 .post-detail__head {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: var(--space-2);
   align-items: center;
 }
 .post-pill {
-  padding: 0.1rem 0.5rem;
+  padding: var(--space-1) var(--space-2);
   border-radius: 999px;
-  background: #ddd;
+  background: color-mix(in srgb, var(--muted) 18%, transparent);
+  color: var(--muted);
   font-size: 0.8rem;
 }
 .post-pill--open {
-  background: #cfc;
+  background: color-mix(in srgb, var(--accent-2) 18%, transparent);
+  color: var(--accent-2);
 }
 .post-pill--full {
-  background: #ffd9a0;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: #b3a9ff;
+}
+.post-pill--deleted {
+  background: color-mix(in srgb, var(--danger) 18%, transparent);
+  color: var(--danger);
 }
 .post-banner {
-  padding: 0.5rem 0.75rem;
-  border-radius: 6px;
-  background: #eee;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--muted);
 }
-.post-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin: 1rem 0;
+.post-detail__actions {
+  margin: var(--space-4) 0;
 }
 .post-warn {
   display: inline-block;
-  padding: 0.1rem 0.5rem;
-  border-radius: 4px;
-  background: #fdd;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--danger) 18%, transparent);
+  color: var(--danger);
   font-size: 0.8rem;
 }
 

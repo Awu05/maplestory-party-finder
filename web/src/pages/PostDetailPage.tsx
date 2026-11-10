@@ -1,32 +1,19 @@
-import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { POST_TYPE_LABELS } from "@pf/shared";
-import type {
-  PostDetailDTO,
-  PostSummaryDTO,
-  RarityTierDTO,
-  RequestDTO,
-} from "@pf/shared";
-import { useCharacters, useMe, useRarityTiers } from "../api/hooks";
+import { useRarityTiers } from "../api/hooks";
 import {
   useAcceptRequest,
   useCancelRequest,
   useClosePost,
   useDeclineRequest,
   useDeletePost,
-  useInvite,
-  useMyParties,
-  useMyPosts,
   usePost,
-  useRequestJoin,
   useRemoveMember,
   useRenewPost,
 } from "../api/postHooks";
 import { ApiError } from "../api/client";
 import { friendlyError } from "../api/errors";
-import { CharacterCard } from "../components/card/CharacterCard";
 import { formatCp } from "../components/card/format";
-import { CharacterPicker } from "../components/post/CharacterPicker";
 import { LineupView } from "../components/post/LineupView";
 import { bossLabel, postLabel } from "../components/post/labels";
 import { RequestList, ViewerActions } from "../components/post/ViewerActions";
@@ -113,11 +100,16 @@ export function PostDetailPage() {
       {mutationError && <p role="alert">{friendlyError(mutationError)}</p>}
 
       {posterCanManage && (
-        <div className="post-actions">
-          {posterActive && <Link to={`/posts/${p.id}/edit`}>Edit</Link>}
+        <div className="actions post-detail__actions">
+          {posterActive && (
+            <Link className="btn btn--secondary" to={`/posts/${p.id}/edit`}>
+              Edit
+            </Link>
+          )}
           {posterActive && (
             <button
               type="button"
+              className="btn btn--secondary"
               disabled={close.isPending}
               onClick={() => run("close", () => close.mutate())}
             >
@@ -127,13 +119,19 @@ export function PostDetailPage() {
           {p.canRenew && (
             <button
               type="button"
+              className="btn btn--secondary"
               disabled={renew.isPending}
               onClick={() => run("renew", () => renew.mutate())}
             >
               Renew
             </button>
           )}
-          <button type="button" disabled={del.isPending} onClick={onDelete}>
+          <button
+            type="button"
+            className="btn btn--danger"
+            disabled={del.isPending}
+            onClick={onDelete}
+          >
             Delete
           </button>
         </div>
@@ -202,32 +200,34 @@ export function PostDetailPage() {
       {p.receivedInvites.length > 0 && (
         <section aria-label="Invites received">
           <h2>Invites received</h2>
-          <ul style={{ listStyle: "none", padding: 0 }}>
+          <ul className="post-requests">
             {p.receivedInvites.map((r) => (
               <li key={r.id}>
-                <Link to={`/posts/${r.postId}`}>{postLabel(r.post)}</Link>{" "}
-                <button
-                  type="button"
-                  className="btn btn--primary"
-                  disabled={accept.isPending || decline.isPending}
-                  onClick={() =>
-                    run("accept", () =>
-                      accept.mutate(r.id, {
-                        onSuccess: () => navigate(`/posts/${r.postId}`),
-                      }),
-                    )
-                  }
-                >
-                  Accept
-                </button>
-                <button
-                  type="button"
-                  className="btn btn--secondary"
-                  disabled={accept.isPending || decline.isPending}
-                  onClick={() => run("decline", () => decline.mutate(r.id))}
-                >
-                  Decline
-                </button>
+                <Link to={`/posts/${r.postId}`}>{postLabel(r.post)}</Link>
+                <div className="actions">
+                  <button
+                    type="button"
+                    className="btn btn--primary"
+                    disabled={accept.isPending || decline.isPending}
+                    onClick={() =>
+                      run("accept", () =>
+                        accept.mutate(r.id, {
+                          onSuccess: () => navigate(`/posts/${r.postId}`),
+                        }),
+                      )
+                    }
+                  >
+                    Accept
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--secondary"
+                    disabled={accept.isPending || decline.isPending}
+                    onClick={() => run("decline", () => decline.mutate(r.id))}
+                  >
+                    Decline
+                  </button>
+</div>
               </li>
             ))}
           </ul>

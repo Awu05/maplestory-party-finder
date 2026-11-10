@@ -32,8 +32,8 @@
   background: var(--surface);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 24px color-mix(in srgb, #000 50%, transparent);
 }
 .bell-head {
   display: flex;
@@ -62,8 +62,12 @@
   text-align: left;
   font-weight: 400;
 }
+.bell-item:hover {
+  background: var(--surface-2);
+}
 .bell-item.unread {
   font-weight: 700;
+  border-left: 3px solid var(--accent-2);
 }
 .bell-time {
   color: var(--muted);

@@ -22,7 +22,7 @@ export function CharacterPicker({ characters, worldId, post, myParties, onPick, 
   );
 
   return (
-    <ul aria-label="Pick a character" style={{ listStyle: 'none', padding: 0 }}>
+    <ul aria-label="Pick a character" className="post-requests">
       {eligible.map((c) => {
         const isMember = memberIds.has(c.id);
         const isPending = pendingIds.has(c.id);
@@ -32,7 +32,7 @@ export function CharacterPicker({ characters, worldId, post, myParties, onPick, 
         );
         return (
           <li key={c.id}>
-            <button type="button" disabled={disabled || isMember || isPending} onClick={() => onPick(c.id)}>
+            <button type="button" className="btn btn--secondary" disabled={disabled || isMember || isPending} onClick={() => onPick(c.id)}>
               {`${c.ign} · Lv. ${c.level} ${c.jobName} · CP ${formatCp(c.combatPower)}`}
               {isMember && ' (already in the party)'}
               {isPending && ' (request pending)'}

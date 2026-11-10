@@ -12,7 +12,7 @@ export function BossMultiPicker({ value, onChange, bosses, max }: Props) {
   const toggle = (id: number, on: boolean) => onChange(on ? [...value, id] : value.filter((v) => v !== id));
 
   return (
-    <div className="boss-picker">
+    <div className="boss-picker panel">
       <p className="boss-picker__count">{`${value.length}/${max} selected`}</p>
       {bosses.map((boss) => (
         <fieldset key={boss.id} className="boss-picker__row">

@@ -38,7 +38,9 @@ function PartyItem({ party, tiers }: { party: PostDetailDTO; tiers: RarityTierDT
         ))}
       </ul>
       <LineupView post={party} tiers={tiers} />
-      <Link to={`/posts/${party.id}`}>View post</Link>
+      <Link className="btn btn--secondary post-card__link" to={`/posts/${party.id}`}>
+        View post
+      </Link>
     </li>
   );
 }
@@ -58,7 +60,7 @@ function PartiesTab({ tiers }: { tiers: RarityTierDTO[] }) {
         {upcoming.length === 0 ? (
           <p>No upcoming parties.</p>
         ) : (
-          <ul style={{ listStyle: 'none', padding: 0 }}>
+          <ul className="post-list-plain">
             {upcoming.map((p) => (
               <PartyItem key={p.id} party={p} tiers={tiers} />
             ))}
@@ -68,7 +70,7 @@ function PartiesTab({ tiers }: { tiers: RarityTierDTO[] }) {
       {past.length > 0 && (
         <section aria-label="Past">
           <h2>Past</h2>
-          <ul style={{ listStyle: 'none', padding: 0 }}>
+          <ul className="post-list-plain">
             {past.map((p) => (
               <PartyItem key={p.id} party={p} tiers={tiers} />
             ))}
@@ -86,7 +88,7 @@ function PostsTab({ tiers }: { tiers: RarityTierDTO[] }) {
   const list: PostSummaryDTO[] = posts.data ?? [];
   if (list.length === 0) return <p>You haven&apos;t posted anything.</p>;
   return (
-    <ul style={{ listStyle: 'none', padding: 0 }}>
+    <ul className="post-list-plain">
       {list.map((p) => (
         <li key={p.id}>
           <StatusPill status={p.status} deleted={p.deleted} />
@@ -113,7 +115,7 @@ function RequestsTab({ tiers }: { tiers: RarityTierDTO[] }) {
     <li key={r.id}>
       <p>{label}</p>
       <PostCard post={r.post} tiers={tiers} />
-      <div className="post-actions">{actions}</div>
+      <div className="actions">{actions}</div>
     </li>
   );
 
@@ -125,7 +127,7 @@ function RequestsTab({ tiers }: { tiers: RarityTierDTO[] }) {
         {incomingInvites.length === 0 ? (
           <p>No invites.</p>
         ) : (
-          <ul style={{ listStyle: 'none', padding: 0 }}>
+          <ul className="post-list-plain">
             {incomingInvites.map((r) =>
               item(
                 r,
@@ -133,6 +135,7 @@ function RequestsTab({ tiers }: { tiers: RarityTierDTO[] }) {
                 <>
                   <button
                     type="button"
+                    className="btn btn--primary"
                     disabled={busy}
                     onClick={() =>
                       run('accept', () => accept.mutate(r.id, { onSuccess: () => navigate(`/posts/${r.postId}`) }))
@@ -140,7 +143,12 @@ function RequestsTab({ tiers }: { tiers: RarityTierDTO[] }) {
                   >
                     Accept
                   </button>
-                  <button type="button" disabled={busy} onClick={() => run('decline', () => decline.mutate(r.id))}>
+                  <button
+                    type="button"
+                    className="btn btn--secondary"
+                    disabled={busy}
+                    onClick={() => run('decline', () => decline.mutate(r.id))}
+                  >
                     Decline
                   </button>
                 </>,
@@ -154,12 +162,17 @@ function RequestsTab({ tiers }: { tiers: RarityTierDTO[] }) {
         {outgoingRequests.length === 0 ? (
           <p>No outgoing requests.</p>
         ) : (
-          <ul style={{ listStyle: 'none', padding: 0 }}>
+          <ul className="post-list-plain">
             {outgoingRequests.map((r) =>
               item(
                 r,
                 `Request with ${r.character.ign}`,
-                <button type="button" disabled={busy} onClick={() => run('cancel', () => cancel.mutate(r.id))}>
+                <button
+                  type="button"
+                  className="btn btn--secondary"
+                  disabled={busy}
+                  onClick={() => run('cancel', () => cancel.mutate(r.id))}
+                >
                   Cancel
                 </button>,
               ),
@@ -196,11 +209,12 @@ export function MyPartiesPage() {
   return (
     <section>
       <h1>My parties</h1>
-      <div role="group" aria-label="Sections" className="post-actions">
+      <div role="group" aria-label="Sections" className="actions my-tabs">
         {TABS.map((t) => (
           <button
             key={t.key}
             type="button"
+            className="chip"
             aria-pressed={tab === t.key}
             onClick={() => setParams({ tab: t.key }, { replace: true })}
           >

@@ -67,7 +67,7 @@ export function ViewerActions({ post }: { post: PostDetailDTO }) {
       {error && <p role="alert">{friendlyError(error)}</p>}
 
       {post.myPending.length > 0 && (
-        <ul style={{ listStyle: "none", padding: 0 }}>
+        <ul className="post-requests">
           {post.myPending.map((r) => (
             <li key={r.id}>
               {`${r.kind === "invite" ? "Invite" : "Request"} pending: ${r.character.ign} `}
@@ -92,14 +92,16 @@ export function ViewerActions({ post }: { post: PostDetailDTO }) {
                   </button>
                 </div>
               ) : (
-                <button
-                  type="button"
-                  className="btn btn--secondary"
-                  disabled={busy}
-                  onClick={() => run("cancel", () => cancel.mutate(r.id))}
-                >
-                  Cancel
-                </button>
+                <div className="actions">
+                  <button
+                    type="button"
+                    className="btn btn--secondary"
+                    disabled={busy}
+                    onClick={() => run("cancel", () => cancel.mutate(r.id))}
+                  >
+                    Cancel
+                  </button>
+                </div>
               )}
             </li>
           ))}
@@ -109,19 +111,21 @@ export function ViewerActions({ post }: { post: PostDetailDTO }) {
       {post.sentInvitesToThis.length > 0 && (
         <ul
           aria-label="Invites you sent"
-          style={{ listStyle: "none", padding: 0 }}
+          className="post-requests"
         >
           {post.sentInvitesToThis.map((r) => (
             <li key={r.id}>
               {`Invite sent from ${r.post.bosses.map(bossLabel).join(", ")} `}
-              <button
-                type="button"
-                className="btn btn--secondary"
-                disabled={busy}
-                onClick={() => run("cancel", () => cancel.mutate(r.id))}
-              >
-                Cancel
-              </button>
+              <div className="actions">
+                <button
+                  type="button"
+                  className="btn btn--secondary"
+                  disabled={busy}
+                  onClick={() => run("cancel", () => cancel.mutate(r.id))}
+                >
+                  Cancel
+                </button>
+              </div>
             </li>
           ))}
         </ul>
@@ -177,7 +181,7 @@ export function ViewerActions({ post }: { post: PostDetailDTO }) {
         ) : (
           <ul
             aria-label="Your open recruiting posts"
-            style={{ listStyle: "none", padding: 0 }}
+            className="post-requests"
           >
             {inviteTargets.map((mp) => (
               <li key={mp.id}>
@@ -224,7 +228,7 @@ export function RequestList({
       {requests.length === 0 ? (
         <p>None.</p>
       ) : (
-        <ul className="lineup" style={{ listStyle: "none", padding: 0 }}>
+        <ul className="lineup">
           {requests.map((r) => (
             <li key={r.id} className="lineup__item">
               <CharacterCard

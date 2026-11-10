@@ -52,12 +52,12 @@ export function LineupView({ post, tiers = [], compact = false, onRemove, onLeav
           {c && c.combatPower !== m.cpAtJoin && ` · now ${formatCp(c.combatPower)}`}
         </div>
         {m.role !== 'poster' && onRemove && (
-          <button type="button" disabled={busy} onClick={() => onRemove(m.id)}>
+          <button type="button" className="btn btn--danger btn--compact" disabled={busy} onClick={() => onRemove(m.id)}>
             Remove
           </button>
         )}
         {m.isMine && m.role !== 'poster' && onLeave && (
-          <button type="button" disabled={busy} onClick={() => onLeave(m.id)}>
+          <button type="button" className="btn btn--danger btn--compact" disabled={busy} onClick={() => onLeave(m.id)}>
             Leave
           </button>
         )}
@@ -85,7 +85,7 @@ export function LineupView({ post, tiers = [], compact = false, onRemove, onLeav
 
   return (
     <>
-      <ul className="lineup" style={{ listStyle: 'none', padding: 0 }}>
+      <ul className="lineup">
         {post.members.map(renderMember)}
         {Array.from({ length: emptySlots }, (_, i) => (
           <li key={`slot-${i}`} className="lineup__slot">

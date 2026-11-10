@@ -160,9 +160,9 @@ function PostForm({ characters, bosses, post }: FormProps) {
   return (
     <form className="char-form" onSubmit={submit}>
       <div className="full">
-        <div role="group" aria-label="Post type" className="segmented">
+        <div role="group" aria-label="Post type" className="actions">
           {(['recruiting', 'lfp'] as const).map((t) => (
-            <button key={t} type="button" aria-pressed={v.type === t} disabled={locked} onClick={() => set({ type: t })}>
+            <button key={t} type="button" className="chip" aria-pressed={v.type === t} disabled={locked} onClick={() => set({ type: t })}>
               {POST_TYPE_LABELS[t]}
             </button>
           ))}
@@ -227,7 +227,7 @@ function PostForm({ characters, bosses, post }: FormProps) {
         </p>
       )}
       <div className="full">
-        <button type="submit" disabled={saving}>
+        <button type="submit" className="btn btn--primary" disabled={saving}>
           Save
         </button>
       </div>
