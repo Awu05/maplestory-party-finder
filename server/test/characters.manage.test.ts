@@ -125,11 +125,15 @@ describe('characters patch', () => {
     expect(new Date(r2.json().cpUpdatedAt).getTime()).toBeGreaterThan(Date.now() - 60_000);
   });
 
-  it('validates guild; ignores removed fields from old clients', async () => {
+  it('ignores removed fields from old clients', async () => {
     const c = await makeCharacter({ ownerId, worldId, guildId });
     const old = await patch(c.id, { note: 'x', playTimes: [1], bosses: [] });
     expect(old.statusCode).toBe(200);
     expect(old.json()).not.toHaveProperty('note');
+  });
+
+  it('an inactive guild -> 400 GUILD_INACTIVE; an active one is saved', async () => {
+    const c = await makeCharacter({ ownerId, worldId, guildId });
     const dead = await makeGuild({ worldIds: [worldId], active: false });
     const g = await patch(c.id, { guildId: dead.id });
     expect(g.statusCode).toBe(400);
