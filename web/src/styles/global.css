@@ -1,26 +1,27 @@
 :root {
-  --bg: #fff8ec;
-  --surface: #ffffff;
-  --text: #3b2a1a;
-  --muted: #7a6650;
-  --border: #e6d5b8;
-  --accent: #c2570c;
-  --accent-text: #ffffff;
-  --header-bg: #fbe3b5;
+  --bg: #0f1220;
+  --surface: #151a2e;
+  --surface-2: #1c2240;
+  --border: #232a45;
+  --border-strong: #2a3360;
+  --text: #e6e8f2;
+  --muted: #8d93b3;
+  --accent: #8b7cff;
+  --accent-2: #4fd1ff;
+  --gradient: linear-gradient(90deg, #8b7cff, #4fd1ff);
+  --accent-text: #0f1220;
+  --danger: #ff6b81;
+  --header-bg: var(--surface);
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --radius: 8px;
+  --radius-lg: 12px;
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-  color-scheme: light dark;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #1c1610;
-    --surface: #2a2118;
-    --text: #f3e6d0;
-    --muted: #b49e80;
-    --border: #4a3b2a;
-    --accent: #f08a3c;
-    --accent-text: #1c1610;
-    --header-bg: #33261a;
-  }
+  color-scheme: dark;
 }
 * {
   box-sizing: border-box;
@@ -33,21 +34,142 @@ body {
 a {
   color: var(--accent);
 }
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Buttons: bare <button> is secondary, a.button is primary. */
 button,
-.button {
+.button,
+.btn {
   font: inherit;
   cursor: pointer;
   text-decoration: none;
-  padding: 0.4rem 0.8rem;
-  border-radius: 6px;
-  border: 1px solid var(--border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius);
+  border: 1px solid var(--border-strong);
   background: var(--surface);
   color: var(--text);
+  transition: background-color 120ms ease, border-color 120ms ease, filter 120ms ease;
 }
-a.button {
-  background: var(--accent);
-  color: var(--accent-text);
+button:hover:not(:disabled),
+.btn--secondary:hover:not(:disabled) {
+  background: var(--surface-2);
   border-color: var(--accent);
+}
+button:disabled,
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+a.button,
+.btn--primary {
+  background: var(--gradient);
+  color: var(--accent-text);
+  border-color: transparent;
+  font-weight: 600;
+}
+a.button:hover,
+.btn--primary:hover:not(:disabled) {
+  background: var(--gradient);
+  border-color: transparent;
+  filter: brightness(1.1);
+}
+.btn--secondary {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.btn--danger {
+  background: transparent;
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.btn--danger:hover:not(:disabled) {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--accent-text);
+}
+
+/* Layout helpers */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 var(--space-4);
+}
+.page__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+}
+.chip {
+  font: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3);
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text);
+}
+.chip:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--surface-2);
+}
+.chip[aria-pressed='true'],
+.chip[aria-checked='true'] {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 25%, var(--surface-2));
+}
+
+/* Native form controls */
+input,
+select,
+textarea {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+}
+input::placeholder,
+textarea::placeholder {
+  color: var(--muted);
+}
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+input[type='checkbox'],
+input[type='radio'] {
+  padding: 0;
+  accent-color: var(--accent);
 }
 .app-header {
   display: flex;
@@ -63,6 +185,9 @@ a.button {
   font-size: 1.2rem;
   color: var(--text);
   text-decoration: none;
+}
+.brand span {
+  color: var(--accent);
 }
 .nav {
   display: flex;
@@ -104,7 +229,7 @@ a.button {
   margin: 1rem auto 0;
   padding: 0.5rem 1rem;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius);
 }
 .app-main {
   max-width: 1100px;
