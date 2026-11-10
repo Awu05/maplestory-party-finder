@@ -1,5 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
+import { FLEXIBLE_TTL_MS } from '@pf/shared';
 import { addMember, buildTestApp, loginAs, makeBossDifficulty, makeCharacter, makeGuild, makePost, makeWorld, prisma, resetDb, type RecordingEvents } from './helpers.js';
 
 let app: FastifyInstance;
@@ -180,6 +181,19 @@ describe('PATCH /api/posts/:id', () => {
     expect((await patch(p.id, { type: 'recruiting' })).statusCode).toBe(400);
     expect((await patch(p.id, { partySize: 3 })).statusCode).toBe(400);
     expect((await patch(p.id, { type: 'recruiting', partySize: 3 })).statusCode).toBe(200);
+  });
+
+  it('a finalized recruiting post switched to LFP drops its final time and gets the flexible expiry', async () => {
+    const p = await makePost({ posterUserId: userId, partySize: 4, minCp: 500n, scheduledAt: new Date(Date.now() + 24 * HOUR) });
+    const before = Date.now();
+    const res = await patch(p.id, { type: 'lfp' });
+    const after = Date.now();
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ type: 'lfp', scheduledAt: null });
+    const row = await prisma.post.findUniqueOrThrow({ where: { id: p.id } });
+    expect(row.scheduledAt).toBeNull();
+    expect(row.expiresAt.getTime()).toBeGreaterThanOrEqual(before + FLEXIBLE_TTL_MS);
+    expect(row.expiresAt.getTime()).toBeLessThanOrEqual(after + FLEXIBLE_TTL_MS);
   });
 
   it('type change on an LFP post declines pending invites that answer it', async () => {

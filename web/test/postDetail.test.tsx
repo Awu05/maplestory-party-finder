@@ -238,6 +238,14 @@ describe('PostDetailPage when section', () => {
     expect(await screen.findByText(/Final time: /)).toBeInTheDocument();
   });
 
+  it('an LFP post never shows a final time, even with a stale scheduledAt', async () => {
+    renderPage({
+      '/api/posts/p1': post({ type: 'lfp', partySize: null, minCp: null, scheduledAt: '2026-12-01T20:00:00Z', freeTimes: [30], freeTimesZone: 'UTC' }),
+    });
+    expect(await screen.findByRole('region', { name: 'When' })).toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: 'When' })).queryByText(/Final time/)).toBeNull();
+  });
+
   it('unfinalized post with free times shows "Time not set yet", the read-only grid and the zone caption', async () => {
     renderPage({ '/api/posts/p1': post({ scheduledAt: null, freeTimes: [30, 31], freeTimesZone: 'UTC' }) });
     expect(await screen.findByText('Time not set yet')).toBeInTheDocument();

@@ -83,7 +83,7 @@ describe('Finalize button visibility', () => {
     ['deleted post', { deleted: true }],
   ])('no button for %s', async (_n, over) => {
     renderPage({ '/api/posts/p1': post(over) });
-    await screen.findByText('Time not set yet');
+    await screen.findByRole('region', { name: 'When' });
     expect(screen.queryByRole('button', { name: /Finalize time|Change time/ })).toBeNull();
   });
 });

@@ -128,11 +128,17 @@ export interface BoardFilter {
   freeAt?: Date;
 }
 
-/** Ids of posts whose freeTimes contain `freeAt`'s local hour-of-week in their own zone. */
-async function postIdsFreeAt(prisma: PrismaClient, freeAt: Date): Promise<string[]> {
+/**
+ * Ids of board-visible posts (open, not deleted, not expired) whose freeTimes contain `freeAt`'s local
+ * hour-of-week in their own zone. Bounded to live posts so the id list stays small.
+ */
+export async function postIdsFreeAt(prisma: PrismaClient, freeAt: Date, now: Date): Promise<string[]> {
   const rows = await prisma.$queryRaw<{ id: string }[]>`
     SELECT id FROM "Post"
-    WHERE "freeTimesZone" IS NOT NULL
+    WHERE "deletedAt" IS NULL
+      AND status = 'open'
+      AND "expiresAt" > ${now}
+      AND "freeTimesZone" IS NOT NULL
       AND ((EXTRACT(DOW FROM (${freeAt}::timestamptz AT TIME ZONE "freeTimesZone")) * 24
            + EXTRACT(HOUR FROM (${freeAt}::timestamptz AT TIME ZONE "freeTimesZone")))::int) = ANY("freeTimes")`;
   return rows.map((r) => r.id);
@@ -142,7 +148,7 @@ export async function listBoard(prisma: PrismaClient, f: BoardFilter, now: Date)
   const and: Prisma.PostWhereInput[] = [];
   if (f.bossId !== undefined) and.push({ bosses: { some: { bossDifficulty: { bossId: f.bossId } } } });
   if (f.bossDifficultyId !== undefined) and.push({ bosses: { some: { bossDifficultyId: f.bossDifficultyId } } });
-  if (f.freeAt !== undefined) and.push({ id: { in: await postIdsFreeAt(prisma, f.freeAt) } });
+  if (f.freeAt !== undefined) and.push({ id: { in: await postIdsFreeAt(prisma, f.freeAt, now) } });
   return prisma.post.findMany({
     where: {
       deletedAt: null,
@@ -378,7 +384,9 @@ export interface EditResult {
 
 /**
  * Poster edits any field. The resulting post is validated as a whole, then applied. An edit never
- * touches the final time (scheduledAt) or expiresAt: finalizing and Renew do that.
+ * touches the final time (scheduledAt) or expiresAt: finalizing and Renew do that. The one exception:
+ * a finalized Recruiting post switched to LFP drops its final time (LFP posts have none) and gets
+ * the flexible expiry.
  */
 export async function editPost(prisma: PrismaClient, viewer: Viewer, id: string, input: EditPostInput, now: Date): Promise<EditResult> {
   return prisma.$transaction(async (tx) => {
@@ -440,12 +448,15 @@ export async function editPost(prisma: PrismaClient, viewer: Viewer, id: string,
       });
     }
 
+    const dropFinalTime = typeChanged && type === 'lfp' && row.scheduledAt !== null;
+
     const post = await tx.post.update({
       where: { id },
       data: {
         type,
         partySize,
         minCp,
+        ...(dropFinalTime ? { scheduledAt: null, expiresAt: postExpiresAt(null, now) } : {}),
         ...(input.note !== undefined ? { note: input.note } : {}),
         ...(free ?? {}),
         ...(character ? { posterCharacterId: character.id, worldId: character.worldId, guildId: character.guildId } : {}),

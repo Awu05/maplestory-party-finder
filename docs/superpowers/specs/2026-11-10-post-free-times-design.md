@@ -65,7 +65,7 @@ So a post now lists the hours the poster is free, picked on the old weekly days 
   - `POST /api/posts` and `PATCH /api/posts/:id` accept `freeTimes` (an array of unique ints 0–167, max 168) and `freeTimesZone`. They no longer accept `scheduledAt`.
   - An unknown zone, or a non-empty `freeTimes` with no zone, is a 400 `VALIDATION`.
   - Sending `scheduledAt` is ignored, because zod strips unknown keys.
-  - An edit never touches the final time.
+  - An edit never touches the final time, with one exception: switching a finalized Recruiting post to LFP clears its final time and gives it the flexible expiry (LFP posts have no final time).
 - **Finalize:** `PUT /api/posts/:id/final-time` with body `{ scheduledAt: ISO string }`.
   - **Who:** the poster only (403). Recruiting only, otherwise 409 `WRONG_POST_TYPE`.
   - **State:** the post must be open or full, not deleted and not expired (409 `POST_CLOSED`).

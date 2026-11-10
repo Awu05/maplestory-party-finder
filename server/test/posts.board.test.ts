@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import {
   addMember, buildTestApp, loginAs, makeBossDifficulty, makeCharacter, makeGuild, makePost, makeUser, makeWorld, prisma, resetDb,
 } from './helpers.js';
+import { postIdsFreeAt } from '../src/posts/service.js';
 
 const HOUR = 3_600_000;
 let app: FastifyInstance;
@@ -150,6 +151,18 @@ describe('GET /api/posts', () => {
       expect(await ids('?freeAt=2026-11-11T04:00:00Z&type=lfp')).toEqual([]);
       expect(await ids(`?freeAt=2026-11-11T01:00:00Z&bossDifficultyId=${limbo}`)).toEqual([]);
     });
+  });
+
+  it('the Free-at prefilter only returns live open posts', async () => {
+    const free = { scheduledAt: null, freeTimes: [68], freeTimesZone: 'America/New_York' };
+    const live = await mk(free);
+    await mk({ ...free, status: 'closed' });
+    await mk({ ...free, status: 'full' });
+    await mk({ ...free, deletedAt: new Date() });
+    await mk({ ...free, expiresAt: new Date(Date.now() - 60_000) });
+    const now = new Date();
+    expect(await postIdsFreeAt(prisma, new Date('2026-11-11T01:00:00Z'), now)).toEqual([live.id]);
+    expect((await list('?freeAt=2026-11-11T01:00:00Z')).map((p) => p.id)).toEqual([live.id]);
   });
 
   it('rejects invalid params', async () => {
