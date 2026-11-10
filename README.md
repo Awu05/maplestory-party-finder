@@ -85,4 +85,15 @@ docker compose -f docker-compose.prod.yml up -d --build
 
 Same image as above, but the database port is not published and the data volumes are separate (project `party-finder-prod`).
 
+## Releases
+
+Pushing a version tag runs the tests on GitHub Actions and, if they pass, builds the Docker image and publishes it to GitHub Container Registry:
+
+```
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+The image is `ghcr.io/awu05/maplestory-party-finder`, tagged `1.0.0`, `1.0`, `latest` and the commit SHA (see `.github/workflows/release.yml`). The workflow can also be run by hand from the Actions tab. The first published package is private; make it public under the repo's Packages settings if your server should pull it without logging in (`docker login ghcr.io` otherwise).
+
 The app container applies migrations, seeds worlds, rarity tiers and bosses (idempotent, existing rows are not overwritten), then serves the API and web app on port 3000. Data lives in the `pgdata` and `uploads` volumes. Seeded worlds are best-known values. A world's name, type and active flag can be edited in the admin UI, but its Nexon world ID cannot: if a seeded ID is wrong, deactivate that world and add a new one with the correct ID.
