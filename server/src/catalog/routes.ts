@@ -9,17 +9,31 @@ const WEBHOOK_RE = /^https:\/\/(discord|discordapp)\.com\/api\/webhooks\/\d+\/[\
 
 const webhookUrl = z.string().regex(WEBHOOK_RE, 'Invalid Discord webhook URL');
 const worldIds = z.array(z.number().int());
+const bossRoleIds = z.record(
+  z.string().regex(/^[1-9]\d*$/).refine((id) => Number.isSafeInteger(Number(id)) && Number(id) <= 2147483647, 'Invalid boss ID'),
+  z.string().regex(/^[1-9]\d{16,19}$/, 'Enter a Discord role ID (17–20 digits)'),
+);
+
+async function assertBossesExist(prisma: PrismaClient, roles: Record<string, string> | undefined): Promise<void> {
+  if (!roles) return;
+  const ids = Object.keys(roles).map(Number);
+  if (ids.length && await prisma.boss.count({ where: { id: { in: ids } } }) !== ids.length) {
+    throw new AppError(400, 'VALIDATION', 'Unknown boss in Discord role mappings');
+  }
+}
 
 const guildCreate = z.object({
   name: z.string().trim().min(1),
   iconUrl: z.string().min(1).nullish(),
   webhookUrl: webhookUrl.nullish(),
+  bossRoleIds: bossRoleIds.optional(),
   worldIds,
 });
 const guildPatch = z.object({
   name: z.string().trim().min(1).optional(),
   iconUrl: z.string().min(1).nullish(),
   webhookUrl: webhookUrl.nullish(),
+  bossRoleIds: bossRoleIds.optional(),
   active: z.boolean().optional(),
   worldIds: worldIds.optional(),
 });
@@ -84,7 +98,7 @@ function toGuildDTO(g: GuildRow): GuildDTO {
 }
 
 function toAdminGuildDTO(g: GuildRow): AdminGuildDTO {
-  return { ...toGuildDTO(g), webhookUrl: g.webhookUrl };
+  return { ...toGuildDTO(g), webhookUrl: g.webhookUrl, bossRoleIds: g.bossRoleIds as Record<string, string> };
 }
 
 function toWorldDTO(w: { id: number; nexonWorldId: number; name: string; worldType: string; active: boolean }): WorldDTO {
@@ -182,6 +196,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     await requireAdmin(req);
     const body = guildCreate.parse(req.body);
     await assertWorldsExist(prisma, body.worldIds);
+    await assertBossesExist(prisma, body.bossRoleIds);
     const guild = await mapDuplicate(
       () =>
         prisma.guild.create({
@@ -189,6 +204,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
             name: body.name,
             iconUrl: body.iconUrl ?? null,
             webhookUrl: body.webhookUrl ?? null,
+            bossRoleIds: body.bossRoleIds ?? {},
             worlds: { create: [...new Set(body.worldIds)].map((worldId) => ({ worldId })) },
           },
           include: { worlds: true },
@@ -203,6 +219,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     const { id } = guildIdParam.parse(req.params);
     const body = guildPatch.parse(req.body);
     if (body.worldIds) await assertWorldsExist(prisma, body.worldIds);
+    await assertBossesExist(prisma, body.bossRoleIds);
     const guild = await mapDuplicate(
       () =>
         prisma.$transaction(async (tx) => {
@@ -219,6 +236,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
               name: body.name,
               iconUrl: body.iconUrl,
               webhookUrl: body.webhookUrl,
+              bossRoleIds: body.bossRoleIds,
               active: body.active,
             },
             include: { worlds: true },
@@ -319,6 +337,8 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       const used = await tx.postBoss.count({ where: { bossDifficulty: { bossId: id } } });
       if (used > 0) throw new AppError(409, 'IN_USE', 'Boss is referenced by posts');
       await tx.boss.delete({ where: { id } });
+      // Drop the boss's Discord role mapping from every guild so no stale key survives.
+      await tx.$executeRaw`UPDATE "Guild" SET "bossRoleIds" = "bossRoleIds" - ${String(id)} WHERE "bossRoleIds" ? ${String(id)}`;
     });
     return reply.status(204).send();
   });

@@ -20,6 +20,54 @@ function body(init?: RequestInit) {
 }
 
 describe('admin pages', () => {
+  it('edits and clears boss role mappings for a guild', async () => {
+    let guild = { id: 'g1', name: 'G', iconUrl: null, worldIds: [1], active: true, webhookUrl: null, bossRoleIds: { '7': '111111111111111111' } as Record<string, string> };
+    const patch = vi.fn((init?: RequestInit) => {
+      guild = { ...guild, ...body(init) };
+      return guild;
+    });
+    mockApi({
+      '/api/admin/guilds': () => [guild],
+      '/api/worlds?all=1': worlds,
+      '/api/bosses': [{ id: 7, name: 'Lucid', imageUrl: null, difficulties: [] }],
+      'PATCH /api/admin/guilds/g1': patch,
+    });
+    renderWithProviders(<GuildsAdmin />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit G' }));
+    fireEvent.click(screen.getByText('Boss role pings'));
+    expect(await screen.findByLabelText('Lucid role ID')).toHaveValue('111111111111111111');
+    fireEvent.change(screen.getByLabelText('Lucid role ID'), { target: { value: '222222222222222222' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save guild' }));
+    await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
+    expect(body(patch.mock.calls[0][0]).bossRoleIds).toEqual({ '7': '222222222222222222' });
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Save guild' })).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: 'Edit G' }));
+    fireEvent.click(screen.getByText('Boss role pings'));
+    fireEvent.change(screen.getByLabelText('Lucid role ID'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save guild' }));
+    await waitFor(() => expect(patch).toHaveBeenCalledTimes(2));
+    expect(body(patch.mock.calls[1][0]).bossRoleIds).toEqual({});
+  });
+
+  it('rejects a malformed boss role ID with a visible message instead of a silent blocked submit', async () => {
+    const guild = { id: 'g1', name: 'G', iconUrl: null, worldIds: [1], active: true, webhookUrl: null, bossRoleIds: {} as Record<string, string> };
+    const patch = vi.fn(() => guild);
+    mockApi({
+      '/api/admin/guilds': () => [guild],
+      '/api/worlds?all=1': worlds,
+      '/api/bosses': [{ id: 7, name: 'Lucid', imageUrl: null, difficulties: [] }],
+      'PATCH /api/admin/guilds/g1': patch,
+    });
+    renderWithProviders(<GuildsAdmin />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit G' }));
+    fireEvent.click(screen.getByText('Boss role pings'));
+    fireEvent.change(await screen.findByLabelText('Lucid role ID'), { target: { value: '12345' } });
+    fireEvent.click(screen.getByText('Boss role pings'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save guild' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Lucid role ID must be a Discord role ID (17–20 digits).');
+    expect(patch).not.toHaveBeenCalled();
+  });
+
   it('non-admin sees Not authorized', async () => {
     mockApi({ '/api/auth/me': { ...admin, isAdmin: false } });
     renderWithProviders(
@@ -36,6 +84,7 @@ describe('admin pages', () => {
     const post = vi.fn(() => ({}));
     mockApi({
       '/api/admin/guilds': [],
+      '/api/bosses': [],
       '/api/worlds?all=1': worlds,
       'POST /api/admin/guilds': post,
     });
@@ -50,7 +99,7 @@ describe('admin pages', () => {
     await u.click(screen.getByRole('button', { name: 'Create guild' }));
     await waitFor(() => expect(post).toHaveBeenCalled());
     const calls = post.mock.calls as unknown as [RequestInit][];
-    expect(body(calls[0][0])).toEqual({ name: 'Maple Crew', iconUrl: null, webhookUrl: null, worldIds: [2] });
+    expect(body(calls[0][0])).toEqual({ name: 'Maple Crew', iconUrl: null, webhookUrl: null, worldIds: [2], bossRoleIds: {} });
   });
 
   it('webhook input is masked until Show is pressed', async () => {

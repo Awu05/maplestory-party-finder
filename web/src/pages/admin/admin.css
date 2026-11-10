@@ -28,6 +28,9 @@
 .admin__table th { color: var(--muted); font-weight: 600; font-size: 0.85em; }
 .admin__form { display: grid; gap: var(--space-3); max-width: 32rem; margin: var(--space-4) 0; }
 .admin__form label { display: grid; gap: var(--space-1); }
+.admin__boss-roles > label { margin-top: var(--space-3); }
+.admin__boss-roles summary { cursor: pointer; }
+.admin__boss-roles p { color: var(--muted); font-size: 0.85rem; }
 .admin__row { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: end; }
 .admin__checks { display: flex; flex-wrap: wrap; gap: var(--space-3); border: 0; padding: 0; }
 .admin__checks label { display: flex; gap: var(--space-2); align-items: center; }

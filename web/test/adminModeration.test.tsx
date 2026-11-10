@@ -11,7 +11,7 @@ const user = (id: string, name: string, over: Record<string, unknown> = {}) => (
 const char = {
   id: 'c1', ign: 'Mapler', level: 250, jobName: 'Bishop', combatPower: 1_000_000, imageUrl: '',
   world: { id: 1, name: 'Scania' }, guild: { id: 'g', name: 'Alpha', iconUrl: null }, cpUpdatedAt: '2026-01-01T00:00:00Z',
-  screenshotUrl: null, owner: { discordUsername: 'bob' },
+  screenshotUrl: null, owner: { discordUsername: 'bob', displayName: null },
 };
 
 const usersRoutes = (extra: Record<string, unknown> = {}) => ({
@@ -56,6 +56,22 @@ describe('admin users', () => {
     expect(screen.queryByRole('button', { name: /Ban root|Unban root/ })).not.toBeInTheDocument();
     expect(screen.getByText('Banned')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Unban bobby' })).toBeInTheDocument();
+  });
+
+  it('reassign choice uses the display name in its label and confirm text', async () => {
+    const post = vi.fn(() => char);
+    mockApi({
+      ...usersRoutes({ '/api/admin/users/u1/characters': [char], 'POST /api/admin/characters/c1/reassign': post }),
+      '/api/admin/users': [user('u1', 'bob'), user('u2', 'root', { displayName: 'Maple Friend' })],
+    });
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderWithProviders(<UsersAdmin />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Show characters bob' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Reassign Mapler' }));
+    const panel = screen.getByRole('group', { name: 'Reassign Mapler' });
+    fireEvent.click(await within(panel).findByRole('button', { name: 'Choose Maple Friend' }));
+    expect(confirm).toHaveBeenCalledWith('Reassign Mapler to Maple Friend (@root)?');
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
   });
 
   it('reassign flow posts {userId}', async () => {

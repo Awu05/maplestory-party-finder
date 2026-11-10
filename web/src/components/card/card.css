@@ -173,7 +173,7 @@
   border-radius: 8px;
   background: linear-gradient(180deg, color-mix(in srgb, var(--frame-a) 14%, var(--card-panel)), var(--card-panel) 45%);
   overflow: hidden;
-  font-size: clamp(9px, 6.4cqw, 14px);
+  font-size: clamp(10px, 7cqw, 15.5px);
   line-height: 1.2;
 }
 
@@ -290,7 +290,7 @@
   font-size: 1.2em;
 }
 .card__cp small {
-  margin-left: 0.15em;
+  margin-left: 0.5em;
   font-size: 0.55em;
   font-weight: 700;
   color: var(--card-muted);

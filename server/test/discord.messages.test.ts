@@ -41,6 +41,14 @@ describe('helpers', () => {
 });
 
 describe('buildNewPostMessage', () => {
+  it('uses the display name and neutralizes mentions without changing ping recipients', () => {
+    const post = makePost();
+    post.poster.character!.owner.displayName = '@everyone Maple';
+    expect(fields(buildNewPostMessage(post, ORIGIN)).Discord).toBe(`@${ZW}everyone Maple (@alice)`);
+    const ping = buildAcceptPing({ recipientDiscordId: '123', ign: 'Alice', post, webOrigin: ORIGIN });
+    expect(ping.content).toContain('<@123>');
+    expect(ping.allowed_mentions).toEqual({ parse: [], users: ['123'] });
+  });
   it('omits the thumbnail when the snapshot image url is empty or relative', () => {
     for (const imageUrl of ['', '/uploads/a.png']) {
       const post = makePost();

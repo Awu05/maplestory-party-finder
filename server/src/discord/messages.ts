@@ -4,7 +4,7 @@ import type { PostBossDTO, PostSummaryDTO } from '@pf/shared';
 export type WebhookPayload = {
   content?: string;
   embeds?: object[];
-  allowed_mentions: { parse: string[]; users?: string[] };
+  allowed_mentions: { parse: string[]; users?: string[]; roles?: string[] };
   username?: string;
 };
 
@@ -35,7 +35,8 @@ export function discordTime(iso: string | null): string {
   return `<t:${t}:F> (<t:${t}:R>)`;
 }
 
-export function buildNewPostMessage(post: PostSummaryDTO, webOrigin: string): WebhookPayload {
+export function buildNewPostMessage(post: PostSummaryDTO, webOrigin: string, bossRoleIds: string[] = []): WebhookPayload {
+  const roles = [...new Set(bossRoleIds.filter((id) => /^[1-9]\d{16,19}$/.test(id)))];
   const recruiting = post.type === 'recruiting';
   const snap = post.poster.snapshot;
   const field = (name: string, value: string) => ({ name, value: clip(neutralize(value), FIELD_MAX), inline: true });
@@ -45,12 +46,15 @@ export function buildNewPostMessage(post: PostSummaryDTO, webOrigin: string): We
   if (post.minCp != null) fields.push(field('Min CP', formatCpShort(post.minCp)));
   fields.push(field('Poster', `${snap.ign} · ${snap.jobName} · Lv ${snap.level} · CP ${formatCpShort(post.poster.cpAtJoin)}`));
   fields.push(field('Guild', post.guild.name));
-  const username = post.poster.character?.owner.discordUsername;
-  if (username) fields.push(field('Discord', username));
+  const owner = post.poster.character?.owner;
+  // Always include the real handle: a display name alone can't be searched on Discord and could copy someone else's.
+  const discord = owner && (owner.displayName ? `${owner.displayName} (@${owner.discordUsername})` : owner.discordUsername);
+  if (discord) fields.push(field('Discord', discord));
   const note = clip(neutralize(post.note.trim()), NOTE_MAX);
   if (note) fields.push({ name: 'Note', value: note, inline: false });
 
   return {
+    ...(roles.length ? { content: roles.map((id) => `<@&${id}>`).join(' ') } : {}),
     embeds: [{
       title: clip(neutralize(`${POST_TYPE_LABELS[post.type]}: ${bossesLabel(post)}`), TITLE_MAX),
       url: postLink(post, webOrigin),
@@ -58,7 +62,7 @@ export function buildNewPostMessage(post: PostSummaryDTO, webOrigin: string): We
       ...(/^https?:\/\//.test(snap.imageUrl) ? { thumbnail: { url: snap.imageUrl } } : {}),
       fields,
     }],
-    allowed_mentions: { parse: [] },
+    allowed_mentions: { parse: [], ...(roles.length ? { roles } : {}) },
   };
 }
 

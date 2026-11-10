@@ -16,6 +16,10 @@ a.post-card:hover {
 .post-card__link {
   align-self: flex-start;
 }
+.post-card > .card {
+  max-width: 220px;
+  align-self: flex-start;
+}
 .post-card__when,
 .post-card__meta,
 .post-card__slots {
@@ -38,7 +42,41 @@ a.post-card:hover {
   gap: var(--space-2) var(--space-3);
 }
 .my-tabs {
-  margin-bottom: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+.my-parties > h1 {
+  margin: 0 0 var(--space-5);
+}
+.my-parties__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
+  gap: var(--space-5);
+  align-items: start;
+}
+.my-parties__list > li {
+  min-width: 0;
+}
+.my-parties__list > li:not(.post-card) {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+.my-parties__list .post-card {
+  width: 100%;
+}
+.my-parties__list > li > p {
+  margin: 0;
+}
+.my-parties__list .lineup {
+  width: 100%;
+  grid-template-columns: minmax(0, 220px);
+  margin: var(--space-2) 0;
+  padding: 0;
+  list-style: none;
+}
+.my-parties > section + section {
+  margin-top: var(--space-6);
 }
 .post-card__head {
   display: flex;
@@ -119,6 +157,7 @@ a.post-card:hover {
   gap: var(--space-1);
 }
 .lineup__cp {
+  margin-top: var(--space-2);
   font-size: 0.8rem;
   color: var(--muted);
 }
@@ -136,6 +175,14 @@ a.post-card:hover {
   flex-wrap: wrap;
   gap: var(--space-2);
   align-items: center;
+  margin-bottom: var(--space-3);
+}
+.post-detail > .post-card__bosses {
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.post-detail > .post-card__meta {
+  margin-bottom: var(--space-1);
 }
 .post-pill {
   padding: var(--space-1) var(--space-2);
@@ -167,7 +214,7 @@ a.post-card:hover {
   margin-top: var(--space-3);
 }
 .post-detail__actions {
-  margin: var(--space-4) 0;
+  margin: var(--space-5) 0 var(--space-6);
 }
 .post-warn {
   display: inline-block;

@@ -6,7 +6,7 @@ export const characterInclude = {
   world: true,
   // Only the public fields the DTO needs (no guild webhookUrl, no owner discordId/banned).
   guild: { select: { id: true, name: true, iconUrl: true } },
-  owner: { select: { username: true } },
+  owner: { select: { username: true, displayName: true } },
 } satisfies Prisma.CharacterInclude;
 
 export type CharacterRow = Prisma.CharacterGetPayload<{ include: typeof characterInclude }>;
@@ -25,7 +25,7 @@ export function toCharacterDTO(row: CharacterRow, viewerUserId: string | null, s
     guild: row.guild ? { id: row.guild.id, name: row.guild.name, iconUrl: row.guild.iconUrl } : null,
     manual: row.source === 'manual',
     screenshotUrl: row.screenshotKey ? storage.publicUrl(row.screenshotKey) : null,
-    owner: { discordUsername: row.owner.username },
+    owner: { discordUsername: row.owner.username, displayName: row.owner.displayName },
     isOwner: viewerUserId !== null && row.ownerId === viewerUserId,
     syncStatus: row.syncStatus,
     lastSyncedAt: row.lastSyncedAt.toISOString(),

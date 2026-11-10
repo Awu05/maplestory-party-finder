@@ -23,7 +23,7 @@ function makeCharacter(overrides: Partial<CharacterDTO> = {}): CharacterDTO {
     cpUpdatedAt: new Date(Date.now() - 3 * 86_400_000).toISOString(),
     guild: { id: 'g1', name: 'Mapleholics', iconUrl: null }, manual: false,
     screenshotUrl: '/uploads/lily.png',
-    owner: { discordUsername: 'maple_fan' },
+    owner: { discordUsername: 'maple_fan', displayName: null },
     isOwner: false,
     syncStatus: 'ok',
     lastSyncedAt: new Date().toISOString(),
@@ -47,6 +47,15 @@ describe('formatCp', () => {
 });
 
 describe('CharacterCard', () => {
+  it('shows the display name with Discord username fallback', () => {
+    const owner = { discordUsername: 'maple_fan', displayName: 'Maple Friend' };
+    const { rerender } = render(<CharacterCard character={makeCharacter({ owner })} tiers={tiers} />);
+    expect(screen.getByText('Maple Friend')).toBeVisible();
+    expect(screen.queryByText('maple_fan')).toBeNull();
+    rerender(<CharacterCard character={makeCharacter()} tiers={tiers} />);
+    expect(screen.getByText('maple_fan')).toBeVisible();
+  });
+
   it('labels manual characters and shows No guild for guildless ones', () => {
     const { rerender } = render(<CharacterCard character={makeCharacter()} tiers={tiers} />);
     expect(screen.queryByText('Added manually')).toBeNull();
@@ -121,6 +130,17 @@ describe('CharacterCard', () => {
 });
 
 describe('CardDetailModal', () => {
+  it('shows the chosen name and copies the real Discord username', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
+    render(<CardDetailModal character={makeCharacter({ owner: { discordUsername: 'maple_fan', displayName: 'Maple Friend' } })} tiers={tiers} onClose={() => {}} />);
+    expect(screen.getByText('@maple_fan')).toBeVisible();
+    expect(screen.getAllByText('Maple Friend').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Copy Discord username' }));
+    expect(writeText).toHaveBeenCalledWith('maple_fan');
+    expect(await screen.findByText('Copied')).toBeVisible();
+  });
+
   it('modal shows discord username, screenshot img, and no boss, play time or note sections; Edit only for owner', () => {
     const onEdit = vi.fn();
     const { rerender } = render(

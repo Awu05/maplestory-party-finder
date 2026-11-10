@@ -23,7 +23,7 @@ const sample = (combatPower: number): CharacterDTO => ({
   guild: { id: 'sample', name: 'Sample Guild', iconUrl: null },
   manual: false,
   screenshotUrl: null,
-  owner: { discordUsername: 'sample' },
+  owner: { discordUsername: 'sample', displayName: null },
   isOwner: false,
   syncStatus: 'ok',
   lastSyncedAt: '2026-01-01T00:00:00.000Z',

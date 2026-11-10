@@ -15,7 +15,7 @@ const character = (id: string, ign: string): CharacterDTO => ({
   cpUpdatedAt: '2026-11-01T00:00:00Z',
   guild: { id: 'g1', name: 'Maple Guild', iconUrl: null }, manual: false,
   screenshotUrl: null,
-  owner: { discordUsername: `${ign}#1` },
+  owner: { discordUsername: `${ign}#1`, displayName: null },
   isOwner: false,
   syncStatus: 'ok',
   lastSyncedAt: '2026-11-01T00:00:00Z',

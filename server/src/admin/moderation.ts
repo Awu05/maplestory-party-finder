@@ -57,6 +57,7 @@ export async function adminModerationRoutes(app: FastifyInstance): Promise<void>
   const toUserDTO = (u: User & { _count: { characters: number } }): AdminUserDTO => ({
     id: u.id,
     discordUsername: u.username,
+    displayName: u.displayName,
     avatarUrl: u.avatar,
     banned: u.banned,
     isAdmin: config.adminDiscordIds.includes(u.discordId),
@@ -68,7 +69,10 @@ export async function adminModerationRoutes(app: FastifyInstance): Promise<void>
     await requireAdmin(req);
     const { q } = usersQuery.parse(req.query);
     const users = await prisma.user.findMany({
-      where: q ? { username: { startsWith: q, mode: 'insensitive' } } : {},
+      where: q ? { OR: [
+        { username: { startsWith: q, mode: 'insensitive' } },
+        { displayName: { startsWith: q, mode: 'insensitive' } },
+      ] } : {},
       include: userInclude,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: 50,

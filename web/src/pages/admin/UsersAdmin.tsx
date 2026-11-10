@@ -19,7 +19,7 @@ function ReassignPanel({ character, ownerId, onDone }: { character: CharacterDTO
   const choices = users.data?.filter((u) => u.id !== ownerId && !u.banned) ?? [];
 
   const choose = (u: AdminUserDTO) => {
-    if (!window.confirm(`Reassign ${character.ign} to ${u.discordUsername}?`)) return;
+    if (!window.confirm(`Reassign ${character.ign} to ${u.displayName ? `${u.displayName} (@${u.discordUsername})` : u.discordUsername}?`)) return;
     reassign.mutate({ id: character.id, userId: u.id }, { onSuccess: onDone });
   };
 
@@ -33,8 +33,8 @@ function ReassignPanel({ character, ownerId, onDone }: { character: CharacterDTO
         onChange={(e) => setQ(e.target.value)}
       />
       {choices.map((u) => (
-        <button key={u.id} type="button" className="btn btn--secondary" aria-label={`Choose ${u.discordUsername}`} disabled={reassign.isPending} onClick={() => choose(u)}>
-          {u.discordUsername}
+        <button key={u.id} type="button" className="btn btn--secondary" aria-label={`Choose ${u.displayName ?? u.discordUsername}`} disabled={reassign.isPending} onClick={() => choose(u)}>
+          {u.displayName ?? u.discordUsername}
         </button>
       ))}
       {reassign.isError && <p role="alert" className="admin__error">{friendlyError(reassign.error)}</p>}
@@ -93,7 +93,7 @@ export function UsersAdmin() {
   return (
     <div>
       <h2>Users</h2>
-      <input type="search" aria-label="Search users" placeholder="Search Discord username" value={q} onChange={(e) => setQ(e.target.value)} />
+      <input type="search" aria-label="Search users" placeholder="Search display name or Discord username" value={q} onChange={(e) => setQ(e.target.value)} />
       {users.isError && <p role="alert" className="admin__error">{friendlyError(users.error)}</p>}
       {setBanned.isError && <p role="alert" className="admin__error">{friendlyError(setBanned.error)}</p>}
       {users.data?.map((u) => {
@@ -102,7 +102,8 @@ export function UsersAdmin() {
           <div key={u.id} className="admin__user">
             <div className="admin__user-head">
               {u.avatarUrl ? <img className="admin__avatar" src={u.avatarUrl} alt="" /> : <span className="admin__avatar" aria-hidden="true" />}
-              <strong>{u.discordUsername}</strong>
+              <strong>{u.displayName ?? u.discordUsername}</strong>
+              {u.displayName && <small>@{u.discordUsername}</small>}
               {u.isAdmin && <span className="pill">Admin</span>}
               {u.banned && <span className="pill pill--red">Banned</span>}
               <span>{u.characterCount} {u.characterCount === 1 ? 'character' : 'characters'}</span>

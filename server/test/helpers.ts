@@ -55,7 +55,7 @@ export function makeWorld(over: Partial<World> = {}): Promise<World> {
   return prisma.world.create({ data: { nexonWorldId: 45, name: 'Kronos', worldType: 'heroic', ...over } });
 }
 
-export function makeGuild(over: { worldIds?: number[] } & Partial<Guild> = {}): Promise<Guild> {
+export function makeGuild(over: { worldIds?: number[]; bossRoleIds?: Record<string, string> } & Partial<Omit<Guild, 'bossRoleIds'>> = {}): Promise<Guild> {
   const { worldIds = [], ...rest } = over;
   return prisma.guild.create({
     data: {

@@ -12,7 +12,7 @@ export interface CharacterDTO {
   guild: { id: string; name: string; iconUrl: string | null } | null;
   manual: boolean;
   screenshotUrl: string | null;
-  owner: { discordUsername: string };
+  owner: { discordUsername: string; displayName: string | null };
   isOwner: boolean;
   syncStatus: 'ok' | 'stale';
   lastSyncedAt: string;
@@ -41,7 +41,7 @@ export type GuildDTO = {
   active: boolean;
 };
 
-export type AdminGuildDTO = GuildDTO & { webhookUrl: string | null };
+export type AdminGuildDTO = GuildDTO & { webhookUrl: string | null; bossRoleIds: Record<string, string> };
 
 export type WorldDTO = {
   id: number;
@@ -60,7 +60,7 @@ export type BossDTO = {
 
 export type RarityTierDTO = { id: number; name: string; minCp: number; sortOrder: number };
 
-export type MeDTO = { id: string; discordUsername: string; avatarUrl: string | null; isAdmin: boolean } | null;
+export type MeDTO = { id: string; discordUsername: string; displayName: string | null; avatarUrl: string | null; isAdmin: boolean } | null;
 
 export type PostType = 'lfp' | 'recruiting';
 export type PostStatus = 'open' | 'full' | 'closed';
@@ -117,7 +117,7 @@ export interface WebhookHealthDTO {
   guildId: string; guildName: string; hasWebhook: boolean; active: boolean;
   lastSentAt: string | null; pending: number; failedLast24h: number; recentFailures: WebhookFailureDTO[]; // <= 10
 }
-export interface AdminUserDTO { id: string; discordUsername: string; avatarUrl: string | null; banned: boolean; isAdmin: boolean; createdAt: string; characterCount: number }
+export interface AdminUserDTO { id: string; discordUsername: string; displayName: string | null; avatarUrl: string | null; banned: boolean; isAdmin: boolean; createdAt: string; characterCount: number }
 export interface AdminPostDTO extends PostSummaryDTO { deletedAt: string | null; closedReason: string | null; posterDiscordUsername: string }
 
 export type JobClassDTO = { id: number; name: string; archetype: Exclude<Archetype, 'unknown'> };

@@ -23,6 +23,17 @@ export function useMe() {
   return useQuery({ queryKey: ['me'], queryFn: () => api<MeDTO>('/api/auth/me'), staleTime: FIVE_MIN });
 }
 
+export function useUpdateProfile() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (displayName: string | null) => api<MeDTO>('/api/auth/me', { method: 'PATCH', json: { displayName } }),
+    onSuccess: async (me) => {
+      qc.setQueryData(['me'], me);
+      await Promise.all(['characters', 'posts', 'requests', 'admin'].map((key) => qc.invalidateQueries({ queryKey: [key] })));
+    },
+  });
+}
+
 export const useWorlds = () =>
   useQuery({ queryKey: ['worlds'], queryFn: () => api<WorldDTO[]>('/api/worlds'), staleTime: FIVE_MIN });
 export const useGuilds = () =>
@@ -197,6 +208,7 @@ export interface GuildInput {
   name?: string;
   iconUrl?: string | null;
   webhookUrl?: string | null;
+  bossRoleIds?: Record<string, string>;
   active?: boolean;
   worldIds?: number[];
 }

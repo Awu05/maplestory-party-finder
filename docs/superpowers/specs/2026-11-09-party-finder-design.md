@@ -52,7 +52,7 @@ It starts with the owner's guild, but other guilds are first-class users. There 
 - **Backend:** Node.js (user's choice). *Builder's call:* TypeScript on the backend too, plus the framework and ORM.
 - **Database:** PostgreSQL. All app data lives here (user's choice).
 - **Hosting:** Self-hosted with Docker Compose: frontend, backend, and Postgres, with uploaded screenshots on a mounted volume (*my call*; user was open to self-hosted or Vercel). Keep storage behind a small interface so it could move to S3-compatible storage or Vercel later.
-- **Auth:** Discord OAuth2 (user agreed). The Discord user ID and username come from Discord and can't be edited.
+- **Auth:** Discord OAuth2 (user agreed). The Discord user ID and username come from Discord. An optional account display name can be edited on Profile (from the header avatar/name); it is shown instead of the username on cards, party lineups and new Discord post messages. Character details also show the real @username for copying. Clearing the display name restores the username; login preserves the chosen name and Discord mentions still use the Discord user ID.
 - **Discord delivery:** Discord channel webhooks, one per guild, configured by the admin. Pings use the `<@discordUserId>` mention syntax inside the webhook message. This requires the mentioned user to be in that server, which is expected because they belong to that guild.
 
 ## 4. Users and roles

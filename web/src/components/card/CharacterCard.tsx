@@ -64,7 +64,7 @@ export function CharacterCard({ character: c, tiers, onOpen }: Props) {
         </dl>
 
         <footer className="card__footer">
-          <span className="card__footer-label">Discord</span> <span className="card__discord">{c.owner.discordUsername}</span>
+          <span className="card__footer-label">Discord</span> <span className="card__discord">{c.owner.displayName ?? c.owner.discordUsername}</span>
           {c.manual && <span className="card__manual">Added manually</span>}
         </footer>
       </div>

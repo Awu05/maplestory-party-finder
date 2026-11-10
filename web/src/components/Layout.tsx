@@ -85,11 +85,13 @@ export function Layout() {
           {me && <NotificationBell />}
           {me ? (
             <>
-              <span className="user">
-                {me.avatarUrl && <img className="avatar" src={me.avatarUrl} alt="" />}
+              <Link to="/me/profile" className="user" aria-label={`Profile: ${me.displayName ?? me.discordUsername}`} onClick={close}>
+                {me.avatarUrl ? <img className="avatar" src={me.avatarUrl} alt="" /> : (
+                  <span className="avatar avatar--placeholder" aria-hidden="true">{(me.displayName ?? me.discordUsername).slice(0, 1).toUpperCase()}</span>
+                )}
                 {/* Visually hidden on phones by the @media rule in global.css. */}
-                <span className="user-name">{me.discordUsername}</span>
-              </span>
+                <span className="user-name">{me.displayName ?? me.discordUsername}</span>
+              </Link>
               <button type="button" className="btn btn--secondary logout" onClick={logout}>
                 Log out
               </button>

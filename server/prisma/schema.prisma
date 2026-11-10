@@ -31,6 +31,7 @@ model User {
   id            String         @id @default(cuid())
   discordId     String         @unique
   username      String
+  displayName   String?
   avatar        String?
   banned        Boolean        @default(false)
   createdAt     DateTime       @default(now())
@@ -58,6 +59,7 @@ model Guild {
   name              String            @unique
   iconUrl           String?
   webhookUrl        String?
+  bossRoleIds       Json              @default("{}")
   active            Boolean           @default(true)
   worlds            GuildWorld[]
   characters        Character[]

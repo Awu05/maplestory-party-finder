@@ -36,6 +36,7 @@ Guilds can post new parties and pings to a Discord channel through a webhook.
 4. A guild only receives new-post messages if it is **active** and its **world list includes the post's world**. A guild with no worlds never gets new-post broadcasts (pings for requests and accepts still go to it).
 5. Links in Discord messages are built from `WEB_ORIGIN`, so set it to the public URL of the web app.
 6. Admin -> Webhooks is the delivery health page (recent deliveries and failures); the Send test message button on Admin -> Guilds verifies a guild's webhook.
+7. To notify boss roles on new posts, edit the guild in Admin -> Guilds and expand **Boss role pings**. Enter each boss's Discord role ID (enable Developer Mode in Discord, then right-click the role and Copy Role ID). Enable **Allow anyone to @mention this role** in Discord. All difficulties share the boss's role; each role is pinged once per new post. Leave a boss blank to skip its ping. Configure each guild's own role IDs; requests and accepts keep their direct user pings.
 
 ## Notifications & jobs
 
@@ -46,6 +47,7 @@ Guilds can post new parties and pings to a Discord channel through a webhook.
 
 ## Characters
 
+- **Display name.** Click your avatar or name in the header to open Profile and choose a display name (up to 50 characters). Leave it blank to use your Discord username. Cards, party lineups and new Discord post messages use this name; character details still show your real Discord username for copying, and mentions still reach your Discord account.
 - **Characters Nexon can't find.** If Nexon can't find a character (e.g. on Challenger World), is unreachable or returns the wrong character, Add character offers "Add it manually": enter name, world, class and level. Manual characters use a default image, show "Added manually", and are skipped by the daily sync; their class and level can be edited.
 - **Refresh from Nexon on a manual character.** If Nexon now finds it on its own world, it becomes a normal synced character. If it is found on another active world of the same type (heroic/interactive), a popup offers to move it there. Moving clears the guild (or sets a newly picked one) and is refused while the character is in an open party or has pending requests/invites.
 - **Guild required.** A character with no guild can't post, request to join or be invited until a guild is picked on its edit page.

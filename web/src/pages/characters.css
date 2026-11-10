@@ -72,8 +72,9 @@
   background: var(--surface);
   margin: 0 0 var(--space-2);
 }
-.boss-picker__diff {
+.boss-picker__row .boss-picker__diff {
   display: inline-flex;
+  flex-direction: row;
   gap: var(--space-2);
   align-items: center;
   margin-right: var(--space-4);

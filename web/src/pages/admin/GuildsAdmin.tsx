@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { AdminGuildDTO } from '@pf/shared';
-import { useAdminGuilds, useAdminWorlds, useCreateGuild, useTestWebhook, useUpdateGuild } from '../../api/hooks';
+import { useAdminGuilds, useAdminWorlds, useBosses, useCreateGuild, useTestWebhook, useUpdateGuild } from '../../api/hooks';
 import { friendlyError } from '../../api/errors';
 
 interface Draft {
@@ -9,6 +9,7 @@ interface Draft {
   iconUrl: string;
   webhookUrl: string;
   worldIds: number[];
+  bossRoleIds: Record<string, string>;
 }
 
 function TestWebhookButton({ guild }: { guild: AdminGuildDTO }) {
@@ -26,15 +27,19 @@ function TestWebhookButton({ guild }: { guild: AdminGuildDTO }) {
   );
 }
 
-const blank: Draft = { id: null, name: '', iconUrl: '', webhookUrl: '', worldIds: [] };
+const ROLE_ID = /^[1-9][0-9]{16,19}$/;
+
+const blank: Draft = { id: null, name: '', iconUrl: '', webhookUrl: '', worldIds: [], bossRoleIds: {} };
 
 export function GuildsAdmin() {
   const guilds = useAdminGuilds();
   const worlds = useAdminWorlds();
+  const bosses = useBosses();
   const create = useCreateGuild();
   const update = useUpdateGuild();
   const [draft, setDraft] = useState<Draft | null>(null);
   const [showHook, setShowHook] = useState(false);
+  const [formError, setFormError] = useState('');
   const mutation = draft?.id ? update : create;
 
   const worldName = (id: number) => worlds.data?.find((w) => w.id === id)?.name ?? String(id);
@@ -42,19 +47,32 @@ export function GuildsAdmin() {
     create.reset();
     update.reset();
     setShowHook(false);
+    setFormError('');
     setDraft(d);
   };
   const edit = (g: AdminGuildDTO) =>
-    open({ id: g.id, name: g.name, iconUrl: g.iconUrl ?? '', webhookUrl: g.webhookUrl ?? '', worldIds: g.worldIds });
+    open({ id: g.id, name: g.name, iconUrl: g.iconUrl ?? '', webhookUrl: g.webhookUrl ?? '', worldIds: g.worldIds, bossRoleIds: g.bossRoleIds ?? {} });
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!draft) return;
+    setFormError('');
+    // Checked here, not with an input pattern: the inputs sit in a collapsible section, and the
+    // browser silently blocks submit on an invalid field it cannot show.
+    const badBoss = bosses.data?.find((boss) => {
+      const roleId = draft.bossRoleIds[boss.id]?.trim();
+      return roleId && !ROLE_ID.test(roleId);
+    });
+    if (badBoss) return setFormError(`${badBoss.name} role ID must be a Discord role ID (17–20 digits).`);
     const payload = {
       name: draft.name,
       iconUrl: draft.iconUrl.trim() || null,
       webhookUrl: draft.webhookUrl.trim() || null,
       worldIds: draft.worldIds,
+      ...(bosses.data ? { bossRoleIds: Object.fromEntries(bosses.data.flatMap((boss) => {
+        const roleId = draft.bossRoleIds[boss.id]?.trim();
+        return roleId ? [[String(boss.id), roleId]] : [];
+      })) } : {}),
     };
     const opts = { onSuccess: () => setDraft(null) };
     if (draft.id) update.mutate({ id: draft.id, ...payload }, opts);
@@ -115,6 +133,26 @@ export function GuildsAdmin() {
             </label>
             <button type="button" className="btn btn--secondary" onClick={() => setShowHook((s) => !s)}>{showHook ? 'Hide' : 'Show'}</button>
           </div>
+          <details className="admin__boss-roles">
+            <summary>Boss role pings</summary>
+            <p>New posts ping the roles for their bosses in this Discord server. Paste a role ID for each boss, or leave blank for no ping. All difficulties use the same role.</p>
+            <p>In Discord, enable Developer Mode, then right-click a role and choose Copy Role ID. Enable “Allow anyone to @mention this role” for these roles.</p>
+            {bosses.isPending && <p>Loading bosses…</p>}
+            {bosses.isError && <p role="alert">{friendlyError(bosses.error)}</p>}
+            {bosses.data?.map((boss) => (
+              <label key={boss.id}>
+                {boss.name} role ID
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={20}
+                  placeholder="Discord role ID"
+                  value={draft.bossRoleIds[boss.id] ?? ''}
+                  onChange={(event) => setDraft({ ...draft, bossRoleIds: { ...draft.bossRoleIds, [boss.id]: event.target.value } })}
+                />
+              </label>
+            ))}
+          </details>
           <fieldset className="admin__checks">
             <legend>Worlds</legend>
             {worlds.data?.map((w) => (
@@ -133,6 +171,7 @@ export function GuildsAdmin() {
               </label>
             ))}
           </fieldset>
+          {formError && <p role="alert" className="admin__error">{formError}</p>}
           {mutation.isError && <p role="alert" className="admin__error">{friendlyError(mutation.error)}</p>}
           <div className="admin__row">
             <button type="submit" className="btn btn--primary" disabled={mutation.isPending}>{draft.id ? 'Save guild' : 'Create guild'}</button>

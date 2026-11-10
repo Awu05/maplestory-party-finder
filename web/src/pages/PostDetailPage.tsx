@@ -72,7 +72,7 @@ export function PostDetailPage() {
   };
 
   return (
-    <article>
+    <article className="post-detail">
       <header className="post-detail__head">
         <span className={`post-badge post-badge--${p.type}`}>
           {POST_TYPE_LABELS[p.type]}

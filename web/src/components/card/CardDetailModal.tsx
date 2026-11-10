@@ -87,7 +87,8 @@ export function CardDetailModal({ character: c, tiers, onClose, onEdit }: Props)
           <section>
             <h3>Discord</h3>
             <div className="card-modal__discord">
-              <span>{c.owner.discordUsername}</span>
+              <span>{c.owner.displayName ?? c.owner.discordUsername}</span>
+              <small className="card-modal__muted">@{c.owner.discordUsername}</small>
               <button type="button" className="btn btn--secondary btn--compact" onClick={copyUsername} aria-label="Copy Discord username">
                 {copied ? 'Copied' : 'Copy'}
               </button>
