@@ -1,0 +1,55 @@
+.ftg {
+  max-width: 100%;
+  max-height: 22rem;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  -webkit-overflow-scrolling: touch;
+}
+.ftg__table {
+  border-collapse: separate;
+  border-spacing: 2px;
+  font-size: 0.72rem;
+  min-width: 18rem;
+  width: 100%;
+}
+.ftg__table th {
+  position: sticky;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-weight: 600;
+  padding: 0 0.25rem;
+}
+.ftg__table thead th {
+  top: 0;
+  z-index: 1;
+}
+.ftg__table tbody th {
+  left: 0;
+  text-align: right;
+  white-space: nowrap;
+}
+.ftg__cell {
+  min-width: 1.75rem;
+  height: 0.9rem;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--border) 45%, var(--surface));
+}
+.ftg__cell--on {
+  background: var(--accent);
+}
+.ftg__td {
+  padding: 0;
+}
+button.ftg__cell {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  cursor: pointer;
+  user-select: none;
+}
+button.ftg__cell:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

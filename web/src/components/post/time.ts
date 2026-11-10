@@ -52,3 +52,8 @@ export function relativeTime(iso: string, now: Date = new Date()): string {
   if (hours < 24) return `${hours}h ago`;
   return `${Math.floor(hours / 24)}d ago`;
 }
+
+/** The browser's IANA time zone. Wrapped so tests can stub it. */
+export function browserTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone;
+}

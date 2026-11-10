@@ -1,14 +1,15 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { MAX_POST_BOSSES, POST_TYPE_LABELS, maxPartySizeFor } from '@pf/shared';
+import { MAX_POST_BOSSES, POST_TYPE_LABELS, freeSlotsForViewer, maxPartySizeFor } from '@pf/shared';
 import type { BossDTO, CharacterDTO, PostDetailDTO, PostType } from '@pf/shared';
 import { useBosses, useCharacters, useMe } from '../api/hooks';
 import { useCreatePost, usePost, useUpdatePost } from '../api/postHooks';
 import type { UpdatePostInput } from '../api/postHooks';
 import { friendlyError } from '../api/errors';
 import { BossMultiPicker } from '../components/post/BossMultiPicker';
-import { localInputToUtcIso, utcIsoToLocalInput } from '../components/post/time';
+import { FreeTimeGrid } from '../components/post/FreeTimeGrid';
+import { browserTimeZone } from '../components/post/time';
 import './characters.css';
 
 const NOTE_MAX = 300;
@@ -18,8 +19,7 @@ interface Values {
   type: PostType;
   characterId: string;
   bossIds: number[];
-  when: string;
-  flexible: boolean;
+  freeTimes: number[];
   partySize: number;
   minCp: string;
   note: string;
@@ -37,8 +37,10 @@ function valuesFromPost(post: PostDetailDTO): Values {
     type: post.type,
     characterId: post.poster.characterId ?? '',
     bossIds: post.bosses.map((b) => b.bossDifficultyId),
-    when: post.scheduledAt ? utcIsoToLocalInput(post.scheduledAt) : '',
-    flexible: post.scheduledAt === null,
+    // Shown in the browser's zone; saving re-stores the grid in that zone.
+    freeTimes: post.freeTimesZone
+      ? freeSlotsForViewer(post.freeTimes, post.freeTimesZone, browserTimeZone(), new Date())
+      : [],
     partySize: post.partySize ?? DEFAULT_PARTY_SIZE,
     minCp: post.minCp === null ? '' : post.minCp.toLocaleString('en-US'),
     note: post.note,
@@ -53,10 +55,6 @@ function parseCp(text: string): number | null {
 }
 
 const sameSet = (a: number[], b: number[]) => a.length === b.length && a.every((x) => b.includes(x));
-
-function timeChanged(v: Values, orig: Values) {
-  return v.flexible !== orig.flexible || (!v.flexible && v.when !== orig.when);
-}
 
 function changedFields(v: Values, orig: Values): UpdatePostInput {
   const out: UpdatePostInput = {};
@@ -75,6 +73,10 @@ function changedFields(v: Values, orig: Values): UpdatePostInput {
     }
   }
   if (v.note !== orig.note) out.note = v.note;
+  if (!sameSet(v.freeTimes, orig.freeTimes)) {
+    out.freeTimes = v.freeTimes;
+    out.freeTimesZone = v.freeTimes.length > 0 ? browserTimeZone() : null;
+  }
   return out;
 }
 
@@ -82,8 +84,7 @@ const EMPTY: Values = {
   type: 'recruiting',
   characterId: '',
   bossIds: [],
-  when: '',
-  flexible: false,
+  freeTimes: [],
   partySize: DEFAULT_PARTY_SIZE,
   minCp: '',
   note: '',
@@ -121,11 +122,6 @@ function PostForm({ characters, bosses, post }: FormProps) {
     // A deleted poster character (blank on edit) stays blank unless the user picks another.
     if (!v.characterId && !(post && orig.characterId === '')) return setError('Pick a character.');
     if (v.bossIds.length === 0) return setError('Pick at least one boss.');
-    // An edited post keeps its already-scheduled time unvalidated unless the time was changed.
-    if (!v.flexible && (!post || timeChanged(v, orig))) {
-      if (!v.when) return setError('Pick a time, or tick Flexible.');
-      if (new Date(localInputToUtcIso(v.when)).getTime() <= Date.now()) return setError('Pick a time in the future.');
-    }
     const cp = v.type === 'recruiting' ? parseCp(v.minCp) : null;
     if (cp !== null && (Number.isNaN(cp) || cp <= 0)) return setError('Enter the minimum combat power as a number.');
 
@@ -144,9 +140,8 @@ function PostForm({ characters, bosses, post }: FormProps) {
           type: v.type,
           characterId: v.characterId,
           bossDifficultyIds: v.bossIds,
-          // The server no longer takes scheduledAt; the free-times grid replaces the time inputs.
-          freeTimes: [],
-          freeTimesZone: null,
+          freeTimes: v.freeTimes,
+          freeTimesZone: v.freeTimes.length > 0 ? browserTimeZone() : null,
           ...(v.type === 'recruiting' ? { partySize: v.partySize, ...(cp !== null ? { minCp: cp } : {}) } : {}),
           note: v.note,
         });
@@ -183,20 +178,11 @@ function PostForm({ characters, bosses, post }: FormProps) {
         <h3>Bosses</h3>
         <BossMultiPicker value={v.bossIds} onChange={setBosses} bosses={bosses} max={MAX_POST_BOSSES} />
       </div>
-      <label>
-        When
-        <input
-          type="datetime-local"
-          value={v.flexible ? '' : v.when}
-          disabled={v.flexible}
-          onChange={(e) => set({ when: e.target.value })}
-        />
-      </label>
-      <label>
-        <span>
-          <input type="checkbox" checked={v.flexible} onChange={(e) => set({ flexible: e.target.checked })} /> Flexible
-        </span>
-      </label>
+      <div>
+        <h3>When you're free</h3>
+        <small>Leave empty if you're flexible</small>
+        <FreeTimeGrid label="When you're free" value={v.freeTimes} onChange={(freeTimes) => set({ freeTimes })} />
+      </div>
       {v.type === 'recruiting' && (
         <>
           <label>
