@@ -162,6 +162,36 @@ describe('PATCH /api/posts/:id', () => {
     expect(events.events).toContainEqual({ type: 'request.declined', requestId: inv.id, auto: true, actorUserId: userId });
   });
 
+  it('the lfpPostId decline is scoped: invites answering other LFP posts, and decided invites, are untouched', async () => {
+    for (const edit of ['type', 'character'] as const) {
+      const lfp = await makePost({ posterUserId: userId, type: 'lfp', partySize: null });
+      const otherLfp = await makePost({ type: 'lfp', partySize: null });
+      const rec = await makePost();
+      const invite = (lfpPost: typeof lfp, over: Record<string, unknown> = {}) =>
+        prisma.request.create({
+          data: {
+            kind: 'invite', postId: rec.id, characterId: lfpPost.posterCharacterId!, lfpPostId: lfpPost.id, createdByUserId: rec.posterUserId, ...over,
+          },
+        });
+      const mine = await invite(lfp);
+      const bystander = await invite(otherLfp);
+      const rec2 = await makePost();
+      const accepted = await invite(lfp, { postId: rec2.id, status: 'accepted', decidedAt: new Date() });
+      events.clear();
+      const body =
+        edit === 'type'
+          ? { type: 'recruiting', partySize: 3 }
+          : { characterId: (await makeCharacter({ ownerId: userId, worldId: lfp.worldId, guildId: lfp.guildId })).id };
+      expect((await patch(lfp.id, body)).statusCode).toBe(200);
+      expect(await reqStatus(mine.id)).toBe('declined');
+      expect(await reqStatus(bystander.id)).toBe('pending');
+      expect(await reqStatus(accepted.id)).toBe('accepted');
+      expect(events.events.filter((e) => e.type === 'request.declined')).toEqual([
+        { type: 'request.declined', requestId: mine.id, auto: true, actorUserId: userId },
+      ]);
+    }
+  });
+
   it('character change on a recruiting post (same world) keeps its pending requests', async () => {
     const p = await makePost({ posterUserId: userId });
     const r = await pending(p.id);
