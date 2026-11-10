@@ -10,6 +10,8 @@ export interface Config {
   uploadDir: string;
   /** Built web app directory; when set, the server serves it (production only). */
   webDist?: string;
+  /** Run the webhook worker and daily sync job in this process (disable on a second instance). */
+  jobsEnabled: boolean;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv): Config {
@@ -34,5 +36,6 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
       .filter(Boolean),
     uploadDir: env.UPLOAD_DIR ?? './uploads',
     webDist: env.WEB_DIST || undefined,
+    jobsEnabled: !['false', '0'].includes((env.JOBS_ENABLED ?? '').trim().toLowerCase()),
   };
 }

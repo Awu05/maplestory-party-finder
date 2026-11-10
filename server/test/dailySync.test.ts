@@ -100,3 +100,35 @@ describe('DailySyncJob', () => {
     expect(dIds).toContain(oldPending.id);
   });
 });
+
+describe('DailySyncJob.stop()', () => {
+  it('stops an in-flight run after at most one more character and records a partial result', async () => {
+    await makeWorld();
+    for (const [i, ign] of ['Aaa', 'Bbb', 'Ccc', 'Ddd'].entries()) {
+      await makeCharacter({ ign, lastSyncedAt: new Date(Date.UTC(2026, 4, 1 + i)) });
+    }
+    nexon.set([nx('Aaa', 1), nx('Bbb', 2), nx('Ccc', 3), nx('Ddd', 4)]);
+    let release!: () => void;
+    let entered!: () => void;
+    const inSleep = new Promise<void>((r) => (entered = r));
+    const gate = new Promise<void>((r) => (release = r));
+    let sleepCalls = 0;
+    const j = new DailySyncJob({
+      prisma, nexon, now: () => clock,
+      sleep: async () => {
+        sleepCalls++;
+        entered();
+        await gate;
+      },
+    });
+    j.start(10 * DAY);
+    await inSleep; // first character synced, blocked in the throttle sleep
+    const stopped = j.stop();
+    release();
+    await stopped;
+    expect(nexon.calls.length).toBeLessThanOrEqual(2);
+    expect(sleepCalls).toBe(1);
+    const run = await prisma.jobRun.findUniqueOrThrow({ where: { name: 'daily-sync' } });
+    expect(run.lastResult).toMatchObject({ synced: nexon.calls.length, stale: 0 });
+  });
+});

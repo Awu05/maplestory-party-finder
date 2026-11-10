@@ -23,7 +23,23 @@ Copy `.env.example` to `.env` (root, used by Docker) or `server/.env` (dev).
 | `WEB_ORIGIN` | Public origin of the site (https enables secure cookies) |
 | `ADMIN_DISCORD_IDS` | Comma-separated Discord IDs granted admin |
 | `UPLOAD_DIR` | Where screenshots are stored |
+| `JOBS_ENABLED` | Run the webhook worker and daily sync in this process (default `true`; `false` or `0` disables, e.g. on a second instance) |
 | `WEB_DIST` | Built web app dir; when set the server serves it (set automatically in the Docker image) |
+
+## Discord channel setup
+
+Guilds can post new parties and pings to a Discord channel through a webhook.
+
+1. In Discord, go to Server Settings -> Integrations -> Webhooks -> New Webhook, pick the channel, and copy the webhook URL.
+2. In the app, open Admin -> Guilds, paste the URL into the guild, then click Send test message.
+3. Members must be in that Discord server for @mentions to work.
+
+## Notifications & jobs
+
+- The in-app bell polls the server periodically for new notifications (join requests, invites, accepts); there is no push connection.
+- A background worker delivers queued webhook messages every 5 seconds. Failed deliveries are retried with increasing delays (30 s, 2 min, 10 min, 1 h) and given up on after 5 attempts; Discord rate limits are respected.
+- A daily sync refreshes every character from Nexon, oldest first, throttled. It checks hourly and runs when the last run was 24 hours ago or more, so the time of day drifts with the last run. It also prunes notifications older than 60 days and sent deliveries older than 30 days.
+- Set `JOBS_ENABLED=false` to disable both jobs in a given instance.
 
 ## Development
 

@@ -19,6 +19,7 @@ export class DailySyncJob {
   private readonly log?: Logger;
   private timer: NodeJS.Timeout | null = null;
   private inFlight: Promise<unknown> | null = null;
+  private stopping = false;
 
   constructor(opts: {
     prisma: PrismaClient;
@@ -72,6 +73,7 @@ export class DailySyncJob {
     let synced = 0;
     let stale = 0;
     for (const [i, { id }] of characters.entries()) {
+      if (this.stopping) break; // shutdown: record the partial result, the next run re-syncs oldest first
       try {
         if ((await syncCharacterFromNexon(this.prisma, this.nexon, id, { fresh: true })) === 'ok') synced++;
         else stale++;
@@ -79,8 +81,9 @@ export class DailySyncJob {
         stale++;
         this.log?.error({ characterId: id, errName: errName(err) }, 'daily sync of character failed');
       }
-      if (i < characters.length - 1) await this.sleep(this.throttleMs);
+      if (i < characters.length - 1 && !this.stopping) await this.sleep(this.throttleMs);
     }
+    if (this.stopping) return { synced, stale };
     await this.prisma.notification.deleteMany({ where: { createdAt: { lt: new Date(now.getTime() - NOTIFICATION_RETENTION_MS) } } });
     await this.prisma.webhookDelivery.deleteMany({
       where: { status: 'sent', createdAt: { lt: new Date(now.getTime() - DELIVERY_RETENTION_MS) } },
@@ -90,6 +93,7 @@ export class DailySyncJob {
 
   start(checkEveryMs = 3_600_000): void {
     if (this.timer) return;
+    this.stopping = false;
     const tick = () => {
       if (this.inFlight) return;
       this.inFlight = this.runIfDue().finally(() => {
@@ -102,6 +106,7 @@ export class DailySyncJob {
   }
 
   async stop(): Promise<void> {
+    this.stopping = true;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
     await this.inFlight;

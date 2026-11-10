@@ -28,6 +28,7 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
     webOrigin: 'http://localhost:5173',
     adminDiscordIds: ['admin-1'],
     uploadDir: path.join(os.tmpdir(), 'pf-test-uploads'),
+    jobsEnabled: false,
     ...overrides,
   };
 }
