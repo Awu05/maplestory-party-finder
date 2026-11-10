@@ -26,7 +26,7 @@ interface Details {
 function classNames(classes: JobClassDTO[] | undefined, current?: string): string[] {
   const names = (classes ?? []).map((c) => c.name);
   if (current && !names.includes(current)) names.push(current);
-  return names.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  return names.sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' }));
 }
 
 /** Controlled state for the manual fields, with the shared validation and error copy. */
@@ -197,8 +197,12 @@ function AddCharacter({ guilds }: { guilds: GuildDTO[] }) {
                 type="button"
                 className="preview"
                 disabled={reason !== null}
-                aria-pressed={chosen === p}
-                onClick={() => setChosen(p)}
+                aria-pressed={chosen === p && !manualMode}
+                onClick={() => {
+                  // Picking a found character leaves manual mode.
+                  setManualMode(false);
+                  setChosen(p);
+                }}
               >
                 <img src={p.imageUrl} alt="" />
                 <strong>{p.ign}</strong>
@@ -286,9 +290,6 @@ function EditForm({ id, guilds, character }: { id: string; guilds: GuildDTO[]; c
               level={manual.level}
               onLevel={manual.setLevel}
               classOptions={classNames(classes.data, character.jobName)}
-              worldId=""
-              onWorld={() => undefined}
-              worlds={[]}
             />
           )
         }

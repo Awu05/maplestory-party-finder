@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import type { CharacterDTO, RarityTierDTO } from '@pf/shared';
 import { afterEach, vi } from 'vitest';
@@ -62,6 +64,19 @@ describe('CharacterCard', () => {
     rerender(<CharacterCard character={makeCharacter({ manual: true, guild: null })} tiers={tiers} />);
     expect(screen.getByText('Added manually')).toBeInTheDocument();
     expect(screen.getByText('No guild')).toBeInTheDocument();
+  });
+
+  it('"Added manually" sits on its own line, outside the truncated Discord name', () => {
+    const long = { discordUsername: 'x'.repeat(80), displayName: null };
+    render(<CharacterCard character={makeCharacter({ manual: true, owner: long })} tiers={tiers} />);
+    const manual = screen.getByText('Added manually');
+    expect(manual.closest('.card__owner')).toBeNull();
+    expect(screen.getByText('x'.repeat(80)).closest('.card__owner')).not.toBeNull();
+    const css = readFileSync(resolve(__dirname, '../src/components/card/card.css'), 'utf8');
+    const body = (sel: string) => new RegExp(`(?:^|\\n)${sel.replace('.', '\\.')}\\s*\\{([^}]*)\\}`).exec(css)?.[1] ?? '';
+    expect(body('.card__owner')).toMatch(/text-overflow:\s*ellipsis/);
+    expect(body('.card__footer')).not.toMatch(/white-space:\s*nowrap/);
+    expect(body('.card__manual')).toMatch(/display:\s*block/);
   });
 
   it('card applies archetype and foil classes', () => {

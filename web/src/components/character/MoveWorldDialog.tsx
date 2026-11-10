@@ -21,10 +21,21 @@ export function MoveWorldDialog({ character, candidates, onClose, onMoved }: Pro
   const [guildId, setGuildId] = useState('');
   const [error, setError] = useState('');
 
+  // Only active guilds that play the target world; none until a world is picked.
   const guildOptions = useMemo(
-    () => (guilds.data ?? []).filter((g) => g.active).sort((a, b) => a.name.localeCompare(b.name)),
-    [guilds.data],
+    () =>
+      worldId === null
+        ? []
+        : (guilds.data ?? [])
+            .filter((g) => g.active && g.worldIds.includes(worldId))
+            .sort((a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' })),
+    [guilds.data, worldId],
   );
+  const pickWorld = (id: number) => {
+    setWorldId(id);
+    // A guild picked for another world doesn't apply to this one.
+    if (guildId && !(guilds.data ?? []).some((g) => g.id === guildId && g.worldIds.includes(id))) setGuildId('');
+  };
 
   useEffect(() => {
     const d = ref.current;
@@ -80,7 +91,7 @@ export function MoveWorldDialog({ character, candidates, onClose, onMoved }: Pro
                   type="radio"
                   name="move-world"
                   checked={worldId === c.worldId}
-                  onChange={() => setWorldId(c.worldId)}
+                  onChange={() => pickWorld(c.worldId)}
                 />
                 <span>
                   {c.worldName} · Lv {c.level} {c.jobName}
@@ -101,6 +112,7 @@ export function MoveWorldDialog({ character, candidates, onClose, onMoved }: Pro
             ))}
           </select>
         </label>
+        {guilds.isError && <p role="alert">Couldn't load guilds. You can still update with No guild.</p>}
 
         {error && <p role="alert">{error}</p>}
 

@@ -320,6 +320,9 @@
   font-size: 0.68em;
   font-style: italic;
   color: var(--card-muted);
+}
+.card__owner {
+  display: block;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -420,7 +423,7 @@
 }
 
 .card__manual {
-  margin-left: 0.6em;
+  display: block;
   font-style: normal;
   font-size: 0.9em;
   opacity: 0.85;

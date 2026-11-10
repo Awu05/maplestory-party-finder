@@ -197,6 +197,25 @@ describe('admin pages', () => {
       expect(body(patch.mock.calls[0][0])).toEqual({ archetype: 'thief' });
     });
 
+    it("disables a row's archetype select while its update is pending", async () => {
+      const api = mockApi({ '/api/classes': classes });
+      let release = () => {};
+      vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) =>
+        init?.method === 'PATCH'
+          ? new Promise<Response>((r) => {
+              release = () => r(new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } }));
+            })
+          : api(input, init),
+      );
+      renderWithProviders(<ClassesAdmin />);
+      const adele = await screen.findByLabelText('Archetype for Adele');
+      await u.type(adele, 'thief');
+      await waitFor(() => expect(adele).toBeDisabled());
+      expect(screen.getByLabelText('Archetype for Bishop')).toBeEnabled();
+      release();
+      await waitFor(() => expect(adele).toBeEnabled());
+    });
+
     it('removes a class after confirm', async () => {
       const del = vi.fn((_init?: RequestInit) => undefined);
       mockApi({ '/api/classes': classes, 'DELETE /api/admin/classes/2': del });

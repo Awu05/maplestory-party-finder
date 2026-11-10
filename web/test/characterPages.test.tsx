@@ -292,18 +292,27 @@ describe('CharacterFormPage', () => {
       });
     });
 
-    it('rejects a level of 0 or empty without posting', async () => {
+    /** Opens the manual form and fills every field, then overrides some (by label) before saving. */
+    async function saveManual(over: Record<string, string>) {
       const fetchMock = await lookupEmpty({ 'POST /api/characters/manual': manualChar });
       fireEvent.click(await screen.findByRole('button', { name: 'Add it manually' }));
-      fireEvent.change(screen.getByLabelText('World'), { target: { value: '1' } });
-      fireEvent.change(screen.getByLabelText('Class'), { target: { value: 'Adele' } });
-      fireEvent.change(screen.getByLabelText('Combat power'), { target: { value: '1000' } });
-      fireEvent.change(screen.getByLabelText('Guild'), { target: { value: 'g1' } });
-      for (const level of ['0', '']) {
-        fireEvent.change(screen.getByLabelText('Level'), { target: { value: level } });
-        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-        expect(await screen.findByRole('alert')).toHaveTextContent('Enter a level from 1 to 300.');
-      }
+      const values: Record<string, string> = {
+        World: '1', Class: 'Adele', Level: '250', 'Combat power': '1000', Guild: 'g1', ...over,
+      };
+      for (const [label, value] of Object.entries(values)) fireEvent.change(screen.getByLabelText(label), { target: { value } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      return fetchMock;
+    }
+
+    it.each([
+      ['a level of 0', { Level: '0' }, 'Enter a level from 1 to 300.'],
+      ['an empty level', { Level: '' }, 'Enter a level from 1 to 300.'],
+      ['an empty character name', { 'Character name': '  ' }, 'Enter a character name.'],
+      ['no world', { World: '' }, 'Pick a world.'],
+      ['no class', { Class: '' }, 'Pick a class.'],
+    ])('rejects %s without posting', async (_n, over, message) => {
+      const fetchMock = await saveManual(over);
+      expect(await screen.findByRole('alert')).toHaveTextContent(message);
       expect(fetchMock.mock.calls.some((c) => String(c[0]) === '/api/characters/manual')).toBe(false);
     });
 
@@ -328,6 +337,20 @@ describe('CharacterFormPage', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Find' }));
       fireEvent.click(await screen.findByRole('button', { name: 'Not your character? Add it manually' }));
       expect(screen.getByLabelText('Class')).toBeInTheDocument();
+    });
+
+    it('picking a preview while in manual mode leaves manual mode and selects it', async () => {
+      mockApi({ ...manualShared, 'POST /api/characters/lookup': [preview] });
+      renderWithProviders(formRoutes(), { route: '/me/characters/new' });
+      fireEvent.change(await screen.findByLabelText('In-game name'), { target: { value: 'Lily' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Find' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Not your character? Add it manually' }));
+      expect(screen.getByLabelText('Class')).toBeInTheDocument();
+      const card = screen.getByRole('button', { name: /Lily/ });
+      fireEvent.click(card);
+      expect(screen.queryByLabelText('Class')).toBeNull();
+      expect(card).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByLabelText('Combat power')).toBeInTheDocument();
     });
 
     it('edit of a manual character shows class and level and PATCHes them', async () => {

@@ -34,6 +34,7 @@ const base = {
     { id: 'g2', name: 'Zeta', iconUrl: null, worldIds: [1], active: true },
     { id: 'g1', name: 'Alpha', iconUrl: null, worldIds: [1], active: true },
     { id: 'g3', name: 'Dead', iconUrl: null, worldIds: [1], active: false },
+    { id: 'g4', name: 'Hyper Guild', iconUrl: null, worldIds: [2], active: true },
   ],
 };
 
@@ -68,9 +69,10 @@ describe('refresh outcomes', () => {
     ['stale', "Couldn't reach Nexon — showing last known data"],
     ['not_found', 'Still not found on Nexon'],
     ['unavailable', "Couldn't reach Nexon, try again later"],
-  ] as const)('%s shows its message', async (outcome, text) => {
+  ] as const)('%s shows its message and opens no dialog', async (outcome, text) => {
     await refreshWith(result(outcome));
     expect(await screen.findByText(text)).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 });
 
@@ -158,5 +160,53 @@ describe('MoveWorldDialog', () => {
     expect(focusCalls).toEqual([false]);
     expect(fetchMock.mock.calls.some((c) => String(c[0]).endsWith('/move'))).toBe(false);
     expect(btn).toHaveFocus();
+  });
+
+  it("lists only active guilds that play the target world, and follows the picked world", async () => {
+    await refreshWith(result('found_elsewhere', [kronos, hyperion]));
+    await screen.findByRole('dialog');
+    const names = () => [...(screen.getByLabelText('Guild (optional)') as HTMLSelectElement).options].map((o) => o.textContent);
+    expect(names()).toEqual(['No guild']);
+    fireEvent.click(screen.getByRole('radio', { name: /Kronos/ }));
+    await waitFor(() => expect(names()).toEqual(['No guild', 'Alpha', 'Zeta']));
+    fireEvent.change(screen.getByLabelText('Guild (optional)'), { target: { value: 'g1' } });
+    fireEvent.click(screen.getByRole('radio', { name: /Hyperion/ }));
+    expect(names()).toEqual(['No guild', 'Hyper Guild']);
+    // The Kronos guild no longer applies.
+    expect(screen.getByLabelText('Guild (optional)')).toHaveValue('');
+  });
+
+  it('a guild list load failure shows an error, and Update with No guild still works', async () => {
+    const { fetchMock } = await refreshWith(result('found_elsewhere', [kronos]), {
+      '/api/guilds': () => {
+        throw new Error('guilds down');
+      },
+      'POST /api/characters/c1/move': { ...character, world: { id: 1, name: 'Kronos' } },
+    });
+    await screen.findByRole('dialog');
+    expect(await screen.findByText(/Couldn't load guilds/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Update' }));
+    expect(await screen.findByText('Moved to Kronos')).toBeInTheDocument();
+    const call = fetchMock.mock.calls.find((c) => String(c[0]).endsWith('/move'))!;
+    expect(JSON.parse((call[1] as RequestInit).body as string)).toEqual({ worldId: 1, guildId: null });
+  });
+
+  it('a failed move can be retried', async () => {
+    let attempts = 0;
+    await refreshWith(result('found_elsewhere', [kronos]));
+    await screen.findByRole('dialog');
+    const orig = globalThis.fetch;
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (!String(input).endsWith('/move')) return orig(input, init);
+      attempts++;
+      return attempts === 1
+        ? new Response(JSON.stringify({ error: { code: 'NEXON_UNAVAILABLE', message: 'Nexon is unavailable, try again shortly' } }), { status: 502 })
+        : new Response(JSON.stringify({ ...character, world: { id: 1, name: 'Kronos' } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Update' }));
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Update' }));
+    expect(await screen.findByText('Moved to Kronos')).toBeInTheDocument();
+    expect(attempts).toBe(2);
   });
 });

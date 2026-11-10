@@ -32,7 +32,7 @@ export function ClassesAdmin() {
   const [name, setName] = useState('');
   const [archetype, setArchetype] = useState<Arch>('warrior');
   const error = create.error ?? update.error ?? remove.error ?? (classes.isError ? classes.error : null);
-  const sorted = [...(classes.data ?? [])].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+  const sorted = [...(classes.data ?? [])].sort((a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' }));
 
   function add(e: React.FormEvent) {
     e.preventDefault();
@@ -70,6 +70,8 @@ export function ClassesAdmin() {
                 <select
                   aria-label={`Archetype for ${c.name}`}
                   value={c.archetype}
+                  // Only the row being saved waits; a second change can't race the first.
+                  disabled={update.isPending && update.variables?.id === c.id}
                   onChange={(e) => update.mutate({ id: c.id, archetype: e.target.value as Arch })}
                 >
                   <ArchetypeOptions />
