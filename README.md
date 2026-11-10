@@ -67,11 +67,22 @@ npm test
 
 Server tests use the `partyfinder_test` database (migrated automatically).
 
+## Run the whole app in Docker
+
+```
+cp .env.example .env      # fill in secrets; set WEB_ORIGIN=http://localhost:3000
+docker compose up -d --build
+```
+
+This builds the web app and server into one image and serves both on http://localhost:3000, with Postgres alongside (also published on :5432 so local tools and tests can reach it). It shares the database with `npm run dev:db`. Set `DISCORD_REDIRECT_URI=http://localhost:3000/api/auth/discord/callback` in `.env` and add the same URL to your Discord application's redirects.
+
 ## Production
 
 ```
 cp .env.example .env      # fill in secrets; WEB_ORIGIN / DISCORD_REDIRECT_URI use your public origin
 docker compose -f docker-compose.prod.yml up -d --build
 ```
+
+Same image as above, but the database port is not published and the data volumes are separate (project `party-finder-prod`).
 
 The app container applies migrations, seeds worlds, rarity tiers and bosses (idempotent, existing rows are not overwritten), then serves the API and web app on port 3000. Data lives in the `pgdata` and `uploads` volumes. Seeded worlds are best-known values. A world's name, type and active flag can be edited in the admin UI, but its Nexon world ID cannot: if a seeded ID is wrong, deactivate that world and add a new one with the correct ID.

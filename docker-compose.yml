@@ -10,5 +10,33 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./docker/initdb:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pf -d partyfinder"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  # Builds the web app and server into one image and serves both on :3000.
+  # `npm run dev:db` still starts only the database for local development.
+  app:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://pf:pf@db:5432/partyfinder
+      UPLOAD_DIR: /data/uploads
+      PORT: "3000"
+    ports:
+      - "3000:3000"
+    volumes:
+      - uploads:/data/uploads
+
 volumes:
   pgdata:
+  uploads:
