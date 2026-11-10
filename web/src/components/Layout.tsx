@@ -84,7 +84,7 @@ export function Layout() {
             </>
           ) : (
             me === null && (
-              <a className="button" href="/api/auth/discord">
+              <a className="btn btn--primary" href="/api/auth/discord">
                 Log in with Discord
               </a>
             )

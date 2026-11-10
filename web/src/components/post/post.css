@@ -49,10 +49,6 @@ a.post-card:hover {
 .my-tabs {
   margin-bottom: var(--space-4);
 }
-.btn--compact {
-  padding: var(--space-1) var(--space-3);
-  font-size: 0.85rem;
-}
 .post-card__head {
   display: flex;
   justify-content: space-between;
@@ -212,7 +208,7 @@ a.post-card:hover {
   list-style: none;
 }
 .board--split .post-list {
-  max-height: calc(100vh - 220px);
+  max-height: calc(100vh - 280px);
   min-height: 12rem;
   overflow-y: auto;
   padding: var(--space-1);

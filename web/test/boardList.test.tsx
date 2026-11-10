@@ -150,8 +150,16 @@ describe('Board list', () => {
     renderBoard();
     const rows = await within(await screen.findByRole('listbox', { name: 'Posts' })).findAllByRole('option');
     await waitFor(() => expect(loc()).toBe('/?post=p1'));
-    // true = not default-prevented, so the browser opens the link in a new tab.
-    expect(fireEvent.click(rows[1], { ctrlKey: true })).toBe(true);
+    // Not default-prevented by the app, so the browser opens the link in a new tab.
+    // Record that, then stop jsdom from attempting the (unimplemented) navigation.
+    let appPrevented: boolean | null = null;
+    const stopNavigation = (e: Event) => {
+      appPrevented = e.defaultPrevented;
+      e.preventDefault();
+    };
+    document.addEventListener('click', stopNavigation, { once: true });
+    fireEvent.click(rows[1], { ctrlKey: true });
+    expect(appPrevented).toBe(false);
     expect(rows[1]).toHaveAttribute('aria-selected', 'false');
     expect(loc()).toBe('/?post=p1');
   });

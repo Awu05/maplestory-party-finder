@@ -1,6 +1,6 @@
-import { useState } from "react";
-import type { PostDetailDTO, RarityTierDTO, RequestDTO } from "@pf/shared";
-import { useCharacters, useMe } from "../../api/hooks";
+import { useState } from 'react';
+import type { PostDetailDTO, RarityTierDTO, RequestDTO } from '@pf/shared';
+import { useCharacters, useMe } from '../../api/hooks';
 import {
   useAcceptRequest,
   useCancelRequest,
@@ -9,28 +9,28 @@ import {
   useMyParties,
   useMyPosts,
   useRequestJoin,
-} from "../../api/postHooks";
-import { friendlyError } from "../../api/errors";
-import { CharacterCard } from "../card/CharacterCard";
-import { CharacterPicker } from "./CharacterPicker";
-import { bossLabel, postLabel } from "./labels";
-import { useLastActionError } from "./useLastActionError";
+} from '../../api/postHooks';
+import { friendlyError } from '../../api/errors';
+import { CharacterCard } from '../card/CharacterCard';
+import { CharacterPicker } from './CharacterPicker';
+import { bossLabel, postLabel } from './labels';
+import { useLastActionError } from './useLastActionError';
 
 export function ViewerActions({ post }: { post: PostDetailDTO }) {
   const { data: me, isLoading } = useMe();
   const loggedIn = !!me;
-  const [panel, setPanel] = useState<"request" | "invite" | null>(null);
+  const [panel, setPanel] = useState<'request' | 'invite' | null>(null);
   const requestJoin = useRequestJoin(post.id);
   const invite = useInvite(post.id);
   const cancel = useCancelRequest();
   const accept = useAcceptRequest();
   const decline = useDeclineRequest();
-  const open = post.status === "open" && !post.deleted;
-  const canRequest = loggedIn && open && post.type === "recruiting";
-  const canInvite = loggedIn && open && post.type === "lfp";
+  const open = post.status === 'open' && !post.deleted;
+  const canRequest = loggedIn && open && post.type === 'recruiting';
+  const canInvite = loggedIn && open && post.type === 'lfp';
   const characters = useCharacters(
     { mine: true },
-    { enabled: canRequest && panel === "request" },
+    { enabled: canRequest && panel === 'request' },
   );
   const myParties = useMyParties();
   const myPosts = useMyPosts();
@@ -49,8 +49,8 @@ export function ViewerActions({ post }: { post: PostDetailDTO }) {
   const alreadyInvited = new Set(post.sentInvitesToThis.map((r) => r.postId));
   const inviteTargets = (myPosts.data ?? []).filter(
     (mp) =>
-      mp.type === "recruiting" &&
-      mp.status === "open" &&
+      mp.type === 'recruiting' &&
+      mp.status === 'open' &&
       !mp.deleted &&
       mp.world.id === post.world.id &&
       !alreadyInvited.has(mp.id),
@@ -70,15 +70,15 @@ export function ViewerActions({ post }: { post: PostDetailDTO }) {
         <ul className="post-requests">
           {post.myPending.map((r) => (
             <li key={r.id}>
-              {`${r.kind === "invite" ? "Invite" : "Request"} pending: ${r.character.ign} `}
-              {r.kind === "invite" ? (
+              {`${r.kind === 'invite' ? 'Invite' : 'Request'} pending: ${r.character.ign} `}
+              {r.kind === 'invite' ? (
                 // Only the inviting poster may cancel an invite; the invitee decides on it.
                 <div className="actions">
                   <button
                     type="button"
                     className="btn btn--primary"
                     disabled={busy}
-                    onClick={() => run("accept", () => accept.mutate(r.id))}
+                    onClick={() => run('accept', () => accept.mutate(r.id))}
                   >
                     Accept
                   </button>
@@ -86,7 +86,7 @@ export function ViewerActions({ post }: { post: PostDetailDTO }) {
                     type="button"
                     className="btn btn--secondary"
                     disabled={busy}
-                    onClick={() => run("decline", () => decline.mutate(r.id))}
+                    onClick={() => run('decline', () => decline.mutate(r.id))}
                   >
                     Decline
                   </button>
@@ -97,7 +97,7 @@ export function ViewerActions({ post }: { post: PostDetailDTO }) {
                     type="button"
                     className="btn btn--secondary"
                     disabled={busy}
-                    onClick={() => run("cancel", () => cancel.mutate(r.id))}
+                    onClick={() => run('cancel', () => cancel.mutate(r.id))}
                   >
                     Cancel
                   </button>
@@ -115,13 +115,13 @@ export function ViewerActions({ post }: { post: PostDetailDTO }) {
         >
           {post.sentInvitesToThis.map((r) => (
             <li key={r.id}>
-              {`Invite sent from ${r.post.bosses.map(bossLabel).join(", ")} `}
+              {`Invite sent from ${r.post.bosses.map(bossLabel).join(', ')} `}
               <div className="actions">
                 <button
                   type="button"
                   className="btn btn--secondary"
                   disabled={busy}
-                  onClick={() => run("cancel", () => cancel.mutate(r.id))}
+                  onClick={() => run('cancel', () => cancel.mutate(r.id))}
                 >
                   Cancel
                 </button>
@@ -136,14 +136,14 @@ export function ViewerActions({ post }: { post: PostDetailDTO }) {
           <button
             type="button"
             className="btn btn--primary"
-            onClick={() => setPanel(panel === "request" ? null : "request")}
+            onClick={() => setPanel(panel === 'request' ? null : 'request')}
           >
             Request to join
           </button>
         </div>
       )}
       {canRequest &&
-        panel === "request" &&
+        panel === 'request' &&
         (characters.isLoading ? (
           <p>Loading…</p>
         ) : (
@@ -154,7 +154,7 @@ export function ViewerActions({ post }: { post: PostDetailDTO }) {
             myParties={myParties.data ?? []}
             disabled={busy}
             onPick={(characterId) =>
-              run("requestJoin", () =>
+              run('requestJoin', () =>
                 requestJoin.mutate(characterId, {
                   onSuccess: () => setPanel(null),
                 }),
@@ -168,14 +168,14 @@ export function ViewerActions({ post }: { post: PostDetailDTO }) {
           <button
             type="button"
             className="btn btn--primary"
-            onClick={() => setPanel(panel === "invite" ? null : "invite")}
+            onClick={() => setPanel(panel === 'invite' ? null : 'invite')}
           >
             Invite
           </button>
         </div>
       )}
       {canInvite &&
-        panel === "invite" &&
+        panel === 'invite' &&
         (inviteTargets.length === 0 ? (
           <p>{`You have no open recruiting posts on ${post.world.name}.`}</p>
         ) : (
@@ -190,7 +190,7 @@ export function ViewerActions({ post }: { post: PostDetailDTO }) {
                   className="btn btn--secondary"
                   disabled={busy}
                   onClick={() =>
-                    run("invite", () =>
+                    run('invite', () =>
                       invite.mutate(mp.id, { onSuccess: () => setPanel(null) }),
                     )
                   }

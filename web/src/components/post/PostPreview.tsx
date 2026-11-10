@@ -25,9 +25,11 @@ function PreviewBody({ postId }: { postId: string }) {
   if (post.isError) {
     body = <p role="alert">{friendlyError(post.error)}</p>;
   } else if (!post.data) {
-    body = <div className="post-preview__skeleton" role="status">
+    body = (
+      <div className="post-preview__skeleton" role="status">
         <span className="visually-hidden">Loading post…</span>
-      </div>;
+      </div>
+    );
   } else {
     const p = post.data;
     body = (

@@ -69,6 +69,11 @@ describe('Midnight contrast (WCAG AA 4.5:1)', () => {
     expect(ratio(t['--text'], bg)).toBeGreaterThanOrEqual(4.5);
   });
 
+  it('violet tag/pill text #b3a9ff passes on its 18% accent tint over --surface', () => {
+    const bg = mixSrgb(t['--accent'], 0.18, t['--surface']);
+    expect(ratio('#b3a9ff', bg)).toBeGreaterThanOrEqual(4.5);
+  });
+
   it('is always dark', () => {
     expect(globalCss).not.toContain('prefers-color-scheme');
     expect(cardCss).not.toContain('prefers-color-scheme');
