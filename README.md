@@ -38,7 +38,7 @@ Guilds can post new parties and pings to a Discord channel through a webhook.
 
 - The in-app bell polls the server periodically for new notifications (join requests, invites, accepts); there is no push connection.
 - A background worker delivers queued webhook messages every 5 seconds. Failed deliveries are retried with increasing delays (30 s, 2 min, 10 min, 1 h) and given up on after 5 attempts; Discord rate limits are respected.
-- A daily sync refreshes every character from Nexon, oldest first, throttled. It checks hourly and runs when the last run was 24 hours ago or more, so the time of day drifts with the last run. It also prunes notifications older than 60 days and sent deliveries older than 30 days.
+- A daily sync refreshes every character from Nexon (skipping banned users' characters), oldest first, throttled. It checks hourly and runs when the last run was 24 hours ago or more, so the time of day drifts with the last run. It also prunes notifications older than 60 days and sent deliveries older than 30 days.
 - Set `JOBS_ENABLED=false` to disable both jobs in a given instance.
 
 ## Development

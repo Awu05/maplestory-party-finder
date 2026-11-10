@@ -56,8 +56,10 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
   try {
     await job.stop();
     await worker.stop();
-    await dispatcher.drain();
+    // app.close() first: it stops accepting connections and waits for in-flight requests, so every
+    // event has been emitted by the time the dispatcher drains.
     await app.close();
+    await dispatcher.drain();
     await prisma.$disconnect();
     process.exit(0);
   } catch (err) {
