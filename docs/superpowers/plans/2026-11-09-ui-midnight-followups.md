@@ -14,3 +14,8 @@
 - Task 8: minor (deferred): no test for Cancel route, chip selected label, world/archetype chips
 - Task 11: minor (deferred): Admin Guilds/logged-in pages not screenshotted (ruling allows)
 - Final review deferred (kept): typography scale/h1 consistency; input boundary 3:1 (WCAG 1.4.11) lighter border; leftover ad-hoc spacing in bell.css/card modal; CharacterForm Cancel untested; NewPost has no Cancel; prettier 80-col reflow churn.
+
+## From deep review #2 (fix/deep-review-2)
+- A deep link that fails, is re-linked, and fails again can show the error pane instead of falling back to the first row (reset effect vs. child onUnavailable ordering). Reset `unavailable` during render or only when it differs from `wanted`.
+- MenuChip: when options change while open, the active option snaps back to the selected value (loses arrow-key position).
+- Selection scroll math ignores the list's 4px padding (no visible effect).
