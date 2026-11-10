@@ -4,8 +4,8 @@ import type { PostType } from '@pf/shared';
 import { useBosses, useCharacters, useGuilds, useMe, useRarityTiers, useWorlds } from '../api/hooks';
 import { usePosts, type PostFilters } from '../api/postHooks';
 import { friendlyError } from '../api/errors';
+import { ChipGroup, MenuChip, ToggleChip } from '../components/ui/Chips';
 import { PostCard } from '../components/post/PostCard';
-import './characters.css';
 
 export function BoardPage() {
   const me = useMe();
@@ -40,83 +40,86 @@ export function BoardPage() {
   );
 
   const selectedBoss = bosses.data?.find((b) => String(b.id) === bossId);
+  const selectedDifficulty = selectedBoss?.difficulties.find((d) => String(d.id) === difficultyId);
   const toggleWorld = (id: number) =>
     setPickedWorlds(worldIds.includes(id) ? worldIds.filter((w) => w !== id) : [...worldIds, id]);
 
   return (
     <section>
-      <h1>Board</h1>
-      {me.data && (
-        <Link className="button" to="/posts/new">
-          New post
-        </Link>
-      )}
-      <div className="filters">
-        <label>
+      <div className="page__head">
+        <h1>Board</h1>
+        {me.data && (
+          <Link className="button" to="/posts/new">
+            New post
+          </Link>
+        )}
+      </div>
+      <div className="board-filters">
+        <span className="board-filters__label" aria-hidden="true">
           Type
-          <select value={type} onChange={(e) => setType(e.target.value as PostType | '')}>
-            <option value="">All</option>
-            <option value="lfp">LFP</option>
-            <option value="recruiting">Recruiting</option>
-          </select>
-        </label>
-        <label>
-          Boss
-          <select
-            value={bossId}
-            onChange={(e) => {
-              setBossId(e.target.value);
-              setDifficultyId('');
-            }}
-          >
-            <option value="">All bosses</option>
-            {bosses.data?.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Difficulty
-          <select value={difficultyId} onChange={(e) => setDifficultyId(e.target.value)} disabled={!selectedBoss}>
-            <option value="">Any difficulty</option>
-            {selectedBoss?.difficulties.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.difficulty}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Guild
-          <select value={guildId} onChange={(e) => setGuildId(e.target.value)}>
-            <option value="">All guilds</option>
-            {guilds.data?.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
+        </span>
+        <ChipGroup<PostType | ''>
+          label="Type"
+          value={type}
+          onChange={setType}
+          options={[
+            { value: '', label: 'All' },
+            { value: 'recruiting', label: 'Recruiting' },
+            { value: 'lfp', label: 'LFP' },
+          ]}
+        />
+        <span className="board-filters__label" aria-hidden="true">
           When
-          <select value={when} onChange={(e) => setWhen(e.target.value as NonNullable<PostFilters['when']>)}>
-            <option value="any">Any</option>
-            <option value="24h">Next 24h</option>
-            <option value="7d">This week</option>
-            <option value="flexible">Flexible</option>
-          </select>
-        </label>
-        <fieldset className="world-picker">
-          <legend>Worlds</legend>
+        </span>
+        <ChipGroup<NonNullable<PostFilters['when']>>
+          label="When"
+          value={when}
+          onChange={setWhen}
+          options={[
+            { value: 'any', label: 'Any' },
+            { value: '24h', label: 'Next 24h' },
+            { value: '7d', label: 'This week' },
+            { value: 'flexible', label: 'Flexible' },
+          ]}
+        />
+        <MenuChip
+          label="Boss"
+          allLabel="All bosses"
+          valueLabel={selectedBoss?.name ?? null}
+          value={bossId}
+          onChange={(v) => {
+            setBossId(v);
+            setDifficultyId('');
+          }}
+          options={(bosses.data ?? []).map((b) => ({ value: String(b.id), label: b.name }))}
+        />
+        <MenuChip
+          label="Difficulty"
+          allLabel="Any difficulty"
+          valueLabel={selectedDifficulty?.difficulty ?? null}
+          value={difficultyId}
+          onChange={setDifficultyId}
+          disabled={!selectedBoss}
+          options={(selectedBoss?.difficulties ?? []).map((d) => ({ value: String(d.id), label: d.difficulty }))}
+        />
+        <MenuChip
+          label="Guild"
+          allLabel="All guilds"
+          valueLabel={guilds.data?.find((g) => g.id === guildId)?.name ?? null}
+          value={guildId}
+          onChange={setGuildId}
+          options={(guilds.data ?? []).map((g) => ({ value: g.id, label: g.name }))}
+        />
+        <span className="board-filters__label" aria-hidden="true">
+          Worlds
+        </span>
+        <div role="group" aria-label="Worlds" className="board-filters__worlds">
           {worlds.data?.map((w) => (
-            <label key={w.id}>
-              <input type="checkbox" checked={worldIds.includes(w.id)} onChange={() => toggleWorld(w.id)} />
+            <ToggleChip key={w.id} pressed={worldIds.includes(w.id)} onToggle={() => toggleWorld(w.id)}>
               {w.name}
-            </label>
+            </ToggleChip>
           ))}
-        </fieldset>
+        </div>
       </div>
       {posts.isError && <p role="alert">{friendlyError(posts.error)}</p>}
       {posts.data && posts.data.length === 0 && <p>No open posts match. Be the first to post!</p>}

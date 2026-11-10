@@ -109,7 +109,7 @@ describe('BoardPage', () => {
     const fetchMock = mockApi({ ...base, '/api/auth/me': null, '/api/posts': [], '/api/posts?type=recruiting': [post] });
     renderWithProviders(<App />);
     await screen.findByText('No open posts match. Be the first to post!');
-    fireEvent.change(screen.getByLabelText('Type'), { target: { value: 'recruiting' } });
+    fireEvent.click(screen.getByRole('radio', { name: 'Recruiting' }));
     expect(await screen.findByText('2/4')).toBeInTheDocument();
     expect(postsCalls(fetchMock)).toContain('/api/posts?type=recruiting');
   });
@@ -118,8 +118,38 @@ describe('BoardPage', () => {
     const fetchMock = mockApi({ ...base, '/api/auth/me': null, '/api/posts': [], '/api/posts?flexible=1': [post] });
     renderWithProviders(<App />);
     await screen.findByText('No open posts match. Be the first to post!');
-    fireEvent.change(screen.getByLabelText('When'), { target: { value: 'flexible' } });
+    fireEvent.click(screen.getByRole('radio', { name: 'Flexible' }));
     await waitFor(() => expect(postsCalls(fetchMock)).toContain('/api/posts?flexible=1'));
+  });
+
+  it('choosing a boss from the menu sends bossId and enables Difficulty', async () => {
+    const fetchMock = mockApi({ ...base, '/api/auth/me': null, '/api/posts': [], '/api/posts?bossId=1': [post] });
+    renderWithProviders(<App />);
+    await screen.findByText('No open posts match. Be the first to post!');
+    expect(screen.getByRole('button', { name: /Difficulty/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: /Boss/ }));
+    fireEvent.click(await screen.findByRole('option', { name: 'Lucid' }));
+    await waitFor(() => expect(postsCalls(fetchMock)).toContain('/api/posts?bossId=1'));
+    expect(screen.getByRole('button', { name: /Difficulty/ })).toBeEnabled();
+  });
+
+  it('world chips: default pressed, deselecting every world drops worldIds, toggling adds it back', async () => {
+    const fetchMock = mockApi({
+      ...base,
+      '/api/auth/me': user,
+      '/api/characters?mine=1': [character],
+      '/api/posts?worldIds=5': [post],
+      '/api/posts': [post],
+    });
+    renderWithProviders(<App />);
+    const kronos = await screen.findByRole('button', { name: 'Kronos' });
+    await screen.findByText('2/4');
+    expect(kronos).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(kronos);
+    expect(kronos).toHaveAttribute('aria-pressed', 'false');
+    await waitFor(() => expect(postsCalls(fetchMock)).toEqual(['/api/posts?worldIds=5', '/api/posts']));
+    fireEvent.click(kronos);
+    await waitFor(() => expect(postsCalls(fetchMock)).toEqual(['/api/posts?worldIds=5', '/api/posts', '/api/posts?worldIds=5']));
   });
 
   it('shows the empty state', async () => {
