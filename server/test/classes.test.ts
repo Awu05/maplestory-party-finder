@@ -24,9 +24,10 @@ describe('classes', () => {
     await makeJobClass('zero', 'warrior');
     await makeJobClass('Adele', 'warrior');
     await makeJobClass('Bishop', 'magician');
+    await makeJobClass('Évoker', 'magician');
     const res = await app.inject({ method: 'GET', url: '/api/classes' });
     expect(res.statusCode).toBe(200);
-    expect(res.json().map((c: { name: string }) => c.name)).toEqual(['Adele', 'Bishop', 'zero']);
+    expect(res.json().map((c: { name: string }) => c.name)).toEqual(['Adele', 'Bishop', 'Évoker', 'zero']);
   });
 
   it('admin POST creates a class; a duplicate in another case is 409', async () => {

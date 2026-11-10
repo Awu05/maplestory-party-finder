@@ -117,9 +117,9 @@ export async function characterRoutes(app: FastifyInstance): Promise<void> {
   app.post('/characters/:id/refresh', async (req): Promise<RefreshResultDTO> => {
     const viewer = await requireUser(req);
     const { id } = req.params as { id: string };
-    await getOwnedCharacter(prisma, id, viewer.user.id);
+    const row = await getOwnedCharacter(prisma, id, viewer.user.id);
     await claimRefresh(prisma, id);
-    const { outcome, candidates } = await refreshCharacter(prisma, nexon, id);
+    const { outcome, candidates } = await refreshCharacter(prisma, nexon, row);
     return { outcome, candidates, character: toCharacterDTO(await getCharacter(prisma, id), viewer.user.id, storage) };
   });
 

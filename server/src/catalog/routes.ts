@@ -177,7 +177,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/classes', async () => {
     const classes = await prisma.jobClass.findMany();
-    return classes.sort((a, b) => a.nameLower.localeCompare(b.nameLower)).map(toClassDTO);
+    return classes.sort((a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' })).map(toClassDTO);
   });
 
   app.get('/rarity-tiers', async () => {

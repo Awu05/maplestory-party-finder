@@ -39,6 +39,18 @@ async function requireActiveGuild(prisma: PrismaClient, guildId: string) {
   return guild;
 }
 
+/** Runs `work`, turning the unique (ignLower, worldId) violation into 409 ALREADY_CLAIMED. */
+async function mapAlreadyClaimed<T>(work: () => Promise<T>): Promise<T> {
+  try {
+    return await work();
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      throw new AppError(409, 'ALREADY_CLAIMED', 'That character is already claimed');
+    }
+    throw err;
+  }
+}
+
 export async function createCharacter(
   deps: { prisma: PrismaClient; nexon: NexonClient },
   ownerId: string,
@@ -57,8 +69,8 @@ export async function createCharacter(
 
   const archetype = await resolveArchetype(prisma, match.jobName);
   const now = new Date();
-  try {
-    return await prisma.$transaction((tx) =>
+  return mapAlreadyClaimed(() =>
+    prisma.$transaction((tx) =>
       tx.character.create({
         data: {
           ownerId,
@@ -76,13 +88,8 @@ export async function createCharacter(
         },
         include: characterInclude,
       }),
-    );
-  } catch (err) {
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-      throw new AppError(409, 'ALREADY_CLAIMED', 'That character is already claimed');
-    }
-    throw err;
-  }
+    ),
+  );
 }
 
 export interface ManualCharacterInput {
@@ -109,14 +116,14 @@ export async function createManualCharacter(
 ): Promise<CharacterRow> {
   const guild = await requireActiveGuild(prisma, input.guildId);
   const world = await prisma.world.findUnique({ where: { id: input.worldId } });
-  if (!world) throw new AppError(400, 'UNKNOWN_WORLD', `World ${input.worldId} isn't set up yet — ask the admin`);
+  if (!world) throw new AppError(400, 'UNKNOWN_WORLD', "That world isn't set up yet — ask the admin");
   if (!world.active) throw new AppError(400, 'WORLD_INACTIVE', 'That world is not active');
   const jobClass = await requireJobClass(prisma, input.jobName);
 
   const ign = input.ign.trim();
   const now = new Date();
-  try {
-    return await prisma.character.create({
+  return mapAlreadyClaimed(() =>
+    prisma.character.create({
       data: {
         ownerId,
         ign,
@@ -133,13 +140,8 @@ export async function createManualCharacter(
         source: 'manual',
       },
       include: characterInclude,
-    });
-  } catch (err) {
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-      throw new AppError(409, 'ALREADY_CLAIMED', 'That character is already claimed');
-    }
-    throw err;
-  }
+    }),
+  );
 }
 
 export const REFRESH_COOLDOWN_MS = 600_000;
@@ -241,11 +243,7 @@ export async function syncCharacterFromNexon(
     await prisma.character.update({ where: { id: characterId }, data: { syncStatus: 'stale' } });
     return 'stale';
   }
-  const archetype = await resolveArchetype(prisma, match.jobName);
-  await prisma.character.update({
-    where: { id: characterId },
-    data: { level: match.level, jobName: match.jobName, archetype, imageUrl: match.imageUrl, lastSyncedAt: new Date(), syncStatus: 'ok' },
-  });
+  await prisma.character.update({ where: { id: characterId }, data: await nexonSyncData(prisma, match) });
   return 'ok';
 }
 
@@ -273,10 +271,9 @@ async function nexonSyncData(prisma: PrismaClient, match: NexonCharacter) {
 export async function refreshCharacter(
   prisma: PrismaClient,
   nexon: NexonClient,
-  id: string,
+  row: { id: string; ign: string; source: 'nexon' | 'manual'; world: World },
 ): Promise<{ outcome: RefreshOutcome; candidates: WorldCandidateDTO[] }> {
-  const row = await prisma.character.findUnique({ where: { id }, include: { world: true } });
-  if (!row) throw new AppError(404, 'NOT_FOUND', 'Character not found');
+  const { id } = row;
 
   if (row.source === 'nexon') {
     const result = await syncCharacterFromNexon(prisma, nexon, id, { fresh: true });
@@ -303,7 +300,7 @@ export async function refreshCharacter(
       const world = worlds.get(c.nexonWorldId);
       return world ? [{ worldId: world.id, worldName: world.name, level: c.level, jobName: c.jobName, imageUrl: c.imageUrl }] : [];
     })
-    .sort((a, b) => a.worldName.localeCompare(b.worldName));
+    .sort((a, b) => a.worldName.localeCompare(b.worldName, 'en', { sensitivity: 'base' }));
   return candidates.length > 0 ? { outcome: 'found_elsewhere', candidates } : { outcome: 'not_found', candidates: [] };
 }
 
@@ -332,8 +329,14 @@ export async function moveCharacterWorld(
   const data = await nexonSyncData(prisma, match);
 
   const now = new Date();
-  try {
-    return await prisma.$transaction(async (tx) => {
+  return mapAlreadyClaimed(() =>
+    prisma.$transaction(async (tx) => {
+      // Lock the character, then re-check. Join, invite and accept lock only the post, but inserting a
+      // member or request row takes a FOR KEY SHARE lock on this character (the FK), which conflicts with
+      // FOR UPDATE. So a join that inserted first makes this wait, and the re-check below then sees it.
+      // A join that starts after this lock waits for the move to commit. This transaction locks no post,
+      // so the lock order (post, then character) can't deadlock.
+      await tx.$queryRaw`SELECT id FROM "Character" WHERE id = ${id} FOR UPDATE`;
       const [membership, pending] = await Promise.all([
         tx.postMember.findFirst({
           where: { characterId: id, post: { deletedAt: null, status: { in: ['open', 'full'] }, expiresAt: { gt: now } } },
@@ -347,13 +350,8 @@ export async function moveCharacterWorld(
         data: { ...data, worldId: target.id, guildId: input.guildId },
         include: characterInclude,
       });
-    });
-  } catch (err) {
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-      throw new AppError(409, 'ALREADY_CLAIMED', 'That character is already claimed');
-    }
-    throw err;
-  }
+    }),
+  );
 }
 
 /** Claims the refresh slot atomically; throws 429 TOO_SOON if one was taken within the cooldown. */

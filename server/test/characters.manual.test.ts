@@ -63,6 +63,12 @@ describe('POST /api/characters/manual', () => {
     expectError(await create(body({ guildId: g.id })), 400, 'GUILD_INACTIVE');
   });
 
+  it('an unknown world -> 400 UNKNOWN_WORLD without the internal world id', async () => {
+    const res = await create(body({ worldId: 987654 }));
+    expectError(res, 400, 'UNKNOWN_WORLD');
+    expect(res.json().error.message).toBe("That world isn't set up yet — ask the admin");
+  });
+
   it('rejects levels outside 1..300', async () => {
     expect((await create(body({ level: 0 }))).statusCode).toBe(400);
     expect((await create(body({ level: 301 }))).statusCode).toBe(400);
