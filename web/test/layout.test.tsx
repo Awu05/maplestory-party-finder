@@ -3,6 +3,19 @@ import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { App } from '../src/App';
 import { mockApi, renderWithProviders, testQueryClient } from './setup';
 
+function findOrderViolations(css: string): string[] {
+  const out: string[] = [];
+  for (const [, rawSel, body] of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const sel = rawSel.trim();
+    if (/\.header-right\s*$/.test(sel)) {
+      if (/row-reverse/.test(body)) out.push(sel);
+    } else if (/\.(bell|user|user-name|avatar|logout)\b/.test(sel)) {
+      if (/(^|[\s;{])order\s*:|row-reverse/.test(body)) out.push(sel);
+    }
+  }
+  return out;
+}
+
 const user = { id: 'u1', discordUsername: 'maple_fan', avatarUrl: null, isAdmin: false };
 
 describe('Layout', () => {
@@ -95,15 +108,18 @@ describe('Layout', () => {
     expect(name.compareDocumentPosition(logout) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it('findOrderViolations flags visual reordering only', () => {
+    expect(findOrderViolations('.bell { order: 1 }')).toHaveLength(1);
+    expect(findOrderViolations('.user { order: 5 }')).toHaveLength(1);
+    expect(findOrderViolations('.user-name { order: 2 }')).toHaveLength(1);
+    expect(findOrderViolations('.header-right { flex-direction: row-reverse }')).toHaveLength(1);
+    expect(findOrderViolations('.header-right { order: 1 }')).toHaveLength(0);
+    expect(findOrderViolations('.bell { border: 1px solid red }')).toHaveLength(0);
+  });
+
   it('header CSS does not reorder the right group visually', () => {
     for (const f of ['src/components/bell.css', 'src/styles/global.css']) {
-      const css = readFileSync(f, 'utf8');
-      for (const [, sel, body] of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-        if (/\.(bell|user|logout|header-right)b/.test(sel) && !/\.header-right\s*$/.test(sel.trim())) {
-          expect(body, `${f}: ${sel.trim()}`).not.toMatch(/border\s*:|row-reverse/);
-        }
-        if (/\.header-right\s*$/.test(sel.trim())) expect(body).not.toMatch(/row-reverse/);
-      }
+      expect(findOrderViolations(readFileSync(f, 'utf8')), f).toEqual([]);
     }
   });
 
