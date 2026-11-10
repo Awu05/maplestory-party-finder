@@ -53,6 +53,29 @@ describe('global button rules', () => {
   });
 });
 
+describe('chip styles live in chips.css', () => {
+  const chipSelectors = (css: string) =>
+    selectors(css)
+      .flatMap((l) => l.split(','))
+      .map((s) => s.trim())
+      .filter((s) => /\.chip\b/.test(s));
+
+  it('global.css defines no .chip rules', () => {
+    expect(chipSelectors(globalCss)).toEqual([]);
+  });
+
+  it('chips.css has the base, hover and pressed/checked rules', () => {
+    expect(ruleBody(chipsCss, '.chip')).toMatch(/border-radius:\s*999px/);
+    expect(ruleBody(chipsCss, '.chip:hover:not(:disabled)')).toMatch(/border-color:\s*var\(--accent\)/);
+    const on = chipSelectors(chipsCss);
+    expect(on).toEqual(expect.arrayContaining([".chip[aria-pressed='true']", ".chip[aria-checked='true']"]));
+  });
+
+  it('main.tsx imports chips.css globally, for .chip markup outside the Chips component', () => {
+    expect(read('main.tsx')).toMatch(/import '\.\/components\/ui\/chips\.css';/);
+  });
+});
+
 describe('MenuChip keyboard position', () => {
   it('the active option has a visible accent indicator', () => {
     expect(ruleBody(chipsCss, '.menu-chip-option.is-active')).toMatch(/outline:\s*2px solid var\(--accent\)/);

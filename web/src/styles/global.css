@@ -136,29 +136,6 @@ p[role='alert'] {
   border-radius: var(--radius-lg);
   padding: var(--space-4);
 }
-.chip {
-  font: inherit;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-1) var(--space-3);
-  border-radius: 999px;
-  border: 1px solid var(--border-strong);
-  background: var(--surface-2);
-  color: var(--text);
-}
-.chip:hover:not(:disabled) {
-  border-color: var(--accent);
-}
-.chip:hover:not(:disabled):not([aria-pressed='true']):not([aria-checked='true']) {
-  background: var(--surface-2);
-}
-.chip[aria-pressed='true'],
-.chip[aria-checked='true'] {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 25%, var(--surface-2));
-}
 
 /* Native form controls */
 input,
