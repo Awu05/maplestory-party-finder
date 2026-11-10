@@ -85,6 +85,19 @@ describe('post.created', () => {
     expect(JSON.stringify(ds[0]!.payload)).toContain(`http://localhost:5173/posts/${res.json().id}`);
     expect(await notes()).toEqual([]);
   });
+
+  it('broadcasts one pending delivery per matching guild, all with the same payload and postId', async () => {
+    const g6 = await makeGuild({ name: 'G6', worldIds: [kronosId], webhookUrl: HOOK });
+    const res = await call('POST', '/api/posts', u1, {
+      type: 'recruiting', characterId: alice.id, bossDifficultyIds: [lucid],
+      scheduledAt: new Date(Date.now() + 24 * HOUR).toISOString(), partySize: 4, note: 'hi',
+    });
+    await events.drain();
+    const ds = await deliveries();
+    expect(ds.map((d) => d.guildId).sort()).toEqual([g1.id, g6.id].sort());
+    for (const d of ds) expect(d).toMatchObject({ eventType: 'post.created', status: 'pending', postId: res.json().id, attempts: 0 });
+    expect(ds[0]!.payload).toEqual(ds[1]!.payload);
+  });
 });
 
 describe('request.created', () => {
