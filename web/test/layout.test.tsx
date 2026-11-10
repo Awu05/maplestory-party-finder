@@ -108,6 +108,30 @@ describe('Layout', () => {
     expect(name.compareDocumentPosition(logout) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it('with the menu open, Tab moves from Menu straight to the Board link', async () => {
+    mockApi({ '/api/auth/me': user, '/api/notifications?limit=30': { items: [], unreadCount: 0 } });
+    renderWithProviders(<App />);
+    await screen.findByText('maple_fan');
+    const menu = screen.getByRole('button', { name: 'Menu' });
+    fireEvent.click(menu);
+    expect(menu).toHaveAttribute('aria-expanded', 'true');
+    const tabbables = [...document.querySelectorAll<HTMLElement>('a[href], button:not(:disabled), input, select, textarea')];
+    expect(tabbables[tabbables.indexOf(menu) + 1]).toBe(screen.getByRole('link', { name: 'Board' }));
+    const brand = screen.getByRole('link', { name: 'PartyFinder' });
+    expect(brand.compareDocumentPosition(menu) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('phone CSS keeps the header-right group beside Menu and the nav row below', () => {
+    const css = readFileSync('src/styles/global.css', 'utf8');
+    const phone = css.slice(css.indexOf('@media (max-width: 640px)'));
+    const orderOf = (sel: string) => {
+      const body = new RegExp(`${sel.replace('.', '\\.')}\\s*\\{([^}]*)\\}`).exec(phone)?.[1] ?? '';
+      return Number(/order:\s*(\d+)/.exec(body)?.[1]);
+    };
+    expect(orderOf('.header-right')).toBeLessThan(orderOf('.menu-button'));
+    expect(orderOf('.menu-button')).toBeLessThan(orderOf('.nav'));
+  });
+
   it('findOrderViolations flags visual reordering only', () => {
     expect(findOrderViolations('.bell { order: 1 }')).toHaveLength(1);
     expect(findOrderViolations('.user { order: 5 }')).toHaveLength(1);

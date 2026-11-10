@@ -47,6 +47,16 @@ export function Layout() {
         <Link to="/" className="brand" onClick={close}>
           Party<span>Finder</span>
         </Link>
+        {/* DOM order is the phone focus order: Menu, then the nav it opens; CSS `order` places header-right beside Menu. */}
+        <button
+          type="button"
+          className="menu-button"
+          aria-expanded={open}
+          aria-controls="main-nav"
+          onClick={() => setOpen((o) => !o)}
+        >
+          Menu
+        </button>
         <nav id="main-nav" className={open ? 'nav open' : 'nav'} aria-label="Main">
           <NavLink to="/" end onClick={close}>
             Board
@@ -90,15 +100,6 @@ export function Layout() {
             )
           )}
         </div>
-        <button
-          type="button"
-          className="menu-button"
-          aria-expanded={open}
-          aria-controls="main-nav"
-          onClick={() => setOpen((o) => !o)}
-        >
-          Menu
-        </button>
       </header>
       {loginFailed && (
         <div className="banner" role="alert">
