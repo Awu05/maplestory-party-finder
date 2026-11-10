@@ -1,5 +1,6 @@
-/* Imported globally from main.tsx: the My parties tabs and the new-post type picker use .chip
-   without the Chips component. */
+/* Also imported from main.tsx: the My parties tabs and the new-post type picker use .chip
+   without the Chips component. This file loads before global.css (App imports it first);
+   global.css's bare-button rules are zero-specificity :where(), so .chip still wins. */
 .chip {
   font: inherit;
   cursor: pointer;

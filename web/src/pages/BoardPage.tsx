@@ -44,14 +44,20 @@ export function BoardPage() {
 
   const [params, setParams] = useSearchParams();
   const wanted = params.get('post');
-  // A deep link the detail fetch could not load; only then does the selection fall back to the first row.
+  // The ?post= the board was opened with. Only that deep link may stay selected while it is
+  // outside the current list; the user picking another row ends it.
+  const deepLink = useRef(wanted);
+  // A deep link whose detail fetch failed; the selection then falls back to the first row.
+  // Reset when ?post= changes, so a transient error doesn't block that id for good.
   const [unavailable, setUnavailable] = useState<string | null>(null);
+  useEffect(() => setUnavailable(null), [wanted]);
   const inList = !!wanted && !!posts.data?.some((p) => p.id === wanted);
-  // A ?post= outside the current filters stays selected; the preview fetches it and says so.
-  const keepWanted = !!wanted && (inList || wanted !== unavailable);
+  // The deep link stays selected outside the filters; the preview fetches it and says so.
+  // Any other id missing from the list (filtered out, closed on refetch) falls back to the first row.
+  const keepWanted = !!wanted && (inList || (wanted === deepLink.current && wanted !== unavailable));
   const selectedId = !posts.data ? null : keepWanted ? wanted : (posts.data[0]?.id ?? null);
   // Only ?post= changes; other params are kept. Replace, not push, so Back leaves the board.
-  const select = (id: string) =>
+  const writePost = (id: string) =>
     setParams(
       (prev) => {
         const next = new URLSearchParams(prev);
@@ -60,6 +66,11 @@ export function BoardPage() {
       },
       { replace: true },
     );
+  // The user picked a row (click or keyboard): the opening deep link no longer applies.
+  const select = (id: string) => {
+    if (id !== deepLink.current) deepLink.current = null;
+    writePost(id);
+  };
 
   const selectedBoss = bosses.data?.find((b) => String(b.id) === bossId);
   const selectedDifficulty = selectedBoss?.difficulties.find((d) => String(d.id) === difficultyId);
@@ -159,6 +170,7 @@ export function BoardPage() {
           selectedId={selectedId}
           wanted={wanted}
           select={select}
+          rewrite={writePost}
         />
         {/* With an empty list and nothing deep-linked, the list's empty message says it all. */}
         {!isPhone && !posts.isError && (posts.isPending || selectedId !== null) && (
@@ -183,26 +195,37 @@ interface PostListProps {
   isPhone: boolean;
   selectedId: string | null;
   wanted: string | null;
+  /** A user selection (click, keyboard). */
   select: (id: string) => void;
+  /** Writes ?post= without counting as a user selection (default row, fallbacks). */
+  rewrite: (id: string) => void;
 }
 
-function PostList({ posts, loading, refetching, isPhone, selectedId, wanted, select }: PostListProps) {
+function PostList({ posts, loading, refetching, isPhone, selectedId, wanted, select, rewrite }: PostListProps) {
   const navigate = useNavigate();
   const rowRefs = useRef(new Map<string, HTMLAnchorElement>());
   const hintId = useId();
 
-  // Default to the first post, and replace a stale id (filtered out, closed, deleted) with it.
+  // Write the board's choice back to the URL when it differs from ?post=: the first row by
+  // default, or as the fallback for an id that left the list or a deep link that failed to load.
   const needsRewrite = !isPhone && selectedId !== null && wanted !== selectedId;
   useEffect(() => {
-    if (needsRewrite && selectedId) select(selectedId);
-  }, [needsRewrite, selectedId]); // select is recreated each render; these two decide whether it runs
+    if (needsRewrite && selectedId) rewrite(selectedId);
+  }, [needsRewrite, selectedId]); // rewrite is recreated each render; these two decide whether it runs
 
-  // Keep the selection visible in the scrolling list, whatever moved it (URL, default, keyboard).
+  // Keep the selection visible, whatever moved it (URL, default, keyboard). Only the list
+  // scrolls (scrollIntoView would also scroll the page); rows are offset from the list,
+  // which is position: relative in post.css.
   const rowsShown = !loading && !isPhone && !!posts && posts.length > 0;
   useEffect(() => {
     if (!rowsShown || selectedId === null) return;
     const row = rowRefs.current.get(selectedId);
-    if (typeof row?.scrollIntoView === 'function') row.scrollIntoView({ block: 'nearest' });
+    const list = row?.parentElement;
+    if (!row || !list) return;
+    const top = row.offsetTop;
+    const bottom = top + row.offsetHeight;
+    if (top < list.scrollTop) list.scrollTop = top;
+    else if (bottom > list.scrollTop + list.clientHeight) list.scrollTop = bottom - list.clientHeight;
   }, [selectedId, rowsShown]);
 
   const skeletons = [0, 1, 2].map((i) => <div key={i} className="post-row post-row--skeleton" aria-hidden="true" />);

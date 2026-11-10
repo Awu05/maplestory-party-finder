@@ -196,6 +196,8 @@ a.post-card:hover {
   list-style: none;
 }
 .board--split .post-list {
+  /* Offset parent for the rows, so BoardPage can scroll the selected row into view. */
+  position: relative;
   max-height: calc(100vh - 280px);
   min-height: 12rem;
   overflow-y: auto;

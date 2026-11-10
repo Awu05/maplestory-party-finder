@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import type { CharacterDTO, PartyMemberDTO, PostSummaryDTO } from '@pf/shared';
 import { App } from '../src/App';
@@ -196,20 +196,81 @@ describe('Board list', () => {
     expect(loc()).toBe('/?post=p9');
   });
 
-  it('scrolls the selected row into view', async () => {
+  it('a selected post that a filter change excludes falls back to the first match, without a note', async () => {
+    mockApi({ ...base, '/api/posts': [p1, p2], '/api/posts?type=recruiting': [p1] });
+    renderBoard();
+    const rows = await within(await screen.findByRole('listbox', { name: 'Posts' })).findAllByRole('option');
+    fireEvent.click(rows[1]);
+    await waitFor(() => expect(loc()).toBe('/?post=p2'));
+    fireEvent.click(screen.getByRole('radio', { name: 'Recruiting' }));
+    await waitFor(() => expect(loc()).toBe('/?post=p1'));
+    const after = within(screen.getByRole('listbox', { name: 'Posts' })).getAllByRole('option');
+    expect(after).toHaveLength(1);
+    expect(after[0]).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByText(/isn't in your current filters/)).not.toBeInTheDocument();
+  });
+
+  it('scrolls only the list (not the page) to bring an off-screen selected row into view', async () => {
     const p3: PostSummaryDTO = { ...p1, id: 'p3', bosses: [{ bossDifficultyId: 10, bossName: 'Seren', difficulty: 'Hard' }] };
-    const scroll = vi.fn();
-    const original = Element.prototype.scrollIntoView;
-    Element.prototype.scrollIntoView = scroll;
+    // Layout stand-ins: rows are 100px tall and stacked; the list shows 200px.
+    const proto = HTMLElement.prototype;
+    const saved = ['offsetTop', 'offsetHeight', 'clientHeight'].map(
+      (k) => [k, Object.getOwnPropertyDescriptor(proto, k)] as const,
+    );
+    const rowIndex = (el: HTMLElement) => [...(el.parentElement?.children ?? [])].filter((c) => c.getAttribute('role') === 'option').indexOf(el);
+    Object.defineProperty(proto, 'offsetTop', { configurable: true, get() { return this.getAttribute('role') === 'option' ? rowIndex(this) * 100 : 0; } });
+    Object.defineProperty(proto, 'offsetHeight', { configurable: true, get() { return this.getAttribute('role') === 'option' ? 100 : 0; } });
+    Object.defineProperty(proto, 'clientHeight', { configurable: true, get() { return this.getAttribute('role') === 'listbox' ? 200 : 0; } });
+    const scrollIntoView = vi.fn();
+    const originalSiv = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scrollIntoView;
     try {
       mockApi({ ...base, '/api/posts': [p1, p2, p3], '/api/posts/p3': { ...detailExtras, ...p3, members: [poster] } });
       renderBoard('/?post=p3');
-      const rows = await within(await screen.findByRole('listbox', { name: 'Posts' })).findAllByRole('option');
-      await waitFor(() => expect(scroll.mock.contexts).toContain(rows[2]));
-      expect(scroll).toHaveBeenCalledWith({ block: 'nearest' });
+      const list = await screen.findByRole('listbox', { name: 'Posts' });
+      await within(list).findAllByRole('option');
+      // Row 3 spans 200-300px; showing it in a 200px window puts its bottom at the edge.
+      await waitFor(() => expect(list.scrollTop).toBe(100));
+      // A row already in view does not move the list.
+      fireEvent.click(within(list).getAllByRole('option')[1]);
+      await waitFor(() => expect(loc()).toBe('/?post=p2'));
+      expect(list.scrollTop).toBe(100);
+      // Selecting a row above the window scrolls up to it.
+      fireEvent.click(within(list).getAllByRole('option')[0]);
+      await waitFor(() => expect(list.scrollTop).toBe(0));
+      expect(scrollIntoView).not.toHaveBeenCalled();
     } finally {
-      Element.prototype.scrollIntoView = original;
+      Element.prototype.scrollIntoView = originalSiv;
+      for (const [k, d] of saved) {
+        if (d) Object.defineProperty(proto, k, d);
+        else delete (proto as unknown as Record<string, unknown>)[k];
+      }
     }
+  });
+
+  it('a deep link that failed once is not blocked when it is linked again', async () => {
+    const p9: PostSummaryDTO = { ...p1, id: 'p9', bosses: [{ bossDifficultyId: 9, bossName: 'Kalos', difficulty: 'Chaos' }] };
+    const fetchMock = mockApi({ ...base, '/api/posts': [p1, p2], '/api/posts/p9': { ...detailExtras, ...p9, members: [poster] } });
+    const real = fetchMock.getMockImplementation()!;
+    let failures = 1; // the first detail fetch fails (transient error), later ones succeed
+    fetchMock.mockImplementation((input, init) =>
+      String(input) === '/api/posts/p9' && failures-- > 0
+        ? Promise.resolve(new Response(JSON.stringify({ error: { code: 'internal', message: 'x' } }), { status: 500 }))
+        : real(input, init),
+    );
+    renderWithProviders(
+      <>
+        <App />
+        <Where />
+        <Link to="/?post=p9">again</Link>
+      </>,
+      { route: '/?post=p9' },
+    );
+    await waitFor(() => expect(loc()).toBe('/?post=p1'));
+    fireEvent.click(screen.getByRole('link', { name: 'again' }));
+    const pane = await screen.findByRole('region', { name: 'Post preview' });
+    expect(await within(pane).findByRole('heading', { name: 'Chaos Kalos' })).toBeInTheDocument();
+    expect(loc()).toBe('/?post=p9');
   });
 
   it('a stale id is rewritten without dropping other params', async () => {
