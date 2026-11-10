@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { MAX_POST_BOSSES, POST_TYPE_LABELS, freeSlotsForViewer, maxPartySizeFor } from '@pf/shared';
@@ -104,6 +104,7 @@ function PostForm({ characters, bosses, post }: FormProps) {
   const [v, setV] = useState<Values>(orig);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const freeHintId = useId();
 
   const locked = !!post && post.memberCount > 1;
   const lowest = post ? Math.max(2, post.memberCount) : 2;
@@ -180,8 +181,13 @@ function PostForm({ characters, bosses, post }: FormProps) {
       </div>
       <div>
         <h3>When you're free</h3>
-        <small>Leave empty if you're flexible</small>
-        <FreeTimeGrid label="When you're free" value={v.freeTimes} onChange={(freeTimes) => set({ freeTimes })} />
+        <small id={freeHintId}>Leave empty if you're flexible</small>
+        <FreeTimeGrid
+          label="When you're free"
+          describedBy={freeHintId}
+          value={v.freeTimes}
+          onChange={(freeTimes) => set({ freeTimes })}
+        />
       </div>
       {v.type === 'recruiting' && (
         <>

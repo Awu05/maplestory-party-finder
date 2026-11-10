@@ -151,6 +151,13 @@ describe('NewPostPage (create)', () => {
     expect(screen.getByText("Leave empty if you're flexible")).toBeInTheDocument();
   });
 
+  it('the grid is described by the "Leave empty" hint', async () => {
+    mockApi(base);
+    renderWithProviders(<App />, { route: '/posts/new' });
+    await pickCharacter();
+    expect(screen.getByRole('grid', { name: "When you're free" })).toHaveAccessibleDescription("Leave empty if you're flexible");
+  });
+
   it('sends the selected free times with the browser zone', async () => {
     const m = mockApi({ ...base, '/api/posts/p1': makePost(), 'POST /api/posts': makePost() });
     renderWithProviders(<App />, { route: '/posts/new' });

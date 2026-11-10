@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { KeyboardEvent } from 'react';
 import './FreeTimeGrid.css';
 
 export const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -15,13 +16,45 @@ interface Props {
   /** Enables editing (click, drag, Enter/Space) when provided and not readOnly. */
   onChange?: (v: number[]) => void;
   readOnly?: boolean;
+  /** Id of an element describing the grid (e.g. a hint), set as aria-describedby. */
+  describedBy?: string;
 }
 
+const lastDay = DAY_LABELS.length - 1;
+
 /** 7-day × 24-hour grid shown in the viewer's local time zone. */
-export function FreeTimeGrid({ value, onChange, readOnly, label: gridLabel }: Props) {
+export function FreeTimeGrid({ value, onChange, readOnly, label: gridLabel, describedBy }: Props) {
   const selected = new Set(value);
   const hours = Array.from({ length: 24 }, (_, h) => h);
   const editable = !readOnly && !!onChange;
+
+  // The latest selection, updated on every apply so several drag events before a re-render all count;
+  // re-synced whenever the parent passes a new value.
+  const latest = useRef(value);
+  const lastProp = useRef(value);
+  if (lastProp.current !== value) {
+    lastProp.current = value;
+    latest.current = value;
+  }
+
+  // Roving tabindex: the grid is one Tab stop, the active cell; arrows move it.
+  const [active, setActive] = useState(() => (value.length > 0 ? Math.min(...value) : 0));
+  const cellRefs = useRef(new Map<number, HTMLButtonElement>());
+  const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>, slot: number) => {
+    const day = Math.floor(slot / 24);
+    const hour = slot % 24;
+    let next: number;
+    if (e.key === 'ArrowLeft') next = Math.max(day - 1, 0) * 24 + hour;
+    else if (e.key === 'ArrowRight') next = Math.min(day + 1, lastDay) * 24 + hour;
+    else if (e.key === 'ArrowUp') next = day * 24 + Math.max(hour - 1, 0);
+    else if (e.key === 'ArrowDown') next = day * 24 + Math.min(hour + 1, 23);
+    else if (e.key === 'Home') next = hour;
+    else if (e.key === 'End') next = lastDay * 24 + hour;
+    else return;
+    e.preventDefault();
+    setActive(next);
+    cellRefs.current.get(next)?.focus();
+  };
 
   // dragTo: the state (on/off) every cell entered during a drag is set to.
   const dragTo = useRef<boolean | null>(null);
@@ -39,16 +72,24 @@ export function FreeTimeGrid({ value, onChange, readOnly, label: gridLabel }: Pr
   }, []);
 
   const apply = (slot: number, on: boolean) => {
-    if (selected.has(slot) === on) return;
-    const next = new Set(selected);
-    if (on) next.add(slot);
-    else next.delete(slot);
-    onChange?.([...next].sort((a, b) => a - b));
+    const current = new Set(latest.current);
+    if (current.has(slot) === on) return;
+    if (on) current.add(slot);
+    else current.delete(slot);
+    const next = [...current].sort((a, b) => a - b);
+    latest.current = next;
+    onChange?.(next);
   };
 
   return (
     <div className="ftg">
-      <table className="ftg__table" role="grid" aria-readonly={!editable} aria-label={gridLabel}>
+      <table
+        className="ftg__table"
+        role="grid"
+        aria-readonly={!editable}
+        aria-label={gridLabel}
+        aria-describedby={describedBy}
+      >
         <thead>
           <tr>
             <td />
@@ -74,10 +115,17 @@ export function FreeTimeGrid({ value, onChange, readOnly, label: gridLabel }: Pr
                 return (
                   <td key={d} role="gridcell" aria-selected={on} className="ftg__td">
                     <button
+                      ref={(el) => {
+                        if (el) cellRefs.current.set(slot, el);
+                        else cellRefs.current.delete(slot);
+                      }}
                       type="button"
                       className={cls}
                       aria-label={label}
                       aria-pressed={on}
+                      tabIndex={slot === active ? 0 : -1}
+                      onFocus={() => setActive(slot)}
+                      onKeyDown={(e) => onKeyDown(e, slot)}
                       onMouseDown={(e) => {
                         if (e.button !== 0) return;
                         mouseHandled.current = true;
