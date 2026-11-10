@@ -8,6 +8,7 @@ import { getOwnedCharacter } from '../characters/service.js';
 import { AppError } from '../http/errors.js';
 import { autoDeclinePending } from '../requests/autoDecline.js';
 import { postInclude, postSummaryInclude, type PostRow, type PostSummaryRow } from './serialize.js';
+import { assertPostgresZone } from './pgZones.js';
 import { memberSnapshot, parseSnapshot } from './snapshot.js';
 
 export interface CreatePostInput {
@@ -79,6 +80,7 @@ export async function createPost(prisma: PrismaClient, userId: string, input: Cr
 
   const now = new Date();
   const free = normalizeFreeTimes(input.freeTimes, input.freeTimesZone);
+  if (free.freeTimesZone !== null) await assertPostgresZone(prisma, free.freeTimesZone);
 
   const difficulties = await validateBosses(prisma, input.bossDifficultyIds);
   validateRecruitingFields(input.type, input.partySize, input.minCp, difficulties.map((d) => d.partyCap));
@@ -409,6 +411,7 @@ export async function editPost(prisma: PrismaClient, viewer: Viewer, id: string,
     const free = freeChanged
       ? normalizeFreeTimes(input.freeTimes ?? row.freeTimes, input.freeTimesZone !== undefined ? input.freeTimesZone : row.freeTimesZone)
       : null;
+    if (free?.freeTimesZone) await assertPostgresZone(tx, free.freeTimesZone);
 
     const bossesChanged = input.bossDifficultyIds !== undefined;
     const caps = bossesChanged
