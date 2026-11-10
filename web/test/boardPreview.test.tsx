@@ -100,7 +100,7 @@ describe('Board preview', () => {
     expect(await within(pane).findByRole('heading', { name: 'Normal Will' })).toBeInTheDocument();
     expect(fetchMock.mock.calls.map(([u]) => String(u))).toContain('/api/posts/p2');
     expect(within(pane).getByText('Open')).toBeInTheDocument();
-    expect(within(pane).getByText(/Flexible · Kronos · Maple Guild/)).toBeInTheDocument();
+    expect(within(pane).getByText('Kronos · Maple Guild')).toBeInTheDocument();
     expect(within(pane).getByText('Min CP 300M')).toBeInTheDocument();
     expect(within(pane).getByText('Chill run')).toBeInTheDocument();
     const lineup = within(pane).getByRole('list', { name: 'Lineup' });
@@ -260,13 +260,14 @@ describe('Board preview free times', () => {
     expect(grid).toHaveAccessibleName('Free times');
   });
 
-  it('shows "Free times" in the meta and the read-only grid with a zone caption', async () => {
+  it('shows the read-only grid with a zone caption, and the time only once (in the When section)', async () => {
     const p = { ...p2, freeTimes: [30, 31], freeTimesZone: 'UTC' };
     mockApi({ ...base, '/api/posts': [p1, p], '/api/posts/p2': detail(p) });
     renderBoard();
     const pane = await preview();
     expect(await within(pane).findByText(/Time not set yet/)).toBeInTheDocument();
     expect(within(pane).getByText(/^Shown in your time zone \(/)).toBeInTheDocument();
-    expect(within(pane).getByText(/Free times · Kronos/)).toBeInTheDocument();
+    expect(within(pane).getByText('Kronos · Maple Guild')).toBeInTheDocument();
+    expect(within(pane).queryByText(/Free times · /)).toBeNull();
   });
 });

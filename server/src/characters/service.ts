@@ -336,6 +336,9 @@ export async function moveCharacterWorld(
       // FOR UPDATE. So a join that inserted first makes this wait, and the re-check below then sees it.
       // A join that starts after this lock waits for the move to commit. This transaction locks no post,
       // so the lock order (post, then character) can't deadlock.
+      // Known gap: a join that validated the character's world before this lock and inserts after the
+      // move commits still succeeds (the id is unchanged, so KEY SHARE is granted). Closing it would need
+      // FOR SHARE on the character in the join, invite and accept paths.
       await tx.$queryRaw`SELECT id FROM "Character" WHERE id = ${id} FOR UPDATE`;
       const [membership, pending] = await Promise.all([
         tx.postMember.findFirst({

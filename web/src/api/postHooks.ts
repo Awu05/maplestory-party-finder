@@ -46,11 +46,13 @@ export function freeAtInstant(hourOfWeek: number, now: Date = new Date()): strin
 export function usePosts(filters: PostFilters, opts: { enabled?: boolean } = {}) {
   // The key holds the freeAt instant, not just the hour-of-week, so a cached result never answers for
   // an occurrence that has passed.
-  const freeAt = filters.freeAt !== undefined ? freeAtInstant(filters.freeAt) : undefined;
+  // One clock read feeds both the key and the request, so they can't disagree at an hour boundary.
+  const now = new Date();
+  const freeAt = filters.freeAt !== undefined ? freeAtInstant(filters.freeAt, now) : undefined;
   return useQuery({
     queryKey: ['posts', 'board', filters, freeAt],
     queryFn: () => {
-      const qs = boardQueryString(filters);
+      const qs = boardQueryString(filters, now);
       return api<PostSummaryDTO[]>(qs ? `/api/posts?${qs}` : '/api/posts');
     },
     enabled: opts.enabled ?? true,
