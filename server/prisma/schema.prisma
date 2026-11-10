@@ -12,6 +12,16 @@ enum WorldType {
   interactive
 }
 
+enum Archetype {
+  warrior
+  magician
+  bowman
+  thief
+  pirate
+  xenon
+  unknown
+}
+
 enum SyncStatus {
   ok
   stale
@@ -93,6 +103,7 @@ model Character {
   worldId                Int
   world                  World           @relation(fields: [worldId], references: [id])
   jobName                String
+  archetype              Archetype       @default(unknown)
   level                  Int
   imageUrl               String
   combatPower            BigInt
@@ -268,4 +279,11 @@ model JobRun {
   name       String   @id
   lastRunAt  DateTime
   lastResult Json?
+}
+
+model JobClass {
+  id        Int       @id @default(autoincrement())
+  name      String
+  nameLower String    @unique
+  archetype Archetype
 }

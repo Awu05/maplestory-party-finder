@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { z } from 'zod';
-import type { AdminGuildDTO, BossDTO, GuildDTO, RarityTierDTO, WorldDTO } from '@pf/shared';
+import type { AdminGuildDTO, BossDTO, GuildDTO, JobClassDTO, RarityTierDTO, WorldDTO } from '@pf/shared';
 import { getViewer, requireAdmin } from '../auth/guards.js';
 import { AppError } from '../http/errors.js';
 
@@ -64,6 +64,10 @@ const tiersInput = z.object({
   ),
 });
 
+const archetypeEnum = z.enum(['warrior', 'magician', 'bowman', 'thief', 'pirate', 'xenon']);
+const classCreate = z.object({ name: z.string().trim().min(1).max(40), archetype: archetypeEnum });
+const classPatch = z.object({ archetype: archetypeEnum });
+
 const idParam = z.object({ id: z.coerce.number().int() });
 const guildIdParam = z.object({ id: z.string().min(1) });
 
@@ -102,6 +106,10 @@ function toBossDTO(b: BossRow): BossDTO {
 
 function toTierDTO(t: { id: number; name: string; minCp: bigint; sortOrder: number }): RarityTierDTO {
   return { id: t.id, name: t.name, minCp: Number(t.minCp), sortOrder: t.sortOrder };
+}
+
+function toClassDTO(c: { id: number; name: string; archetype: string }): JobClassDTO {
+  return { id: c.id, name: c.name, archetype: c.archetype as JobClassDTO['archetype'] };
 }
 
 function isCode(err: unknown, code: string): boolean {
@@ -151,6 +159,11 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
     });
     return bosses.map(toBossDTO);
+  });
+
+  app.get('/classes', async () => {
+    const classes = await prisma.jobClass.findMany();
+    return classes.sort((a, b) => a.nameLower.localeCompare(b.nameLower)).map(toClassDTO);
   });
 
   app.get('/rarity-tiers', async () => {
@@ -307,6 +320,54 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       if (used > 0) throw new AppError(409, 'IN_USE', 'Boss is referenced by posts');
       await tx.boss.delete({ where: { id } });
     });
+    return reply.status(204).send();
+  });
+
+  // ---- Admin: classes ----
+  app.post('/admin/classes', async (req, reply) => {
+    await requireAdmin(req);
+    const body = classCreate.parse(req.body);
+    const created = await mapDuplicate(
+      () =>
+        prisma.$transaction(async (tx) => {
+          const jc = await tx.jobClass.create({
+            data: { name: body.name, nameLower: body.name.toLowerCase(), archetype: body.archetype },
+          });
+          await tx.character.updateMany({
+            where: { jobName: { equals: jc.name, mode: 'insensitive' } },
+            data: { archetype: jc.archetype },
+          });
+          return jc;
+        }),
+      'That class',
+    );
+    return reply.status(201).send(toClassDTO(created));
+  });
+
+  app.patch('/admin/classes/:id', async (req) => {
+    await requireAdmin(req);
+    const { id } = idParam.parse(req.params);
+    const body = classPatch.parse(req.body);
+    return prisma.$transaction(async (tx) => {
+      if (!(await tx.jobClass.findUnique({ where: { id } }))) throw new AppError(404, 'NOT_FOUND');
+      const jc = await tx.jobClass.update({ where: { id }, data: { archetype: body.archetype } });
+      await tx.character.updateMany({
+        where: { jobName: { equals: jc.name, mode: 'insensitive' } },
+        data: { archetype: jc.archetype },
+      });
+      return toClassDTO(jc);
+    });
+  });
+
+  app.delete('/admin/classes/:id', async (req, reply) => {
+    await requireAdmin(req);
+    const { id } = idParam.parse(req.params);
+    try {
+      await prisma.jobClass.delete({ where: { id } });
+    } catch (err) {
+      if (isCode(err, 'P2025')) throw new AppError(404, 'NOT_FOUND');
+      throw err;
+    }
     return reply.status(204).send();
   });
 

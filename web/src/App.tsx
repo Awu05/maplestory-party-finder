@@ -11,6 +11,7 @@ import { AdminLayout } from './pages/admin/AdminLayout';
 import { GuildsAdmin } from './pages/admin/GuildsAdmin';
 import { WorldsAdmin } from './pages/admin/WorldsAdmin';
 import { BossesAdmin } from './pages/admin/BossesAdmin';
+import { ClassesAdmin } from './pages/admin/ClassesAdmin';
 import { TiersAdmin } from './pages/admin/TiersAdmin';
 import { WebhooksAdmin } from './pages/admin/WebhooksAdmin';
 import { UsersAdmin } from './pages/admin/UsersAdmin';
@@ -34,6 +35,7 @@ export function App() {
           <Route path="guilds" element={<GuildsAdmin />} />
           <Route path="worlds" element={<WorldsAdmin />} />
           <Route path="bosses" element={<BossesAdmin />} />
+          <Route path="classes" element={<ClassesAdmin />} />
           <Route path="tiers" element={<TiersAdmin />} />
           <Route path="webhooks" element={<WebhooksAdmin />} />
           <Route path="users" element={<UsersAdmin />} />

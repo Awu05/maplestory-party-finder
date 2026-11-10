@@ -1,5 +1,5 @@
 import type { KeyboardEvent } from 'react';
-import { classToArchetype, rarityFor } from '@pf/shared';
+import { rarityFor } from '@pf/shared';
 import type { CharacterDTO, RarityTierDTO } from '@pf/shared';
 import { formatCp } from './format';
 import './card.css';
@@ -11,7 +11,7 @@ interface Props {
 }
 
 export function CharacterCard({ character: c, tiers, onOpen }: Props) {
-  const archetype = classToArchetype(c.jobName);
+  const archetype = c.archetype;
   const rarity = rarityFor(c.combatPower, tiers);
   const classes = ['card', `card--${archetype}`];
   if (rarity) classes.push(`card--rank-${rarity.rank}`);

@@ -16,7 +16,7 @@ function makeCharacter(overrides: Partial<CharacterDTO> = {}): CharacterDTO {
     id: 'c1',
     ign: 'Lily',
     world: { id: 1, name: 'Kronos' },
-    jobName: 'Angelic Buster',
+    jobName: 'Angelic Buster', archetype: 'pirate',
     level: 279,
     imageUrl: 'https://example.com/lily.png',
     combatPower: 1_500_000_000,
@@ -87,12 +87,12 @@ describe('CharacterCard', () => {
   });
 
   it('xenon gets card--xenon', () => {
-    render(<CharacterCard character={makeCharacter({ jobName: 'Xenon' })} tiers={tiers} onOpen={() => {}} />);
+    render(<CharacterCard character={makeCharacter({ jobName: 'Xenon', archetype: 'xenon' })} tiers={tiers} onOpen={() => {}} />);
     expect(screen.getByRole('button')).toHaveClass('card--xenon');
   });
 
   it('unknown class gets card--unknown', () => {
-    render(<CharacterCard character={makeCharacter({ jobName: 'Mystery Job' })} tiers={tiers} onOpen={() => {}} />);
+    render(<CharacterCard character={makeCharacter({ jobName: 'Mystery Job', archetype: 'unknown' })} tiers={tiers} onOpen={() => {}} />);
     expect(screen.getByRole('button')).toHaveClass('card--unknown');
   });
 

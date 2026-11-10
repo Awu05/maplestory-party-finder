@@ -5,6 +5,7 @@ import type {
   AdminPostDTO,
   AdminUserDTO,
   BossDTO,
+  JobClassDTO,
   CharacterDTO,
   GuildDTO,
   MeDTO,
@@ -25,6 +26,8 @@ export const useWorlds = () =>
   useQuery({ queryKey: ['worlds'], queryFn: () => api<WorldDTO[]>('/api/worlds'), staleTime: FIVE_MIN });
 export const useGuilds = () =>
   useQuery({ queryKey: ['guilds'], queryFn: () => api<GuildDTO[]>('/api/guilds'), staleTime: FIVE_MIN });
+export const useClasses = () =>
+  useQuery({ queryKey: ['classes'], queryFn: () => api<JobClassDTO[]>('/api/classes'), staleTime: FIVE_MIN });
 export const useBosses = () =>
   useQuery({ queryKey: ['bosses'], queryFn: () => api<BossDTO[]>('/api/bosses'), staleTime: FIVE_MIN });
 export const useRarityTiers = () =>
@@ -152,7 +155,7 @@ function useAdminMutation<I, O>(fn: (input: I) => Promise<O>) {
     mutationFn: fn,
     onSuccess: () =>
       Promise.all(
-        (['admin', 'guilds', 'worlds', 'bosses', 'rarity-tiers', 'characters'] as const).map((k) =>
+        (['admin', 'guilds', 'worlds', 'bosses', 'classes', 'rarity-tiers', 'characters', 'posts'] as const).map((k) =>
           qc.invalidateQueries({ queryKey: [k] }),
         ),
       ),
@@ -199,6 +202,17 @@ export const useUpdateBoss = () =>
   );
 export const useDeleteBoss = () =>
   useAdminMutation((id: number) => api<void>(`/api/admin/bosses/${id}`, { method: 'DELETE' }));
+
+export const useCreateClass = () =>
+  useAdminMutation((input: { name: string; archetype: JobClassDTO['archetype'] }) =>
+    api<JobClassDTO>('/api/admin/classes', { method: 'POST', json: input }),
+  );
+export const useUpdateClass = () =>
+  useAdminMutation(({ id, ...json }: { id: number; archetype: JobClassDTO['archetype'] }) =>
+    api<JobClassDTO>(`/api/admin/classes/${id}`, { method: 'PATCH', json }),
+  );
+export const useDeleteClass = () =>
+  useAdminMutation((id: number) => api<void>(`/api/admin/classes/${id}`, { method: 'DELETE' }));
 
 export const useSaveTiers = () =>
   useAdminMutation((tiers: { name: string; minCp: number; sortOrder: number }[]) =>

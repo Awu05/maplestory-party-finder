@@ -3,7 +3,8 @@ import type { NexonCharacterPreview } from '@pf/shared';
 import { AppError } from '../http/errors.js';
 import { NexonUnavailableError, type NexonClient, type NexonCharacter } from '../nexon/client.js';
 import { closeLivePosts } from '../posts/lifecycle.js';
-import { classToArchetype, type Archetype } from '@pf/shared';
+import type { Archetype } from '@pf/shared';
+import { resolveArchetype } from '../classes/archetype.js';
 import { characterInclude, type CharacterRow } from './serialize.js';
 
 export interface CreateCharacterInput {
@@ -54,6 +55,7 @@ export async function createCharacter(
   if (!world) throw new AppError(400, 'UNKNOWN_WORLD', `World ${input.nexonWorldId} isn't set up yet — ask the admin`);
   if (!world.active) throw new AppError(400, 'WORLD_INACTIVE', 'That world is not active');
 
+  const archetype = await resolveArchetype(prisma, match.jobName);
   const now = new Date();
   try {
     return await prisma.$transaction((tx) =>
@@ -64,6 +66,7 @@ export async function createCharacter(
           ignLower: match.ign.toLowerCase(),
           worldId: world.id,
           jobName: match.jobName,
+          archetype,
           level: match.level,
           imageUrl: match.imageUrl,
           combatPower: BigInt(input.combatPower),
@@ -94,17 +97,17 @@ export interface ListCharactersFilter {
 }
 
 export async function listCharacters(prisma: PrismaClient, filter: ListCharactersFilter): Promise<CharacterRow[]> {
-  const rows = await prisma.character.findMany({
+  return prisma.character.findMany({
     where: {
       ...(filter.ownerId ? { ownerId: filter.ownerId } : { guild: { active: true }, owner: { banned: false } }),
       ...(filter.guildId ? { guildId: filter.guildId } : {}),
       ...(filter.worldId !== undefined ? { worldId: filter.worldId } : {}),
+      ...(filter.archetype ? { archetype: filter.archetype } : {}),
       ...(filter.q ? { ignLower: { startsWith: filter.q.toLowerCase() } } : {}),
     },
     include: characterInclude,
     orderBy: [{ combatPower: 'desc' }, { id: 'asc' }],
   });
-  return filter.archetype ? rows.filter((r) => classToArchetype(r.jobName) === filter.archetype) : rows;
 }
 
 export async function getCharacter(prisma: PrismaClient | Prisma.TransactionClient, id: string): Promise<CharacterRow> {
@@ -162,9 +165,10 @@ export async function syncCharacterFromNexon(
     await prisma.character.update({ where: { id: characterId }, data: { syncStatus: 'stale' } });
     return 'stale';
   }
+  const archetype = await resolveArchetype(prisma, match.jobName);
   await prisma.character.update({
     where: { id: characterId },
-    data: { level: match.level, jobName: match.jobName, imageUrl: match.imageUrl, lastSyncedAt: new Date(), syncStatus: 'ok' },
+    data: { level: match.level, jobName: match.jobName, archetype, imageUrl: match.imageUrl, lastSyncedAt: new Date(), syncStatus: 'ok' },
   });
   return 'ok';
 }

@@ -15,6 +15,7 @@ const sample = (combatPower: number): CharacterDTO => ({
   ign: 'SampleHero',
   world: { id: 0, name: 'Scania' },
   jobName: 'Hero',
+  archetype: 'warrior',
   level: 275,
   imageUrl: '',
   combatPower,

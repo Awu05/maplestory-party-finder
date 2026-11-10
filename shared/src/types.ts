@@ -1,8 +1,10 @@
+import type { Archetype } from './archetype';
 export interface CharacterDTO {
   id: string;
   ign: string;
   world: { id: number; name: string };
   jobName: string;
+  archetype: Archetype;
   level: number;
   imageUrl: string;
   combatPower: number;
@@ -110,3 +112,5 @@ export interface WebhookHealthDTO {
 }
 export interface AdminUserDTO { id: string; discordUsername: string; avatarUrl: string | null; banned: boolean; isAdmin: boolean; createdAt: string; characterCount: number }
 export interface AdminPostDTO extends PostSummaryDTO { deletedAt: string | null; closedReason: string | null; posterDiscordUsername: string }
+
+export type JobClassDTO = { id: number; name: string; archetype: Exclude<Archetype, 'unknown'> };

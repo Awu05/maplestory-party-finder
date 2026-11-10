@@ -1,5 +1,6 @@
 import { pathToFileURL } from 'node:url';
 import { PrismaClient } from '@prisma/client';
+import { KNOWN_CLASSES } from '@pf/shared';
 
 const WORLDS = [
   { nexonWorldId: 1, name: 'Bera', worldType: 'interactive' },
@@ -58,6 +59,20 @@ export async function seed(prisma: PrismaClient): Promise<void> {
       where: { name },
       create: { name, minCp, sortOrder },
       update: {},
+    });
+  }
+
+  for (const { name, archetype } of KNOWN_CLASSES) {
+    await prisma.jobClass.upsert({
+      where: { nameLower: name.toLowerCase() },
+      create: { name, nameLower: name.toLowerCase(), archetype },
+      update: {},
+    });
+  }
+  for (const jc of await prisma.jobClass.findMany()) {
+    await prisma.character.updateMany({
+      where: { jobName: { equals: jc.name, mode: 'insensitive' }, archetype: 'unknown' },
+      data: { archetype: jc.archetype },
     });
   }
 

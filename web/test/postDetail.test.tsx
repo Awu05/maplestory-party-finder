@@ -9,7 +9,7 @@ const character = (id: string, ign: string, cp = 1_500_000_000): CharacterDTO =>
   id,
   ign,
   world: { id: 5, name: 'Kronos' },
-  jobName: 'Bishop',
+  jobName: 'Bishop', archetype: 'magician',
   level: 280,
   imageUrl: `http://img/${ign}.png`,
   combatPower: cp,

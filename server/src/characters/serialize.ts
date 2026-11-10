@@ -17,6 +17,7 @@ export function toCharacterDTO(row: CharacterRow, viewerUserId: string | null, s
     ign: row.ign,
     world: { id: row.world.id, name: row.world.name },
     jobName: row.jobName,
+    archetype: row.archetype,
     level: row.level,
     imageUrl: row.imageUrl,
     combatPower: Number(row.combatPower),

@@ -11,7 +11,7 @@ const character: CharacterDTO = {
   id: 'c1',
   ign: 'Lily',
   world: { id: 1, name: 'Kronos' },
-  jobName: 'Bishop',
+  jobName: 'Bishop', archetype: 'magician',
   level: 280,
   imageUrl: 'http://img/lily.png',
   combatPower: 1_500_000_000,
