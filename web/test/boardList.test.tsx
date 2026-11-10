@@ -94,6 +94,17 @@ function renderBoard(route = '/') {
   );
 }
 
+/** Makes requests to `url` wait until the returned release() is called (mockApi itself answers synchronously). */
+function holdRequest(fetchMock: ReturnType<typeof mockApi>, url: string) {
+  let release = () => {};
+  const gate = new Promise<void>((r) => (release = r));
+  const real = fetchMock.getMockImplementation()!;
+  fetchMock.mockImplementation((input, init) =>
+    String(input) === url ? gate.then(() => real(input, init)) : real(input, init),
+  );
+  return () => release();
+}
+
 const postsCalls = (fetchMock: ReturnType<typeof mockApi>) =>
   fetchMock.mock.calls.map(([u]) => String(u)).filter((u) => u.startsWith('/api/posts?') || u === '/api/posts');
 
@@ -129,8 +140,10 @@ describe('Board list', () => {
     renderBoard();
     const rows = await within(await screen.findByRole('listbox', { name: 'Posts' })).findAllByRole('option');
     await waitFor(() => expect(loc()).toBe('/?post=p1'));
-    fireEvent.click(rows[1], { ctrlKey: true });
+    // true = not default-prevented, so the browser opens the link in a new tab.
+    expect(fireEvent.click(rows[1], { ctrlKey: true })).toBe(true);
     expect(rows[1]).toHaveAttribute('aria-selected', 'false');
+    expect(loc()).toBe('/?post=p1');
   });
 
   it('a stale ?post=missing selects p1 and rewrites the URL', async () => {
@@ -139,6 +152,13 @@ describe('Board list', () => {
     const rows = await within(await screen.findByRole('listbox', { name: 'Posts' })).findAllByRole('option');
     expect(rows[0]).toHaveAttribute('aria-selected', 'true');
     await waitFor(() => expect(loc()).toBe('/?post=p1'));
+  });
+
+  it('a stale id is rewritten without dropping other params', async () => {
+    mockApi({ ...base, '/api/posts': [p1, p2] });
+    renderBoard('/?x=1&post=missing');
+    await screen.findByRole('listbox', { name: 'Posts' });
+    await waitFor(() => expect(loc()).toBe('/?x=1&post=p1'));
   });
 
   it('keeps an existing ?post= selection and other params', async () => {
@@ -164,6 +184,58 @@ describe('Board list', () => {
     await waitFor(() => expect(loc()).toBe('/?post=p2'));
     fireEvent.keyDown(rows[1], { key: 'Enter' });
     await waitFor(() => expect(loc()).toBe('/posts/p2'));
+  });
+
+  it('Home/End jump to the ends and arrows clamp there', async () => {
+    const p3 = { ...p2, id: 'p3' };
+    mockApi({ ...base, '/api/posts': [p1, p2, p3] });
+    renderBoard();
+    const rows = await within(await screen.findByRole('listbox', { name: 'Posts' })).findAllByRole('option');
+    await waitFor(() => expect(loc()).toBe('/?post=p1'));
+    fireEvent.keyDown(rows[0], { key: 'ArrowUp' });
+    expect(loc()).toBe('/?post=p1');
+    fireEvent.keyDown(rows[0], { key: 'End' });
+    await waitFor(() => expect(loc()).toBe('/?post=p3'));
+    expect(rows[2]).toHaveFocus();
+    fireEvent.keyDown(rows[2], { key: 'ArrowDown' });
+    expect(loc()).toBe('/?post=p3');
+    fireEvent.keyDown(rows[2], { key: 'Home' });
+    await waitFor(() => expect(loc()).toBe('/?post=p1'));
+    expect(rows[0]).toHaveFocus();
+  });
+
+  it('Ctrl+Enter is left to the native link', async () => {
+    mockApi({ ...base, '/api/posts': [p1, p2] });
+    renderBoard();
+    const rows = await within(await screen.findByRole('listbox', { name: 'Posts' })).findAllByRole('option');
+    await waitFor(() => expect(loc()).toBe('/?post=p1'));
+    expect(fireEvent.keyDown(rows[0], { key: 'Enter', ctrlKey: true })).toBe(true);
+    expect(loc()).toBe('/?post=p1');
+  });
+
+  it('describes the listbox with an Enter hint', async () => {
+    mockApi({ ...base, '/api/posts': [p1] });
+    renderBoard();
+    expect(await screen.findByRole('listbox', { name: 'Posts' })).toHaveAccessibleDescription('Press Enter to open the post');
+  });
+
+  it('keeps rows (no skeletons) while a filter change refetches', async () => {
+    const release = holdRequest(mockApi({ ...base, '/api/posts': [p1, p2], '/api/posts?type=lfp': [p2] }), '/api/posts?type=lfp');
+    renderBoard();
+    await within(await screen.findByRole('listbox', { name: 'Posts' })).findAllByRole('option');
+    fireEvent.click(screen.getByRole('radio', { name: 'LFP' }));
+    const list = screen.getByRole('listbox', { name: 'Posts' });
+    expect(list).not.toHaveAttribute('aria-busy');
+    expect(within(list).getAllByRole('option')).toHaveLength(2);
+    release();
+    await waitFor(() => expect(within(screen.getByRole('listbox', { name: 'Posts' })).getAllByRole('option')).toHaveLength(1));
+  });
+
+  it('hides the preview placeholder when the board fails to load', async () => {
+    mockApi(base); // no /api/posts mock: the request fails with 404
+    renderBoard();
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Post preview' })).not.toBeInTheDocument();
   });
 
   it('on a phone (375px) a row tap opens the post and there is no preview', async () => {
@@ -193,7 +265,7 @@ describe('Board list', () => {
   });
 
   it('shows skeleton rows while loading', async () => {
-    mockApi({ ...base, '/api/posts': () => new Promise(() => {}) });
+    holdRequest(mockApi({ ...base, '/api/posts': [p1] }), '/api/posts');
     renderBoard();
     const list = await screen.findByRole('listbox', { name: 'Posts' });
     expect(list).toHaveAttribute('aria-busy', 'true');

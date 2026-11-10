@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 
 const globalCss = readFileSync(resolve(__dirname, '../src/styles/global.css'), 'utf8');
 const cardCss = readFileSync(resolve(__dirname, '../src/components/card/card.css'), 'utf8');
+const postCss = readFileSync(resolve(__dirname, '../src/components/post/post.css'), 'utf8');
 
 function rootTokens(css: string): Record<string, string> {
   const block = /:root\s*\{([^}]*)\}/.exec(css);
@@ -27,6 +28,17 @@ function ratio(a: string, b: string): number {
   return (hi + 0.05) / (lo + 0.05);
 }
 
+/** color-mix(in srgb, a p, b): per-channel linear mix of the sRGB values, rounded. */
+function mixSrgb(a: string, p: number, b: string): string {
+  const ch = (hex: string, shift: number) => (parseInt(hex.slice(1), 16) >> shift) & 255;
+  return (
+    '#' +
+    [16, 8, 0]
+      .map((s) => Math.round(ch(a, s) * p + ch(b, s) * (1 - p)).toString(16).padStart(2, '0'))
+      .join('')
+  );
+}
+
 const t = rootTokens(globalCss);
 const BUTTON_TEXT = '#0f1220';
 
@@ -46,6 +58,15 @@ describe('Midnight contrast (WCAG AA 4.5:1)', () => {
 
   it.each(['--accent', '--accent-2'])('button text on gradient endpoint %s', (name) => {
     expect(ratio(BUTTON_TEXT, t[name])).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('muted and body text pass on the selected board row tint', () => {
+    const rule = /\.post-row\[aria-selected='true'\]\s*\{([^}]*)\}/.exec(postCss);
+    const mix = /color-mix\(in srgb, var\((--[\w-]+)\) (\d+)%, var\((--[\w-]+)\)\)/.exec(rule?.[1] ?? '');
+    if (!mix) throw new Error('selected row color-mix not found');
+    const bg = mixSrgb(t[mix[1]], Number(mix[2]) / 100, t[mix[3]]);
+    expect(ratio(t['--muted'], bg)).toBeGreaterThanOrEqual(4.5);
+    expect(ratio(t['--text'], bg)).toBeGreaterThanOrEqual(4.5);
   });
 
   it('is always dark', () => {

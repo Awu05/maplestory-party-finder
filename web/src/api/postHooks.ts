@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { DAY_MS, SCHEDULED_GRACE_MS, type MyRequestsDTO, type PostDetailDTO, type PostSummaryDTO, type PostType, type RequestDTO } from '@pf/shared';
 import { api } from './client';
 import { useMe } from './hooks';
@@ -37,6 +37,8 @@ export function usePosts(filters: PostFilters, opts: { enabled?: boolean } = {})
       return api<PostSummaryDTO[]>(qs ? `/api/posts?${qs}` : '/api/posts');
     },
     enabled: opts.enabled ?? true,
+    // Keep the current rows while a filter change refetches, so focus and selection aren't lost to skeletons.
+    placeholderData: keepPreviousData,
   });
 }
 

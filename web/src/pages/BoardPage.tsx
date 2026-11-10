@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import type { PostSummaryDTO, PostType } from '@pf/shared';
@@ -132,7 +132,7 @@ export function BoardPage() {
       {posts.isError && <p role="alert">{friendlyError(posts.error)}</p>}
       <div className={isPhone ? 'board' : 'board board--split'}>
         <PostList posts={posts.data} loading={posts.isPending} isPhone={isPhone} />
-        {!isPhone && (
+        {!isPhone && !posts.isError && (
           <section className="board__preview panel" aria-label="Post preview">
             <p className="board__placeholder">Pick a post to see its party</p>
           </section>
@@ -148,6 +148,7 @@ function PostList({ posts, loading, isPhone }: { posts?: PostSummaryDTO[]; loadi
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
   const rowRefs = useRef(new Map<string, HTMLAnchorElement>());
+  const hintId = useId();
   const wanted = params.get('post');
   const selectedId = posts?.some((p) => p.id === wanted) ? wanted : (posts?.[0]?.id ?? null);
 
@@ -168,13 +169,30 @@ function PostList({ posts, loading, isPhone }: { posts?: PostSummaryDTO[]; loadi
     if (needsRewrite && selectedId) select(selectedId);
   }, [needsRewrite, selectedId]); // select is recreated each render; these two decide whether it runs
 
+  const skeletons = [0, 1, 2].map((i) => <div key={i} className="post-row post-row--skeleton" aria-hidden="true" />);
+  // Outside the listbox (a listbox may only own options). Desktop branches share this
+  // fragment shape so React keeps the same listbox node from loading to loaded.
+  const hint = (
+    <span id={hintId} className="visually-hidden">
+      Press Enter to open the post
+    </span>
+  );
+
+  if (loading && isPhone) {
+    return (
+      <div className="post-list" aria-busy="true">
+        {skeletons}
+      </div>
+    );
+  }
   if (loading) {
     return (
-      <div className="post-list" role={isPhone ? undefined : 'listbox'} aria-label="Posts" aria-busy="true">
-        {[0, 1, 2].map((i) => (
-          <div key={i} className="post-row post-row--skeleton" aria-hidden="true" />
-        ))}
-      </div>
+      <>
+        {hint}
+        <div className="post-list" role="listbox" aria-label="Posts" aria-describedby={hintId} aria-busy="true">
+          {skeletons}
+        </div>
+      </>
     );
   }
   if (!posts) return null;
@@ -199,6 +217,8 @@ function PostList({ posts, loading, isPhone }: { posts?: PostSummaryDTO[]; loadi
     else if (e.key === 'Home') next = 0;
     else if (e.key === 'End') next = posts.length - 1;
     else if (e.key === 'Enter') {
+      // Modified Enter (new tab/window) falls through to the native link.
+      if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
       e.preventDefault();
       navigate(`/posts/${posts[i].id}`);
       return;
@@ -210,21 +230,24 @@ function PostList({ posts, loading, isPhone }: { posts?: PostSummaryDTO[]; loadi
   };
 
   return (
-    <div className="post-list" role="listbox" aria-label="Posts">
-      {posts.map((p, i) => (
-        <PostRow
-          key={p.id}
-          ref={(el) => {
-            if (el) rowRefs.current.set(p.id, el);
-            else rowRefs.current.delete(p.id);
-          }}
-          post={p}
-          selected={p.id === selectedId}
-          onSelect={() => select(p.id)}
-          onKeyDown={(e) => onKeyDown(e, i)}
-          asLink={false}
-        />
-      ))}
-    </div>
+    <>
+      {hint}
+      <div className="post-list" role="listbox" aria-label="Posts" aria-describedby={hintId}>
+        {posts.map((p, i) => (
+          <PostRow
+            key={p.id}
+            ref={(el) => {
+              if (el) rowRefs.current.set(p.id, el);
+              else rowRefs.current.delete(p.id);
+            }}
+            post={p}
+            selected={p.id === selectedId}
+            onSelect={() => select(p.id)}
+            onKeyDown={(e) => onKeyDown(e, i)}
+            asLink={false}
+          />
+        ))}
+      </div>
+    </>
   );
 }

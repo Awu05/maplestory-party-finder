@@ -192,7 +192,7 @@
 }
 .post-row[aria-selected='true'] {
   border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 18%, var(--surface));
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
 }
 .post-row__sprite {
   flex: none;
@@ -284,4 +284,12 @@
 .board__placeholder {
   margin: 0;
   color: var(--muted);
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
