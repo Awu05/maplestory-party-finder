@@ -41,6 +41,16 @@ describe('helpers', () => {
 });
 
 describe('buildNewPostMessage', () => {
+  it('omits the thumbnail when the snapshot image url is empty or relative', () => {
+    for (const imageUrl of ['', '/uploads/a.png']) {
+      const post = makePost();
+      post.poster.snapshot.imageUrl = imageUrl;
+      const e = buildNewPostMessage(post, ORIGIN).embeds![0] as any;
+      expect(e).not.toHaveProperty('thumbnail');
+      expect(e.title).toBe('Recruiting: Hard Lucid + Hard Will');
+      expect(e.fields.length).toBeGreaterThan(0);
+    }
+  });
   it('builds a recruiting embed', () => {
     const p = buildNewPostMessage(makePost(), ORIGIN);
     const e = p.embeds![0] as any;
