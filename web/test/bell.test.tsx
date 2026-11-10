@@ -3,7 +3,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react';
 import type { NotificationDTO } from '@pf/shared';
 import { App } from '../src/App';
 import { NOTIFICATION_POLL_MS } from '../src/api/notifyHooks';
-import { mockApi, renderWithProviders, testQueryClient } from './setup';
+import { mockApi, renderWithProviders, setViewport, testQueryClient } from './setup';
 
 const user = { id: 'u1', discordUsername: 'maple_fan', avatarUrl: null, isAdmin: false };
 const note = (id: string, over: Partial<NotificationDTO> = {}): NotificationDTO => ({
@@ -153,6 +153,35 @@ describe('NotificationBell', () => {
     fireEvent.click(bell);
     const panel = await screen.findByRole('region', { name: 'Notifications' });
     expect(panel.style.getPropertyValue('--bell-top')).toBe('97px');
+  });
+
+  it('re-measures the header on resize and scroll while open on a phone, and stops when closed', async () => {
+    setViewport(375);
+    mockApi({ '/api/auth/me': user, [NOTIF]: list([note('n1')]) });
+    renderWithProviders(<App />);
+    const bell = await screen.findByRole('button', { name: /^Notifications/ });
+    const header = bell.closest('.app-header') as HTMLElement;
+    header.getBoundingClientRect = () => ({ bottom: 97 }) as DOMRect;
+    fireEvent.click(bell);
+    const panel = await screen.findByRole('region', { name: 'Notifications' });
+    header.getBoundingClientRect = () => ({ bottom: 140 }) as DOMRect;
+    fireEvent(window, new Event('resize'));
+    await waitFor(() => expect(panel.style.getPropertyValue('--bell-top')).toBe('140px'));
+    header.getBoundingClientRect = () => ({ bottom: 0 }) as DOMRect;
+    fireEvent.scroll(window);
+    await waitFor(() => expect(panel.style.getPropertyValue('--bell-top')).toBe('0px'));
+    const remove = vi.spyOn(window, 'removeEventListener');
+    fireEvent.click(bell);
+    expect(remove.mock.calls.map(([t]) => t)).toEqual(expect.arrayContaining(['scroll', 'resize']));
+    remove.mockRestore();
+  });
+
+  it('phone panel max-height uses dynamic viewport units with a vh fallback', () => {
+    const css = readFileSync('src/components/bell.css', 'utf8');
+    const phone = css.slice(css.indexOf('@media (max-width: 640px)'));
+    const panel = /\.bell-panel\s*\{([^}]*)\}/.exec(phone)?.[1] ?? '';
+    const heights = [...panel.matchAll(/max-height:\s*([^;]+);/g)].map((m) => m[1].trim());
+    expect(heights).toEqual(['calc(100vh - var(--bell-top))', 'calc(100dvh - var(--bell-top))']);
   });
 
   it('phone panel CSS uses the measured header bottom', () => {

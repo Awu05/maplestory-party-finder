@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useMarkRead, useNotifications } from '../api/notifyHooks';
+import { useMediaQuery } from '../hooks/useMediaQuery';
 import { relativeTime } from './post/time';
 import './bell.css';
 
@@ -39,6 +40,20 @@ export function NotificationBell() {
     };
   }, [open]);
 
+  // Phones pin the panel under the header, which may wrap to several rows: measure it on open,
+  // and again whenever scrolling or resizing moves the header.
+  const isPhone = useMediaQuery('(max-width: 640px)');
+  const measureTop = () => setTop(wrapRef.current?.closest('.app-header')?.getBoundingClientRect().bottom ?? 0);
+  useEffect(() => {
+    if (!open || !isPhone) return;
+    window.addEventListener('scroll', measureTop, { passive: true });
+    window.addEventListener('resize', measureTop, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', measureTop);
+      window.removeEventListener('resize', measureTop);
+    };
+  }, [open, isPhone]); // measureTop only reads refs and sets state
+
   const unread = data?.unreadCount ?? 0;
   const items = data?.items.slice(0, 30) ?? [];
 
@@ -51,8 +66,7 @@ export function NotificationBell() {
         aria-expanded={open}
         aria-haspopup="true"
         onClick={() => {
-          // Phones pin the panel under the header, which may wrap to several rows.
-          if (!open) setTop(wrapRef.current?.closest('.app-header')?.getBoundingClientRect().bottom ?? 0);
+          if (!open) measureTop();
           setOpen((o) => !o);
         }}
       >

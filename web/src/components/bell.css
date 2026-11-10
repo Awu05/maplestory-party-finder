@@ -91,6 +91,8 @@
     top: var(--bell-top);
     width: auto;
     max-height: calc(100vh - var(--bell-top));
+    /* The dynamic viewport tracks the phone's collapsing browser toolbar. */
+    max-height: calc(100dvh - var(--bell-top));
     border-radius: 0;
   }
 }
