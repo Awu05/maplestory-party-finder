@@ -41,7 +41,7 @@ export function WebhooksAdmin() {
                     <button
                       type="button"
                       aria-expanded={expanded}
-                      aria-label={`Show failures ${h.guildName}`}
+                      aria-label={`${expanded ? 'Hide' : 'Show'} failures ${h.guildName}`}
                       onClick={() => setOpen(expanded ? null : h.guildId)}
                     >
                       {expanded ? 'Hide' : 'Failures'}

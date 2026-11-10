@@ -30,8 +30,10 @@ describe('admin webhooks', () => {
       'POST /api/admin/guilds/g1/test-webhook': post,
     });
     renderWithProviders(<GuildsAdmin />);
+    const alpha = await screen.findByRole('button', { name: 'Send test message Alpha' });
+    expect(screen.getByRole('button', { name: 'Edit Beta' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Send test message Beta' })).not.toBeInTheDocument();
-    fireEvent.click(await screen.findByRole('button', { name: 'Send test message Alpha' }));
+    fireEvent.click(alpha);
     expect(await screen.findByText('Sent ✓')).toBeInTheDocument();
     expect(post).toHaveBeenCalledTimes(1);
 
@@ -54,6 +56,7 @@ describe('admin webhooks', () => {
     expect(await screen.findByText('HTTP 500')).toBeInTheDocument();
     expect(screen.getByText('post.created')).toBeInTheDocument();
     expect(screen.getByText('1h ago')).toBeInTheDocument();
+    expect(within(row).getByRole('button', { name: 'Hide failures Alpha' })).toHaveAttribute('aria-expanded', 'true');
   });
 
   it('red pill when failedLast24h>0, gray when no webhook', async () => {
