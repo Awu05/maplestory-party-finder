@@ -26,6 +26,33 @@ describe('catalog', () => {
     expect(r2.statusCode).toBe(401);
   });
 
+  it('every catalog admin route: visitor 401, non-admin 403, nothing changes', async () => {
+    const world = await makeWorld({ name: 'Kronos' });
+    const guild = await makeGuild({ name: 'G', worldIds: [world.id] });
+    const bd = await makeBossDifficulty({ bossName: 'Lucid' });
+    const routes: ['GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE', string, object?][] = [
+      ['GET', '/api/admin/guilds'],
+      ['POST', '/api/admin/guilds', { name: 'X', worldIds: [world.id] }],
+      ['PATCH', `/api/admin/guilds/${guild.id}`, { name: 'Renamed', active: false }],
+      ['POST', '/api/admin/worlds', { nexonWorldId: 99, name: 'New', worldType: 'heroic' }],
+      ['PATCH', `/api/admin/worlds/${world.id}`, { name: 'Renamed', active: false }],
+      ['POST', '/api/admin/bosses', { name: 'Will', difficulties: [{ difficulty: 'Hard' }] }],
+      ['PATCH', `/api/admin/bosses/${bd.bossId}`, { name: 'Renamed' }],
+      ['DELETE', `/api/admin/bosses/${bd.bossId}`],
+      ['PUT', '/api/admin/rarity-tiers', { tiers: [{ name: 'Gold', minCp: 1, sortOrder: 0 }] }],
+    ];
+    for (const [method, url, payload] of routes) {
+      const visitor = await app.inject({ method, url, ...(payload ? { payload } : {}) });
+      expect(visitor.statusCode, `visitor ${method} ${url}`).toBe(401);
+      const plain = await app.inject({ method, url, headers: { cookie: user }, ...(payload ? { payload } : {}) });
+      expect(plain.statusCode, `non-admin ${method} ${url}`).toBe(403);
+    }
+    expect(await prisma.guild.findMany({ select: { name: true, active: true } })).toEqual([{ name: 'G', active: true }]);
+    expect(await prisma.world.findMany({ select: { name: true, active: true } })).toEqual([{ name: 'Kronos', active: true }]);
+    expect(await prisma.boss.findMany({ select: { name: true } })).toEqual([{ name: 'Lucid' }]);
+    expect(await prisma.rarityTier.count()).toBe(0);
+  });
+
   it('admin creates guild with worlds', async () => {
     const kronos = await makeWorld();
     const res = await app.inject({
