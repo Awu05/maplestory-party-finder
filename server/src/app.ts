@@ -38,7 +38,7 @@ declare module 'fastify' {
 }
 
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
-  const app = Fastify({ logger: deps.config.port !== 0 });
+  const app = Fastify({ logger: deps.config.logger });
   app.decorate('deps', deps);
   registerErrorHandler(app);
 
@@ -65,6 +65,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     return reply
       .header('Content-Type', found.contentType)
       .header('Cache-Control', 'public, max-age=31536000, immutable')
+      .header('X-Content-Type-Options', 'nosniff')
       .send(found.buf);
   });
 

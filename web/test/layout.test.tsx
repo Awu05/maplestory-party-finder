@@ -27,6 +27,28 @@ describe('Layout', () => {
     expect(screen.queryByRole('link', { name: 'My characters' })).not.toBeInTheDocument();
   });
 
+  it('a /api/auth/me server error still shows Log in with Discord', async () => {
+    const fetchMock = mockApi({});
+    const fallback = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (input, init) =>
+      String(input) === '/api/auth/me'
+        ? new Response(JSON.stringify({ error: { code: 'internal', message: 'boom' } }), { status: 500 })
+        : fallback(input, init),
+    );
+    renderWithProviders(<App />);
+    expect(await screen.findByRole('link', { name: 'Log in with Discord' })).toHaveAttribute('href', '/api/auth/discord');
+  });
+
+  it('a rejected /api/auth/me fetch (network down) still shows Log in with Discord', async () => {
+    mockApi({
+      '/api/auth/me': () => {
+        throw new TypeError('Failed to fetch');
+      },
+    });
+    renderWithProviders(<App />);
+    expect(await screen.findByRole('link', { name: 'Log in with Discord' })).toBeInTheDocument();
+  });
+
   it('logged in shows username and My characters, no Admin', async () => {
     mockApi({ '/api/auth/me': user });
     renderWithProviders(<App />);

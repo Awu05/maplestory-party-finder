@@ -147,6 +147,41 @@ describe('request.created', () => {
     expect(await deliveries()).toEqual([]);
   });
 
+  it('ping skipped when the target guild is inactive (even with a webhook); the notification is still written', async () => {
+    const g4 = await prisma.guild.findFirstOrThrow({ where: { name: 'G4' } });
+    expect(g4).toMatchObject({ active: false, webhookUrl: HOOK });
+    await prisma.character.update({ where: { id: alice.id }, data: { guildId: g4.id } });
+    const post = await recruiting();
+    await join(post.id, bob.id, u2);
+    await events.drain();
+    expect((await notes()).map((n) => [n.userId, n.kind])).toEqual([[u1Id, 'join_request']]);
+    expect(await deliveries()).toEqual([]);
+  });
+
+  it('ping skipped when the recipient has no Discord id; the notification is still written', async () => {
+    const post = await recruiting();
+    await join(post.id, bob.id, u2);
+    await events.drain();
+    expect(await deliveries()).toHaveLength(1); // the baseline: G1 can receive pings for u-1
+    await prisma.webhookDelivery.deleteMany();
+    await prisma.notification.deleteMany();
+    await prisma.user.update({ where: { id: u1Id }, data: { discordId: '' } });
+    await join(post.id, carol.id, u3);
+    await events.drain();
+    expect((await notes()).map((n) => [n.userId, n.kind])).toEqual([[u1Id, 'join_request']]);
+    expect(await deliveries()).toEqual([]);
+  });
+
+  it('the poster inviting their own alt sends no ping and no notification', async () => {
+    const post = await recruiting();
+    const alt = await makeCharacter({ ownerId: u1Id, worldId: kronosId, guildId: g1.id, ign: 'AliceAlt' });
+    const lfp = await makePost({ type: 'lfp', partySize: null, posterCharacterId: alt.id, bossDifficultyIds: [lucid] });
+    await invite(lfp.id, post.id, u1);
+    await events.drain();
+    expect(await notes()).toEqual([]);
+    expect(await deliveries()).toEqual([]);
+  });
+
   it("the actor is never notified about their own action (poster's own alt applies)", async () => {
     const post = await recruiting();
     const alt = await makeCharacter({ ownerId: u1Id, worldId: kronosId, guildId: g1.id, ign: 'AliceAlt' });

@@ -6,7 +6,8 @@ import { api } from '../api/client';
 import { NotificationBell } from './NotificationBell';
 
 export function Layout() {
-  const { data: me } = useMe();
+  // A failed /me (server error, network down) counts as logged out once it settles.
+  const { data: me, isPending: mePending } = useMe();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const close = () => setOpen(false);
@@ -94,7 +95,7 @@ export function Layout() {
               </button>
             </>
           ) : (
-            me === null && (
+            !mePending && (
               <a className="btn btn--primary" href="/api/auth/discord">
                 Log in with Discord
               </a>

@@ -275,6 +275,16 @@ async function reopenMatchedLfpPost(
   const lfp = await tx.post.findUnique({ where: { id: invite.lfpPostId } });
   if (!lfp || lfp.status !== 'closed' || lfp.closedReason !== 'lfp_matched' || lfp.deletedAt !== null) return null;
   if (lfp.expiresAt.getTime() <= now.getTime()) return null;
+  // Still in another live party (e.g. joined one by join request): the character is not looking.
+  const otherParty = await tx.postMember.findFirst({
+    where: {
+      characterId,
+      postId: { not: recruitingPostId },
+      post: { deletedAt: null, status: { in: ['open', 'full'] }, expiresAt: { gt: now } },
+    },
+    select: { id: true },
+  });
+  if (otherParty) return null;
   await tx.post.update({ where: { id: lfp.id }, data: { status: 'open', closedReason: null } });
   return lfp.id;
 }

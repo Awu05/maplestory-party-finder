@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import {
-  addMember, buildTestApp, loginAs, makeCharacter, makePost, makeUser, prisma, resetDb, type RecordingEvents,
+  addMember, buildTestApp, loginAs, makeCharacter, makePost, makeUser, prisma, resetDb, testConfig, type RecordingEvents,
 } from './helpers.js';
 
 let app: FastifyInstance;
@@ -21,6 +21,9 @@ afterAll(async () => {
 
 const call = (method: 'GET' | 'POST' | 'PATCH' | 'DELETE', url: string, cookie: string | null = adminCookie, payload?: unknown) =>
   app.inject({ method, url, headers: cookie ? { cookie } : {}, payload: payload as any });
+
+/** Events in a stable order, for exact comparisons that don't depend on emit order. */
+const sorted = <T,>(xs: T[]) => [...xs].sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
 
 describe('authorization', () => {
   it('non-admin gets 403 on every moderation route', async () => {
@@ -106,6 +109,63 @@ describe('ban', () => {
     expect((await prisma.post.findUniqueOrThrow({ where: { id: post2.id } })).status).toBe('closed');
   });
 
+  it("declines invites tied to the banned user's LFP post, closes their full post, emits events", async () => {
+    const u2 = await makeUser({ discordId: 'u-2', username: 'badguy' });
+    const c2 = await makeCharacter({ ownerId: u2.id, ign: 'BadChar' });
+    const lfp = await makePost({ posterUserId: u2.id, posterCharacterId: c2.id, type: 'lfp', partySize: null });
+    const full = await makePost({ posterUserId: u2.id, posterCharacterId: c2.id, partySize: 2, status: 'full', closedReason: 'full' });
+    const filler = await makeCharacter({ ign: 'Filler' });
+    await addMember(full.id, filler.id);
+    const host = await makeUser();
+    const hostChar = await makeCharacter({ ownerId: host.id });
+    const hostPost = await makePost({ posterUserId: host.id, posterCharacterId: hostChar.id });
+    const invite = await prisma.request.create({
+      data: { kind: 'invite', postId: hostPost.id, characterId: c2.id, lfpPostId: lfp.id, createdByUserId: host.id },
+    });
+    const decided = await prisma.request.create({
+      data: { kind: 'invite', status: 'declined', decidedAt: new Date(), postId: hostPost.id, characterId: c2.id, lfpPostId: lfp.id, createdByUserId: host.id },
+    });
+
+    const res = await call('PATCH', `/api/admin/users/${u2.id}`, adminCookie, { banned: true });
+    expect(res.statusCode).toBe(200);
+    expect(await prisma.post.findUniqueOrThrow({ where: { id: lfp.id } })).toMatchObject({ status: 'closed', closedReason: 'banned' });
+    expect(await prisma.post.findUniqueOrThrow({ where: { id: full.id } })).toMatchObject({ status: 'closed', closedReason: 'banned' });
+    expect((await prisma.post.findUniqueOrThrow({ where: { id: hostPost.id } })).status).toBe('open');
+    expect((await prisma.request.findUniqueOrThrow({ where: { id: invite.id } })).status).toBe('declined');
+    expect(await prisma.request.findUniqueOrThrow({ where: { id: decided.id } })).toMatchObject({ status: 'declined', decidedAt: decided.decidedAt });
+    expect(await prisma.postMember.count({ where: { postId: full.id } })).toBe(2); // the lineup is kept as a record
+    expect(sorted(events.events)).toEqual(
+      sorted([
+        { type: 'post.closed', postId: lfp.id, reason: 'banned' },
+        { type: 'post.closed', postId: full.id, reason: 'banned' },
+        { type: 'request.declined', requestId: invite.id, auto: true, actorUserId: adminId },
+      ]),
+    );
+  });
+
+  it('banning an already-banned user changes nothing and emits nothing', async () => {
+    const u2 = await makeUser({ discordId: 'u-2', username: 'badguy', banned: true });
+    const c2 = await makeCharacter({ ownerId: u2.id });
+    const post = await makePost({ posterUserId: u2.id, posterCharacterId: c2.id });
+    expect((await call('PATCH', `/api/admin/users/${u2.id}`, adminCookie, { banned: true })).statusCode).toBe(200);
+    expect((await prisma.post.findUniqueOrThrow({ where: { id: post.id } })).status).toBe('open');
+    expect(events.events).toEqual([]);
+  });
+
+  it('cannot ban another env admin', async () => {
+    const other = await makeUser({ discordId: 'admin-1-other', username: 'other' });
+    const { app: app2 } = await buildTestApp({ config: testConfig({ adminDiscordIds: ['admin-1', 'admin-1-other'] }) });
+    try {
+      const cookie = await loginAs(app2, 'admin-1', 'boss');
+      const res = await app2.inject({ method: 'PATCH', url: `/api/admin/users/${other.id}`, headers: { cookie }, payload: { banned: true } });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error.code).toBe('CANNOT_BAN_ADMIN');
+      expect((await prisma.user.findUniqueOrThrow({ where: { id: other.id } })).banned).toBe(false);
+    } finally {
+      await app2.close();
+    }
+  });
+
   it('cannot ban an admin or yourself', async () => {
     const res = await call('PATCH', `/api/admin/users/${adminId}`, adminCookie, { banned: true });
     expect(res.statusCode).toBe(400);
@@ -164,6 +224,44 @@ describe('characters', () => {
     const row = await prisma.postMember.findUniqueOrThrow({ where: { id: m.id } });
     expect(row.characterId).toBeNull();
     expect((row.snapshot as any).ign).toBe('Leaver');
+  });
+});
+
+describe('admin character delete events', () => {
+  it("closes the character's live posts, declines what was pending on them, and emits only for surviving requests", async () => {
+    const owner = await makeUser();
+    const c = await makeCharacter({ ownerId: owner.id, ign: 'Gone' });
+    const rec = await makePost({ posterUserId: owner.id, posterCharacterId: c.id });
+    const lfp = await makePost({ posterUserId: owner.id, posterCharacterId: c.id, type: 'lfp', partySize: null });
+    const ended = await makePost({ posterUserId: owner.id, posterCharacterId: c.id, status: 'closed', closedReason: 'manual' });
+    const joiner = await makeCharacter();
+    const join = await prisma.request.create({ data: { kind: 'join_request', postId: rec.id, characterId: joiner.id, createdByUserId: joiner.ownerId } });
+    const host = await makeUser();
+    const hostChar = await makeCharacter({ ownerId: host.id });
+    const hostPost = await makePost({ posterUserId: host.id, posterCharacterId: hostChar.id });
+    // Requests naming the deleted character cascade away with it: no events for them.
+    const invite = await prisma.request.create({
+      data: { kind: 'invite', postId: hostPost.id, characterId: c.id, lfpPostId: lfp.id, createdByUserId: host.id },
+    });
+
+    const res = await call('DELETE', `/api/admin/characters/${c.id}`);
+    expect(res.statusCode).toBe(204);
+    expect(await prisma.request.findUnique({ where: { id: invite.id } })).toBeNull();
+    expect((await prisma.request.findUniqueOrThrow({ where: { id: join.id } })).status).toBe('declined');
+    expect((await prisma.post.findUniqueOrThrow({ where: { id: ended.id } })).closedReason).toBe('manual');
+    expect(sorted(events.events)).toEqual(
+      sorted([
+        { type: 'post.closed', postId: rec.id, reason: 'character_deleted' },
+        { type: 'post.closed', postId: lfp.id, reason: 'character_deleted' },
+        { type: 'request.declined', requestId: join.id, auto: true, actorUserId: adminId },
+      ]),
+    );
+  });
+
+  it('unknown character -> 404, no events', async () => {
+    const res = await call('DELETE', '/api/admin/characters/nope');
+    expect(res.statusCode).toBe(404);
+    expect(events.events).toEqual([]);
   });
 });
 

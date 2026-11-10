@@ -106,3 +106,14 @@ describe('Midnight contrast (WCAG AA 4.5:1)', () => {
     expect(cardCss).not.toContain('prefers-color-scheme');
   });
 });
+
+describe('Form field boundaries (WCAG 1.4.11 3:1)', () => {
+  it.each(['--bg', '--surface', '--surface-2'])('--input-border on %s', (bg) => {
+    expect(ratio(t['--input-border'], t[bg])).toBeGreaterThanOrEqual(3);
+  });
+
+  it('input, select and textarea use --input-border', () => {
+    const rule = /input,\s*select,\s*textarea\s*\{([^}]*)\}/.exec(globalCss)?.[1] ?? '';
+    expect(rule).toMatch(/border:\s*1px solid var\(--input-border\)/);
+  });
+});

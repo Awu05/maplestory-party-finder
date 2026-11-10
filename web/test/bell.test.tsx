@@ -96,6 +96,28 @@ describe('NotificationBell', () => {
     expect(screen.queryByText("You're all caught up.")).not.toBeInTheDocument();
   });
 
+  it('Escape from inside the panel returns focus to the bell button', async () => {
+    mockApi({ '/api/auth/me': user, [NOTIF]: list([note('n1')]) });
+    renderWithProviders(<App />);
+    const btn = await screen.findByRole('button', { name: /^Notifications/ });
+    fireEvent.click(btn);
+    const item = (await screen.findByText('Note n1')).closest('button')!;
+    item.focus();
+    expect(item).toHaveFocus();
+    fireEvent.keyDown(item, { key: 'Escape' });
+    expect(screen.queryByText('Note n1')).not.toBeInTheDocument();
+    expect(btn).toHaveFocus();
+  });
+
+  it('the bell button does not announce a menu popup; the panel is a named region', async () => {
+    mockApi({ '/api/auth/me': user, [NOTIF]: list([]) });
+    renderWithProviders(<App />);
+    const btn = await screen.findByRole('button', { name: /^Notifications/ });
+    expect(btn).not.toHaveAttribute('aria-haspopup');
+    fireEvent.click(btn);
+    expect(await screen.findByRole('region', { name: 'Notifications' })).toBeInTheDocument();
+  });
+
   it('not rendered when logged out', async () => {
     mockApi({ '/api/auth/me': null });
     renderWithProviders(<App />);

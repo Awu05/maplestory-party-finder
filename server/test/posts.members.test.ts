@@ -140,6 +140,43 @@ describe('leaving reopens the LFP post the member was matched from', () => {
       expect(events.events.some((e) => e.type === 'post.reopened')).toBe(false);
     }
   });
+
+  it('the member is in another live party -> their LFP post stays closed and no post.reopened', async () => {
+    const { post, member, memberCookie, lfp } = await matchedParty();
+    // C joins party B through a join request that B's poster accepts.
+    const bCookie = await loginAs(app, 'poster-b', 'posterb');
+    const bUserId = (await prisma.user.findUniqueOrThrow({ where: { discordId: 'poster-b' } })).id;
+    const b = await makePost({ posterUserId: bUserId });
+    const join = await app.inject({
+      method: 'POST', url: `/api/posts/${b.id}/requests`, headers: { cookie: memberCookie }, payload: { characterId: member.characterId! },
+    });
+    expect(join.statusCode).toBe(201);
+    const accept = await app.inject({ method: 'POST', url: `/api/requests/${join.json().id}/accept`, headers: { cookie: bCookie } });
+    expect(accept.statusCode).toBe(200);
+    events.clear();
+
+    expect((await del(`/api/posts/${post.id}/members/${member.id}`, memberCookie)).statusCode).toBe(200);
+    expect(await prisma.post.findUniqueOrThrow({ where: { id: lfp.id } })).toMatchObject({ status: 'closed', closedReason: 'lfp_matched' });
+    expect(events.events.some((e) => e.type === 'post.reopened')).toBe(false);
+  });
+
+  it('a membership in an ended party (closed, expired or deleted) does not block the reopen', async () => {
+    for (const over of [
+      { status: 'closed' as const, closedReason: 'manual' as const },
+      { scheduledAt: new Date(Date.now() - 86_400_000), expiresAt: new Date(Date.now() - 1000) },
+      { deletedAt: new Date() },
+    ]) {
+      await resetDb();
+      ({ app, events } = await buildTestApp());
+      posterCookie = await loginAs(app, 'poster-1', 'poster');
+      posterUserId = (await prisma.user.findUniqueOrThrow({ where: { discordId: 'poster-1' } })).id;
+      const { post, member, memberCookie, lfp } = await matchedParty();
+      const ended = await makePost(over);
+      await addMember(ended.id, member.characterId!);
+      expect((await del(`/api/posts/${post.id}/members/${member.id}`, memberCookie)).statusCode).toBe(200);
+      expect((await prisma.post.findUniqueOrThrow({ where: { id: lfp.id } })).status).toBe('open');
+    }
+  });
 });
 
 describe('character deletion keeps party records', () => {

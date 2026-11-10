@@ -15,7 +15,7 @@ Copy `.env.example` to `.env` (root, used by Docker) or `server/.env` (dev).
 
 | Variable | Purpose |
 | --- | --- |
-| `PORT` | Server port (default 3000) |
+| `PORT` | Server port, 1-65535 (default 3000 when unset or blank; anything else fails at startup) |
 | `DATABASE_URL` | Postgres connection string |
 | `SESSION_SECRET` | Cookie encryption secret, at least 32 characters |
 | `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` | Discord OAuth credentials |

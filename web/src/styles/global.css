@@ -4,6 +4,8 @@
   --surface-2: #1c2240;
   --border: #232a45;
   --border-strong: #2a3360;
+  /* Form field edges: 3:1 or more on --bg, --surface and --surface-2 (WCAG 1.4.11). */
+  --input-border: #646d9a;
   --text: #e6e8f2;
   --muted: #8d93b3;
   --accent: #8b7cff;
@@ -144,7 +146,7 @@ textarea {
   font: inherit;
   color: var(--text);
   background: var(--surface-2);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--input-border);
   border-radius: var(--radius);
   padding: var(--space-2) var(--space-3);
 }

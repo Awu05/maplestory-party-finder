@@ -101,6 +101,7 @@ describe('upload validation', () => {
     expect(served.statusCode).toBe(200);
     expect(served.headers['content-type']).toBe('image/png');
     expect(served.headers['cache-control']).toBe('public, max-age=31536000, immutable');
+    expect(served.headers['x-content-type-options']).toBe('nosniff');
     expect((await app.inject({ method: 'GET', url: '/uploads/nope.png' })).statusCode).toBe(404);
   });
 });

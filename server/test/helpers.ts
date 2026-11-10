@@ -29,6 +29,7 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
     adminDiscordIds: ['admin-1'],
     uploadDir: path.join(os.tmpdir(), 'pf-test-uploads'),
     jobsEnabled: false,
+    logger: false,
     ...overrides,
   };
 }

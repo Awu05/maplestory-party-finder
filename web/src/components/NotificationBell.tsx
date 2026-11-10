@@ -14,6 +14,7 @@ export function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [top, setTop] = useState(0);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
   const newestSeen = useRef<string | null | undefined>(undefined);
 
   const newestId = data ? (data.items[0]?.id ?? null) : undefined;
@@ -28,7 +29,12 @@ export function NotificationBell() {
 
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      // Closing unmounts a focused panel item; hand focus back to the bell instead of dropping it.
+      if (wrapRef.current?.contains(document.activeElement)) buttonRef.current?.focus();
+      setOpen(false);
+    };
     const onDown = (e: MouseEvent) => {
       if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
     };
@@ -61,10 +67,10 @@ export function NotificationBell() {
     <div className="bell" ref={wrapRef}>
       <button
         type="button"
+        ref={buttonRef}
         className="bell-button"
         aria-label={`Notifications, ${unread} unread`}
         aria-expanded={open}
-        aria-haspopup="true"
         onClick={() => {
           if (!open) measureTop();
           setOpen((o) => !o);
