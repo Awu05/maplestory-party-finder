@@ -6,6 +6,7 @@ import { useBosses, useCharacters, useGuilds, useMe, useWorlds } from '../api/ho
 import { usePosts, type PostFilters } from '../api/postHooks';
 import { friendlyError } from '../api/errors';
 import { ChipGroup, MenuChip, ToggleChip } from '../components/ui/Chips';
+import { DAY_LABELS, hourLabel } from '../components/post/FreeTimeGrid';
 import { PostRow } from '../components/post/PostRow';
 import { PostPreview } from '../components/post/PostPreview';
 import { usePhone } from '../hooks/useMediaQuery';
@@ -23,6 +24,8 @@ export function BoardPage() {
   const [difficultyId, setDifficultyId] = useState('');
   const [guildId, setGuildId] = useState('');
   const [when, setWhen] = useState<NonNullable<PostFilters['when']>>('any');
+  const [freeDay, setFreeDay] = useState('');
+  const [freeHour, setFreeHour] = useState('');
   const [pickedWorlds, setPickedWorlds] = useState<number[] | null>(null);
 
   // Wait for the session (and the viewer's characters) so the first board request already has its world default.
@@ -38,6 +41,7 @@ export function BoardPage() {
       guildId: guildId || undefined,
       worldIds: worldIds.length > 0 ? worldIds : undefined,
       when,
+      freeAt: freeDay !== '' && freeHour !== '' ? Number(freeDay) * 24 + Number(freeHour) : undefined,
     },
     { enabled: defaultsReady },
   );
@@ -115,10 +119,30 @@ export function BoardPage() {
             { value: 'any', label: 'Any' },
             { value: '24h', label: 'Next 24h' },
             { value: '7d', label: 'This week' },
-            { value: 'flexible', label: 'Flexible' },
+            { value: 'flexible', label: 'Not set' },
           ]}
           />
         </div>
+        <MenuChip
+          label="Free at"
+          allLabel="Any time"
+          valueLabel={freeDay !== '' ? DAY_LABELS[Number(freeDay)] : null}
+          value={freeDay}
+          onChange={(v) => {
+            setFreeDay(v);
+            if (v === '') setFreeHour('');
+          }}
+          options={DAY_LABELS.map((d, i) => ({ value: String(i), label: d }))}
+        />
+        <MenuChip
+          label="Hour"
+          allLabel="Any hour"
+          valueLabel={freeHour !== '' ? hourLabel(Number(freeHour)) : null}
+          value={freeHour}
+          onChange={setFreeHour}
+          disabled={freeDay === ''}
+          options={Array.from({ length: 24 }, (_, h) => ({ value: String(h), label: hourLabel(h) }))}
+        />
         <MenuChip
           label="Boss"
           allLabel="All bosses"

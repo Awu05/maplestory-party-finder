@@ -1,7 +1,8 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { DAY_MS, SCHEDULED_GRACE_MS, type MyRequestsDTO, type PostDetailDTO, type PostSummaryDTO, type PostType, type RequestDTO } from '@pf/shared';
+import { DAY_MS, nextOccurrence, SCHEDULED_GRACE_MS, type MyRequestsDTO, type PostDetailDTO, type PostSummaryDTO, type PostType, type RequestDTO } from '@pf/shared';
 import { api } from './client';
 import { useMe } from './hooks';
+import { browserTimeZone } from '../components/post/time';
 
 export interface PostFilters {
   type?: PostType;
@@ -10,6 +11,8 @@ export interface PostFilters {
   guildId?: string;
   worldIds?: number[];
   when?: 'any' | '24h' | '7d' | 'flexible';
+  /** Viewer-local hour-of-week (day * 24 + hour, 0 = Sunday): posts whose free times include it. */
+  freeAt?: number;
 }
 
 export function boardQueryString(f: PostFilters, now: Date = new Date()): string {
@@ -26,6 +29,7 @@ export function boardQueryString(f: PostFilters, now: Date = new Date()): string
   } else if (f.when === 'flexible') {
     p.set('flexible', '1');
   }
+  if (f.freeAt !== undefined) p.set('freeAt', nextOccurrence(f.freeAt, browserTimeZone(), now).toISOString());
   return p.toString();
 }
 
