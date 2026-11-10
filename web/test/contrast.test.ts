@@ -69,9 +69,27 @@ describe('Midnight contrast (WCAG AA 4.5:1)', () => {
     expect(ratio(t['--text'], bg)).toBeGreaterThanOrEqual(4.5);
   });
 
-  it('violet tag/pill text #b3a9ff passes on its 18% accent tint over --surface', () => {
-    const bg = mixSrgb(t['--accent'], 0.18, t['--surface']);
-    expect(ratio('#b3a9ff', bg)).toBeGreaterThanOrEqual(4.5);
+  it('violet tag text on its translucent accent tint over --surface passes', () => {
+    const rule = /\.post-badge\s*\{([^}]*)\}/.exec(postCss)?.[1] ?? '';
+    const fg = /color:\s*(#[0-9a-f]{6})/i.exec(rule)?.[1];
+    const pct = /color-mix\(in srgb, var\(--accent\) (\d+)%, transparent\)/.exec(rule)?.[1];
+    if (!fg || !pct) throw new Error('.post-badge color/tint not found');
+    const bg = mixSrgb(t['--accent'], Number(pct) / 100, t['--surface']);
+    expect(ratio(fg, bg)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('full pill text uses the same violet on its tint', () => {
+    const rule = /\.post-pill--full\s*\{([^}]*)\}/.exec(postCss)?.[1] ?? '';
+    const fg = /color:\s*(#[0-9a-f]{6})/i.exec(rule)?.[1];
+    const pct = /color-mix\(in srgb, var\(--accent\) (\d+)%, transparent\)/.exec(rule)?.[1];
+    if (!fg || !pct) throw new Error('.post-pill--full color/tint not found');
+    const bg = mixSrgb(t['--accent'], Number(pct) / 100, t['--surface']);
+    expect(ratio(fg, bg)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('board rows do not override the tag colors', () => {
+    const rules = [...postCss.matchAll(/\.post-row\s+\.post-badge[^{]*\{([^}]*)\}/g)].map((m) => m[1]);
+    for (const r of rules) expect(r).not.toMatch(/color|background/);
   });
 
   it('is always dark', () => {

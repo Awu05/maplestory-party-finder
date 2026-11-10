@@ -55,6 +55,7 @@ export const PostRow = forwardRef<HTMLAnchorElement, Props>(function PostRow(
         </span>
         <span className="post-row__meta">
           <span className="post-row__when">{formatWhen(post.scheduledAt)}</span>
+          <span aria-hidden="true">·</span>
           <span className="post-row__who">{`${ign} · ${post.guild.name}`}</span>
         </span>
       </span>

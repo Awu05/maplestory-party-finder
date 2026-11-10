@@ -11,7 +11,7 @@
 .post-card {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: var(--space-2);
   padding: var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -53,7 +53,7 @@ a.post-card:hover {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-2);
 }
 .post-badge {
   padding: var(--space-1) var(--space-2);
@@ -69,7 +69,7 @@ a.post-card:hover {
 .post-card__bosses {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.25rem;
+  gap: var(--space-1);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -90,7 +90,7 @@ a.post-card:hover {
 }
 .post-card__fallback {
   display: flex;
-  gap: 0.5rem;
+  gap: var(--space-2);
   align-items: center;
 }
 .board-filters {
@@ -125,7 +125,7 @@ a.post-card:hover {
 .lineup__item {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: var(--space-1);
 }
 .lineup__cp {
   font-size: 0.8rem;
@@ -275,12 +275,6 @@ a.post-card:hover {
 }
 .post-row .post-badge {
   flex: none;
-  background: var(--surface-2);
-  color: var(--accent-2);
-  border: 1px solid var(--border-strong);
-}
-.post-row .post-badge--recruiting {
-  color: var(--accent);
 }
 .post-row__slots {
   display: flex;

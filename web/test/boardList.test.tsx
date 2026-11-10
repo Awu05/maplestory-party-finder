@@ -134,6 +134,15 @@ describe('Board list', () => {
     expect(screen.getByRole('region', { name: 'Post preview' })).toBeInTheDocument();
   });
 
+  it('row tags use the shared badge classes and the meta line is dot-separated', async () => {
+    mockApi({ ...base, '/api/posts': [p1, p2] });
+    renderBoard();
+    const rows = await within(await screen.findByRole('listbox', { name: 'Posts' })).findAllByRole('option');
+    expect(within(rows[0]).getByText('Recruiting')).toHaveClass('post-badge', 'post-badge--recruiting');
+    expect(within(rows[1]).getByText('Looking for party')).toHaveClass('post-badge', 'post-badge--lfp');
+    expect(rows[0].querySelector('.post-row__meta')?.textContent).toBe('Flexible·Lily · Maple Guild');
+  });
+
   it('clicking row 2 selects it and updates the URL without navigating', async () => {
     mockApi({ ...base, '/api/posts': [p1, p2] });
     renderBoard();
