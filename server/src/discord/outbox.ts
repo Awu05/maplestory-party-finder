@@ -14,13 +14,15 @@ const MAX_RETRY_AFTER_MS = 3_600_000;
 
 type Logger = { error(obj: object, msg: string): void };
 
-export async function enqueueDelivery(db: Db, guildId: string, eventType: string, payload: WebhookPayload): Promise<void> {
-  await db.webhookDelivery.create({ data: { guildId, eventType, payload: payload as unknown as Prisma.InputJsonValue } });
+export async function enqueueDelivery(db: Db, guildId: string, eventType: string, payload: WebhookPayload, postId?: string): Promise<void> {
+  await db.webhookDelivery.create({
+    data: { guildId, eventType, payload: payload as unknown as Prisma.InputJsonValue, ...(postId ? { postId } : {}) },
+  });
 }
 
 const errName = (err: unknown): string => (err instanceof Error ? err.constructor.name : 'Error');
 
-type Claimed = { id: string; payload: WebhookPayload; attempts: number; webhookUrl: string | null; active: boolean };
+type Claimed = { id: string; payload: WebhookPayload; attempts: number; eventType: string; postId: string | null; webhookUrl: string | null; active: boolean };
 
 export class WebhookWorker {
   private readonly prisma: PrismaClient;
@@ -30,6 +32,7 @@ export class WebhookWorker {
   private readonly log?: Logger;
   private timer: NodeJS.Timeout | null = null;
   private inFlight: Promise<unknown> | null = null;
+  private stopping = false;
 
   constructor(opts: { prisma: PrismaClient; sender: WebhookSender; now?: () => Date; batchSize?: number; log?: Logger }) {
     this.log = opts.log;
@@ -51,7 +54,7 @@ export class WebhookWorker {
     const deadline = now.getTime() + leaseMs - DEADLINE_MARGIN_MS;
     const claimed = await this.prisma.$transaction(async (tx) => {
       const rows = await tx.$queryRaw<Claimed[]>`
-        SELECT d.id, d.payload, d.attempts, g."webhookUrl", g.active
+        SELECT d.id, d.payload, d.attempts, d."eventType", d."postId", g."webhookUrl", g.active
         FROM "WebhookDelivery" d
         JOIN "Guild" g ON g.id = d."guildId"
         WHERE d.status = 'pending' AND d."nextAttemptAt" <= ${now}
@@ -68,8 +71,8 @@ export class WebhookWorker {
 
     const counts = { sent: 0, retried: 0, failed: 0 };
     for (const row of claimed) {
-      // Past the lease deadline: leave the rest pending; their lease expiry makes them reclaimable.
-      if (this.now().getTime() >= deadline) break;
+      // Shutting down or past the lease deadline: leave the rest pending; their lease expiry makes them reclaimable.
+      if (this.stopping || this.now().getTime() >= deadline) break;
       try {
         await this.process(row, counts);
       } catch (err) {
@@ -83,9 +86,17 @@ export class WebhookWorker {
     const guard = { id: row.id, status: 'pending' as const };
     const upd = (data: Prisma.WebhookDeliveryUncheckedUpdateManyInput) => this.prisma.webhookDelivery.updateMany({ where: guard, data });
     if (!row.webhookUrl || !row.active) {
-      await upd({ status: 'failed', lastError: 'Webhook not configured' });
+      await upd({ status: 'failed', attempts: row.attempts + 1, lastError: 'Webhook not configured' });
       counts.failed++;
       return;
+    }
+    if (row.eventType === 'post.created' && row.postId) {
+      const post = await this.prisma.post.findUnique({ where: { id: row.postId }, select: { status: true, closedReason: true, deletedAt: true } });
+      if (!post || post.deletedAt || (post.status === 'closed' && post.closedReason === 'banned')) {
+        await upd({ status: 'failed', attempts: row.attempts + 1, lastError: 'Post no longer available' });
+        counts.failed++;
+        return;
+      }
     }
     let res: SendResult;
     try {
@@ -97,7 +108,7 @@ export class WebhookWorker {
       await upd({ status: 'sent', sentAt: this.now(), lastError: null });
       counts.sent++;
     } else if (res.status === 404 || res.status === 401) {
-      await upd({ status: 'failed', lastError: res.error });
+      await upd({ status: 'failed', attempts: row.attempts + 1, lastError: res.error });
       counts.failed++;
     } else if (res.status === 429) {
       const wait = Math.min(Math.max(res.retryAfterMs ?? DEFAULT_RETRY_AFTER_MS, MIN_RETRY_AFTER_MS), MAX_RETRY_AFTER_MS);
@@ -117,6 +128,7 @@ export class WebhookWorker {
 
   start(intervalMs = 5000): void {
     if (this.timer) return;
+    this.stopping = false;
     this.timer = setInterval(() => {
       if (this.inFlight) return;
       this.inFlight = this.runOnce()
@@ -129,6 +141,7 @@ export class WebhookWorker {
   }
 
   async stop(): Promise<void> {
+    this.stopping = true;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
     await this.inFlight;

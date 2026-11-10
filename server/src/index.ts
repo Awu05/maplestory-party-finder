@@ -53,19 +53,35 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
   app.log.info({ signal }, 'Shutting down');
+  let code = 0;
   try {
-    await job.stop();
-    await worker.stop();
+    // Both stop quickly: each finishes only its in-flight unit of work, so Docker's 10s grace holds.
+    await Promise.all([job.stop(), worker.stop()]);
+  } catch (err) {
+    code = 1;
+    app.log.error({ err }, 'Error stopping background jobs');
+  }
+  try {
     // app.close() first: it stops accepting connections and waits for in-flight requests, so every
     // event has been emitted by the time the dispatcher drains.
     await app.close();
-    await dispatcher.drain();
-    await prisma.$disconnect();
-    process.exit(0);
   } catch (err) {
-    app.log.error({ err }, 'Error during shutdown');
-    process.exit(1);
+    code = 1;
+    app.log.error({ err }, 'Error closing app');
   }
+  try {
+    await dispatcher.drain();
+  } catch (err) {
+    code = 1;
+    app.log.error({ err }, 'Error draining events');
+  }
+  try {
+    await prisma.$disconnect();
+  } catch (err) {
+    code = 1;
+    app.log.error({ err }, 'Error disconnecting database');
+  }
+  process.exit(code);
 }
 process.once('SIGTERM', shutdown);
 process.once('SIGINT', shutdown);

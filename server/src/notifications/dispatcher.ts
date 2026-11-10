@@ -98,7 +98,7 @@ export class EventDispatcher implements DomainEvents {
       select: { id: true },
       orderBy: { id: 'asc' },
     });
-    for (const g of guilds) await enqueueDelivery(this.prisma, g.id, 'post.created', payload);
+    for (const g of guilds) await enqueueDelivery(this.prisma, g.id, 'post.created', payload, postId);
   }
 
   private async requestCreated(row: RequestDispatchRow): Promise<void> {

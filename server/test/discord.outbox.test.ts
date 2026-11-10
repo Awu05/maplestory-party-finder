@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { FakeWebhookSender, makeGuild, prisma, resetDb } from './helpers.js';
+import { FakeWebhookSender, makeGuild, makePost, prisma, resetDb } from './helpers.js';
 import { WebhookWorker, enqueueDelivery } from '../src/discord/outbox.js';
 import { HttpWebhookSender } from '../src/discord/sender.js';
 import type { WebhookPayload } from '../src/discord/messages.js';
@@ -85,6 +85,7 @@ describe('WebhookWorker', () => {
     const row = await get(id);
     expect(row.status).toBe('failed');
     expect(row.lastError).toBe('HTTP 404');
+    expect(row.attempts).toBe(1);
     expect(row.lastError).not.toContain('discord.com/api/webhooks');
   });
 
@@ -114,6 +115,7 @@ describe('WebhookWorker', () => {
       const row = await get(id);
       expect(row.status).toBe('failed');
       expect(row.lastError).toBe('Webhook not configured');
+      expect(row.attempts).toBe(1);
     }
     expect(sender.calls).toHaveLength(0);
   });
@@ -140,6 +142,53 @@ describe('WebhookWorker', () => {
 });
 
 describe('WebhookWorker robustness', () => {
+  it('stop() during a run waits only for the in-flight row; the rest stay pending', async () => {
+    const ids = [(await setup()).id, (await setup()).id, (await setup()).id];
+    const slow = new FakeWebhookSender();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let started!: () => void;
+    const firstSend = new Promise<void>((r) => (started = r));
+    const orig = slow.send.bind(slow);
+    slow.send = async (u, p) => {
+      started();
+      await gate;
+      return orig(u, p);
+    };
+    const w = new WebhookWorker({ prisma, sender: slow, now: () => clock, batchSize: 3 });
+    w.start(10);
+    await firstSend;
+    const stopped = w.stop();
+    release();
+    await stopped;
+    expect(slow.calls).toHaveLength(1);
+    const rows = await Promise.all(ids.map(get));
+    expect(rows.filter((r) => r.status === 'sent')).toHaveLength(1);
+    expect(rows.filter((r) => r.status === 'pending')).toHaveLength(2);
+  });
+
+  it('skips and fails a post.created delivery whose post was banned or deleted since', async () => {
+    const guild = await makeGuild({ webhookUrl: URL_, active: true });
+    const banned = await makePost({ status: 'closed', closedReason: 'banned' });
+    const deleted = await makePost({ deletedAt: new Date() });
+    const live = await makePost();
+    const ids: string[] = [];
+    for (const post of [banned, deleted, live]) {
+      await enqueueDelivery(prisma, guild.id, 'post.created', payload, post.id);
+      const row = await prisma.webhookDelivery.findFirstOrThrow({ where: { postId: post.id } });
+      await prisma.webhookDelivery.update({ where: { id: row.id }, data: { nextAttemptAt: T0 } });
+      ids.push(row.id);
+    }
+    expect(await worker().runOnce()).toEqual({ sent: 1, retried: 0, failed: 2 });
+    expect(sender.calls).toHaveLength(1);
+    for (const id of ids.slice(0, 2)) {
+      const row = await get(id);
+      expect(row.status).toBe('failed');
+      expect(row.lastError).toBe('Post no longer available');
+    }
+    expect((await get(ids[2]!)).status).toBe('sent');
+  });
+
   it('stops sending past the lease deadline and leaves rows pending', async () => {
     const ids = [(await setup()).id, (await setup()).id, (await setup()).id];
     const slow = new FakeWebhookSender();

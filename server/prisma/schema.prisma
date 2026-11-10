@@ -269,6 +269,8 @@ model WebhookDelivery {
   guild         Guild          @relation(fields: [guildId], references: [id], onDelete: Cascade)
   /// post.created | request.created | request.accepted | test
   eventType     String
+  /// set for post.created so the worker can skip posts banned or deleted before delivery
+  postId        String?
   /// full Discord execute-webhook body
   payload       Json
   status        DeliveryStatus @default(pending)
