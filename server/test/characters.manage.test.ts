@@ -3,7 +3,7 @@ import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Storage } from '../src/storage/storage.js';
 import type { FastifyInstance } from 'fastify';
 import {
-  buildTestApp, loginAs, makeBossDifficulty, makeCharacter, makeGuild, makeWorld, prisma, resetDb, type FakeNexon,
+  buildTestApp, loginAs, makeCharacter, makeGuild, makeWorld, prisma, resetDb, type FakeNexon,
 } from './helpers.js';
 
 const PNG = Buffer.from(
@@ -94,19 +94,19 @@ describe('characters patch', () => {
   it('non-owner -> 403 NOT_OWNER', async () => {
     const c = await makeCharacter({ ownerId, worldId, guildId });
     const other = await loginAs(app, 'u-2', 'other');
-    const res = await patch(c.id, { note: 'x' }, other);
+    const res = await patch(c.id, { combatPower: 2_000_000 }, other);
     expect(res.statusCode).toBe(403);
     expect(res.json().error.code).toBe('NOT_OWNER');
-    expect((await patch(c.id, { note: 'x' }, null)).statusCode).toBe(401);
-    expect((await patch('nope', { note: 'x' })).statusCode).toBe(404);
+    expect((await patch(c.id, { combatPower: 2_000_000 }, null)).statusCode).toBe(401);
+    expect((await patch('nope', { combatPower: 2_000_000 })).statusCode).toBe(404);
   });
 
-  it('combatPower bumps cpUpdatedAt; note only does not', async () => {
+  it('combatPower bumps cpUpdatedAt; guild-only edit does not', async () => {
     const old = new Date('2020-01-01T00:00:00Z');
     const c = await makeCharacter({ ownerId, worldId, guildId, cpUpdatedAt: old });
-    const r1 = await patch(c.id, { note: 'hello' });
+    const other = await makeGuild({ worldIds: [worldId] });
+    const r1 = await patch(c.id, { guildId: other.id });
     expect(r1.statusCode).toBe(200);
-    expect(r1.json().note).toBe('hello');
     expect(r1.json().cpUpdatedAt).toBe(old.toISOString());
     const r2 = await patch(c.id, { combatPower: 2_000_000 });
     expect(r2.json().combatPower).toBe(2_000_000);
@@ -116,28 +116,24 @@ describe('characters patch', () => {
   it('unchanged combatPower (sent alongside other edits) does not bump cpUpdatedAt', async () => {
     const old = new Date('2020-01-01T00:00:00Z');
     const c = await makeCharacter({ ownerId, worldId, guildId, cpUpdatedAt: old, combatPower: 1_500_000n });
-    const r1 = await patch(c.id, { combatPower: 1_500_000, note: 'same cp' });
+    const other = await makeGuild({ worldIds: [worldId] });
+    const r1 = await patch(c.id, { combatPower: 1_500_000, guildId: other.id });
     expect(r1.statusCode).toBe(200);
-    expect(r1.json().note).toBe('same cp');
     expect(r1.json().cpUpdatedAt).toBe(old.toISOString());
-    const r2 = await patch(c.id, { combatPower: 1_500_001, note: 'new cp' });
+    const r2 = await patch(c.id, { combatPower: 1_500_001, guildId: other.id });
     expect(r2.json().combatPower).toBe(1_500_001);
     expect(new Date(r2.json().cpUpdatedAt).getTime()).toBeGreaterThan(Date.now() - 60_000);
   });
 
-  it('bosses replaces set; validates guild, bosses, playTimes', async () => {
-    const a = await makeBossDifficulty({ bossName: 'A' });
-    const b = await makeBossDifficulty({ bossName: 'B' });
+  it('ignores removed fields from old clients', async () => {
     const c = await makeCharacter({ ownerId, worldId, guildId });
-    await prisma.characterBoss.create({ data: { characterId: c.id, bossDifficultyId: a.id, experience: 'learning' } });
-    const res = await patch(c.id, { bosses: [{ bossDifficultyId: b.id, experience: 'cleared' }], playTimes: [5, 3] });
-    expect(res.statusCode).toBe(200);
-    expect(res.json().bosses).toEqual([{ bossDifficultyId: b.id, bossName: 'B', difficulty: 'Normal', experience: 'cleared' }]);
-    expect(res.json().playTimes).toEqual([3, 5]);
-    expect((await patch(c.id, { bosses: [{ bossDifficultyId: 99999, experience: 'cleared' }] })).statusCode).toBe(400);
-    const dup = [{ bossDifficultyId: b.id, experience: 'cleared' }, { bossDifficultyId: b.id, experience: 'learning' }];
-    expect((await patch(c.id, { bosses: dup })).statusCode).toBe(400);
-    expect((await patch(c.id, { playTimes: [1, 1] })).statusCode).toBe(400);
+    const old = await patch(c.id, { note: 'x', playTimes: [1], bosses: [] });
+    expect(old.statusCode).toBe(200);
+    expect(old.json()).not.toHaveProperty('note');
+  });
+
+  it('an inactive guild -> 400 GUILD_INACTIVE; an active one is saved', async () => {
+    const c = await makeCharacter({ ownerId, worldId, guildId });
     const dead = await makeGuild({ worldIds: [worldId], active: false });
     const g = await patch(c.id, { guildId: dead.id });
     expect(g.statusCode).toBe(400);
@@ -179,7 +175,7 @@ describe('characters refresh', () => {
     const c = await makeCharacter({ ign: 'Lily', ownerId, worldId, guildId, level: 279 });
     const r1 = await refresh(c.id);
     expect(r1.statusCode).toBe(200);
-    expect(r1.json()).toMatchObject({ level: 280, syncStatus: 'ok', imageUrl: 'https://x/new.png', jobName: 'Angelic Buster' });
+    expect(r1.json()).toMatchObject({ outcome: 'synced', character: { level: 280, syncStatus: 'ok', imageUrl: 'https://x/new.png', jobName: 'Angelic Buster' } });
     const r2 = await refresh(c.id);
     expect(r2.statusCode).toBe(429);
     expect(r2.json().error.code).toBe('TOO_SOON');
@@ -190,17 +186,17 @@ describe('characters refresh', () => {
     nexon.failNext();
     const r1 = await refresh(c.id);
     expect(r1.statusCode).toBe(200);
-    expect(r1.json()).toMatchObject({ level: 279, syncStatus: 'stale' });
+    expect(r1.json()).toMatchObject({ outcome: 'stale', character: { level: 279, syncStatus: 'stale' } });
     await prisma.character.update({ where: { id: c.id }, data: { lastRefreshRequestedAt: new Date(Date.now() - 11 * 60_000) } });
     const r2 = await refresh(c.id);
     expect(r2.statusCode).toBe(200);
-    expect(r2.json()).toMatchObject({ level: 280, syncStatus: 'ok' });
+    expect(r2.json()).toMatchObject({ outcome: 'synced', character: { level: 280, syncStatus: 'ok' } });
   });
 
   it('no match on Nexon -> stale, data unchanged; non-owner 403', async () => {
     const c = await makeCharacter({ ign: 'Ghosty', ownerId, worldId, guildId, level: 279 });
     const r = await refresh(c.id);
-    expect(r.json()).toMatchObject({ level: 279, syncStatus: 'stale' });
+    expect(r.json()).toMatchObject({ outcome: 'stale', character: { level: 279, syncStatus: 'stale' } });
     const other = await loginAs(app, 'u-2', 'other');
     const r2 = await app.inject({ method: 'POST', url: `/api/characters/${c.id}/refresh`, headers: { cookie: other } });
     expect(r2.statusCode).toBe(403);

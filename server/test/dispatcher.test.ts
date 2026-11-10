@@ -4,11 +4,10 @@ import type { Storage } from '../src/storage/storage.js';
 import type { Character, Guild, PrismaClient } from '@prisma/client';
 import { EventDispatcher } from '../src/notifications/dispatcher.js';
 import {
-  addMember, buildTestApp, loginAs, makeBossDifficulty, makeCharacter, makeGuild, makePost, makeWorld, prisma, resetDb,
+  addMember, buildTestApp, loginAs, makeBossDifficulty, makeCharacter, makeGuild, makePost, makeUser, makeWorld, prisma, resetDb,
   type LogEntry,
 } from './helpers.js';
 
-const HOUR = 3_600_000;
 const HOOK = 'https://discord.test/api/webhooks/1/secret';
 
 let app: FastifyInstance;
@@ -54,7 +53,7 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
-const call = (method: 'POST' | 'PATCH' | 'DELETE', url: string, cookie: string, body?: unknown) =>
+const call = (method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', url: string, cookie: string, body?: unknown) =>
   app.inject({ method, url, headers: { cookie }, ...(body === undefined ? {} : { payload: body as object }) });
 const recruiting = (partySize = 4) => makePost({ posterCharacterId: alice.id, partySize, bossDifficultyIds: [lucid] });
 const join = async (postId: string, characterId: string, cookie: string): Promise<string> => {
@@ -75,7 +74,7 @@ describe('post.created', () => {
   it('Kronos recruiting post -> exactly one delivery, for G1 (active, webhook, plays Kronos)', async () => {
     const res = await call('POST', '/api/posts', u1, {
       type: 'recruiting', characterId: alice.id, bossDifficultyIds: [lucid],
-      scheduledAt: new Date(Date.now() + 24 * HOUR).toISOString(), partySize: 4, note: 'hi',
+      freeTimes: [68], freeTimesZone: 'America/New_York', partySize: 4, note: 'hi',
     });
     expect(res.statusCode).toBe(201);
     await events.drain();
@@ -83,6 +82,7 @@ describe('post.created', () => {
     expect(ds).toHaveLength(1);
     expect(ds[0]).toMatchObject({ guildId: g1.id, eventType: 'post.created', status: 'pending' });
     expect(JSON.stringify(ds[0]!.payload)).toContain(`http://localhost:5173/posts/${res.json().id}`);
+    expect(JSON.stringify(ds[0]!.payload)).toContain('Not set yet — see free times on the post');
     expect(await notes()).toEqual([]);
   });
 
@@ -90,7 +90,7 @@ describe('post.created', () => {
     const g6 = await makeGuild({ name: 'G6', worldIds: [kronosId], webhookUrl: HOOK });
     const res = await call('POST', '/api/posts', u1, {
       type: 'recruiting', characterId: alice.id, bossDifficultyIds: [lucid],
-      scheduledAt: new Date(Date.now() + 24 * HOUR).toISOString(), partySize: 4, note: 'hi',
+      partySize: 4, note: 'hi',
     });
     await events.drain();
     const ds = await deliveries();
@@ -123,6 +123,21 @@ describe('request.created', () => {
     const ds = await deliveries();
     expect(ds).toHaveLength(1);
     expect(ds[0]).toMatchObject({ guildId: g5.id, eventType: 'request.created' });
+  });
+
+  it('invite to a guildless character -> notification only, no ping, no throw', async () => {
+    const post = await recruiting();
+    const lfp = await makePost({ type: 'lfp', partySize: null, posterCharacterId: bob.id, bossDifficultyIds: [lucid] });
+    const requestId = await invite(lfp.id, post.id, u1);
+    await events.drain();
+    await prisma.notification.deleteMany();
+    await prisma.webhookDelivery.deleteMany();
+    // The character loses its guild after the invite exists; the event is dispatched again.
+    await prisma.character.update({ where: { id: bob.id }, data: { guildId: null } });
+    events.emit({ type: 'request.created', requestId });
+    await events.drain();
+    expect(await notes()).toHaveLength(1);
+    expect(await deliveries()).toEqual([]);
   });
 
   it('invite -> invitee notified; ping to invitee guild mentioning invitee', async () => {
@@ -333,7 +348,7 @@ describe('errors', () => {
       method: 'POST', url: '/api/posts', headers: { cookie: await loginAs(brokenApp, 'u-1', 'one') },
       payload: {
         type: 'recruiting', characterId: alice.id, bossDifficultyIds: [lucid],
-        scheduledAt: new Date(Date.now() + 24 * HOUR).toISOString(), partySize: 4, note: 'hi',
+        partySize: 4, note: 'hi',
       },
     });
     expect(res.statusCode).toBe(201);
@@ -348,5 +363,58 @@ describe('errors', () => {
     ]);
     expect(JSON.stringify(errorLogs)).not.toContain('discord.test');
     expect(await deliveries()).toEqual([]);
+  });
+});
+
+describe('post.finalized', () => {
+  it('notifies members (not the poster) and pings those in a webhook guild', async () => {
+    const post = await recruiting();
+    await addMember(post.id, bob.id); // G5, webhook
+    await addMember(post.id, carol.id); // G2, no webhook
+    // A member with no guild: notified in-app, never pinged.
+    const lonerUser = await makeUser({ discordId: 'u-9', username: 'nine' });
+    const loner = await makeCharacter({ ownerId: lonerUser.id, worldId: kronosId, guildId: null, ign: 'Loner' });
+    await addMember(post.id, loner.id);
+    const at = new Date(Date.now() + 2 * 86_400_000).toISOString();
+    expect((await call('PUT', `/api/posts/${post.id}/final-time`, u1, { scheduledAt: at })).statusCode).toBe(200);
+    await events.drain();
+    const ns = await notes();
+    expect(ns.map((n) => n.kind)).toEqual(['time_set', 'time_set', 'time_set']);
+    expect(ns.map((n) => n.userId).sort()).toEqual([u2Id, u3Id, lonerUser.id].sort());
+    expect(ns.every((n) => n.link === `/posts/${post.id}` && n.text === 'Alice set the time for Hard Lucid')).toBe(true);
+    const ds = await deliveries();
+    expect(ds).toHaveLength(1);
+    expect(ds[0]).toMatchObject({ guildId: g5.id, eventType: 'post.finalized' });
+    expect(content(ds[0]!)).toContain('<@u-2>');
+    expect(content(ds[0]!)).toContain('<t:');
+    expect((ds[0]!.payload as { allowed_mentions: unknown }).allowed_mentions).toEqual({ parse: [], users: ['u-2'] });
+  });
+
+  it("one member's failing ping is logged and the other members are still notified and pinged", async () => {
+    const post = await recruiting();
+    await addMember(post.id, bob.id); // G5: its guild lookup fails below
+    const erinUser = await makeUser({ discordId: 'u-8', username: 'eight' });
+    const erin = await makeCharacter({ ownerId: erinUser.id, worldId: kronosId, guildId: g1.id, ign: 'Erin' });
+    await addMember(post.id, erin.id);
+    const errorLogs: LogEntry[] = [];
+    const guild = {
+      findUnique: (args: { where: { id: string } }) =>
+        args.where.id === g5.id ? Promise.reject(new TypeError('guild lookup failed')) : prisma.guild.findUnique(args as never),
+    };
+    const flaky = new Proxy(prisma, { get: (t, k, r) => (k === 'guild' ? guild : Reflect.get(t, k, r)) });
+    const dispatcher = new EventDispatcher({
+      prisma: flaky, storage, webOrigin: 'http://localhost:5173',
+      log: { error: (obj, msg) => errorLogs.push({ obj, msg }) },
+    });
+    dispatcher.emit({ type: 'post.finalized', postId: post.id, actorUserId: u1Id });
+    await dispatcher.drain();
+    expect((await notes()).map((n) => n.userId).sort()).toEqual([u2Id, erinUser.id].sort());
+    const ds = await deliveries();
+    expect(ds).toHaveLength(1);
+    expect(ds[0]).toMatchObject({ guildId: g1.id, eventType: 'post.finalized' });
+    expect(content(ds[0]!)).toContain('<@u-8>');
+    expect(errorLogs).toEqual([
+      { obj: { event: 'post.finalized', postId: post.id, errName: 'TypeError' }, msg: 'member notification failed' },
+    ]);
   });
 });

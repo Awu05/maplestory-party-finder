@@ -28,18 +28,66 @@ const pending = async (postId: string, over: Record<string, unknown> = {}) => {
 const reqStatus = async (id: string) => (await prisma.request.findUniqueOrThrow({ where: { id } })).status;
 
 describe('PATCH /api/posts/:id', () => {
-  it('poster edits note, scheduledAt, bosses -> 200, expiresAt recomputed, post.updated', async () => {
+  it('poster edits note, bosses, free times -> 200, post.updated', async () => {
     const b1 = await makeBossDifficulty({ partyCap: 6 });
     const b2 = await makeBossDifficulty({ partyCap: 6 });
-    const p = await makePost({ posterUserId: userId, bossDifficultyIds: [b1.id] });
-    const when = new Date(Date.now() + 48 * HOUR);
-    const res = await patch(p.id, { note: 'new note', scheduledAt: when.toISOString(), bossDifficultyIds: [b2.id] });
+    const p = await makePost({ posterUserId: userId, bossDifficultyIds: [b1.id], scheduledAt: null });
+    const res = await patch(p.id, {
+      note: 'new note', bossDifficultyIds: [b2.id], freeTimes: [100, 20, 100], freeTimesZone: 'America/New_York',
+    });
     expect(res.statusCode).toBe(200);
-    expect(res.json().note).toBe('new note');
+    expect(res.json()).toMatchObject({ note: 'new note', freeTimes: [20, 100], freeTimesZone: 'America/New_York' });
     const row = await prisma.post.findUniqueOrThrow({ where: { id: p.id }, include: { bosses: true } });
-    expect(row.expiresAt.getTime()).toBe(when.getTime() + 3 * HOUR);
+    expect(row).toMatchObject({ freeTimes: [20, 100], freeTimesZone: 'America/New_York' });
     expect(row.bosses.map((b) => b.bossDifficultyId)).toEqual([b2.id]);
     expect(events.events).toContainEqual({ type: 'post.updated', postId: p.id });
+  });
+
+  it.each([
+    ['note', { note: 'changed' }],
+    ['free times', { freeTimes: [68], freeTimesZone: 'America/New_York' }],
+    ['note with a scheduledAt in the body', { note: 'x', scheduledAt: new Date(Date.now() + 48 * HOUR).toISOString() }],
+    ['note with a null scheduledAt in the body', { note: 'x', scheduledAt: null }],
+  ])('editing a finalized post (%s) leaves scheduledAt and expiresAt byte-equal', async (_n, body) => {
+    const p = await makePost({ posterUserId: userId, scheduledAt: new Date(Date.now() + 24 * HOUR) });
+    expect((await patch(p.id, body)).statusCode).toBe(200);
+    const row = await prisma.post.findUniqueOrThrow({ where: { id: p.id } });
+    expect(row.scheduledAt!.toISOString()).toBe(p.scheduledAt!.toISOString());
+    expect(row.expiresAt.toISOString()).toBe(p.expiresAt.toISOString());
+  });
+
+  it('a body with only scheduledAt has nothing to change -> 400 VALIDATION', async () => {
+    const p = await makePost({ posterUserId: userId });
+    const res = await patch(p.id, { scheduledAt: new Date(Date.now() + 48 * HOUR).toISOString() });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('VALIDATION');
+    expect((await prisma.post.findUniqueOrThrow({ where: { id: p.id } })).scheduledAt!.toISOString()).toBe(p.scheduledAt!.toISOString());
+  });
+
+  it('free times: clearing drops the zone; times alone reuse the stored zone; a missing zone -> 400', async () => {
+    const p = await makePost({ posterUserId: userId, scheduledAt: null, freeTimes: [20], freeTimesZone: 'America/New_York' });
+    expect((await patch(p.id, { freeTimes: [21] })).statusCode).toBe(200);
+    expect(await prisma.post.findUniqueOrThrow({ where: { id: p.id } })).toMatchObject({ freeTimes: [21], freeTimesZone: 'America/New_York' });
+    expect((await patch(p.id, { freeTimesZone: 'europe/berlin' })).statusCode).toBe(200);
+    expect(await prisma.post.findUniqueOrThrow({ where: { id: p.id } })).toMatchObject({ freeTimes: [21], freeTimesZone: 'Europe/Berlin' });
+    expect((await patch(p.id, { freeTimes: [] })).statusCode).toBe(200);
+    expect(await prisma.post.findUniqueOrThrow({ where: { id: p.id } })).toMatchObject({ freeTimes: [], freeTimesZone: null });
+    // No zone stored or sent.
+    const noZone = await patch(p.id, { freeTimes: [30] });
+    expect(noZone.statusCode).toBe(400);
+    expect(noZone.json().error.code).toBe('VALIDATION');
+    for (const body of [
+      { freeTimes: [30], freeTimesZone: null }, { freeTimes: [30], freeTimesZone: 'Mars/Base' }, { freeTimes: [30], freeTimesZone: '+05:30' }, { freeTimes: [168] },
+    ]) {
+      const res = await patch(p.id, body);
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error.code).toBe('VALIDATION');
+    }
+    // Clearing the zone while times remain is refused.
+    expect((await patch(p.id, { freeTimes: [30], freeTimesZone: 'America/New_York' })).statusCode).toBe(200);
+    const clearZone = await patch(p.id, { freeTimesZone: null });
+    expect(clearZone.statusCode).toBe(400);
+    expect(clearZone.json().error.code).toBe('VALIDATION');
   });
 
   it('empty body -> 400 VALIDATION', async () => {
@@ -58,17 +106,13 @@ describe('PATCH /api/posts/:id', () => {
     expect((await patch(p.id, { note: 'x' }, null)).statusCode).toBe(401);
   });
 
-  it('scheduled -> flexible gives now+7d; flexible -> scheduled gives scheduledAt+3h', async () => {
-    const p = await makePost({ posterUserId: userId });
-    const before = Date.now();
-    expect((await patch(p.id, { scheduledAt: null })).statusCode).toBe(200);
-    const flex = await prisma.post.findUniqueOrThrow({ where: { id: p.id } });
-    expect(flex.scheduledAt).toBeNull();
-    expect(flex.expiresAt.getTime()).toBeGreaterThanOrEqual(before + FLEXIBLE_TTL_MS);
-    expect(flex.expiresAt.getTime()).toBeLessThanOrEqual(Date.now() + FLEXIBLE_TTL_MS);
+  it('a scheduledAt in the body never finalizes an unfinalized post', async () => {
+    const p = await makePost({ posterUserId: userId, scheduledAt: null });
     const when = new Date(Date.now() + 10 * HOUR);
-    expect((await patch(p.id, { scheduledAt: when.toISOString() })).statusCode).toBe(200);
-    expect((await prisma.post.findUniqueOrThrow({ where: { id: p.id } })).expiresAt.getTime()).toBe(when.getTime() + 3 * HOUR);
+    expect((await patch(p.id, { note: 'n', scheduledAt: when.toISOString() })).statusCode).toBe(200);
+    const row = await prisma.post.findUniqueOrThrow({ where: { id: p.id } });
+    expect(row.scheduledAt).toBeNull();
+    expect(row.expiresAt.toISOString()).toBe(p.expiresAt.toISOString());
   });
 
   it('bosses with a lower cap than partySize -> 400 VALIDATION', async () => {
@@ -137,6 +181,19 @@ describe('PATCH /api/posts/:id', () => {
     expect((await patch(p.id, { type: 'recruiting' })).statusCode).toBe(400);
     expect((await patch(p.id, { partySize: 3 })).statusCode).toBe(400);
     expect((await patch(p.id, { type: 'recruiting', partySize: 3 })).statusCode).toBe(200);
+  });
+
+  it('a finalized recruiting post switched to LFP drops its final time and gets the flexible expiry', async () => {
+    const p = await makePost({ posterUserId: userId, partySize: 4, minCp: 500n, scheduledAt: new Date(Date.now() + 24 * HOUR) });
+    const before = Date.now();
+    const res = await patch(p.id, { type: 'lfp' });
+    const after = Date.now();
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ type: 'lfp', scheduledAt: null });
+    const row = await prisma.post.findUniqueOrThrow({ where: { id: p.id } });
+    expect(row.scheduledAt).toBeNull();
+    expect(row.expiresAt.getTime()).toBeGreaterThanOrEqual(before + FLEXIBLE_TTL_MS);
+    expect(row.expiresAt.getTime()).toBeLessThanOrEqual(after + FLEXIBLE_TTL_MS);
   });
 
   it('type change on an LFP post declines pending invites that answer it', async () => {
@@ -233,17 +290,11 @@ describe('PATCH /api/posts/:id', () => {
     expect(res.json().error.code).toBe('NOT_OWNER');
   });
 
-  it('manually closed -> 409 POST_CLOSED; expired-but-open can be rescheduled back onto the board', async () => {
+  it('manually closed -> 409 POST_CLOSED', async () => {
     const closed = await makePost({ posterUserId: userId, status: 'closed', closedReason: 'manual' });
     const res = await patch(closed.id, { note: 'x' });
     expect(res.statusCode).toBe(409);
     expect(res.json().error.code).toBe('POST_CLOSED');
-    const old = await makePost({ posterUserId: userId, scheduledAt: new Date(Date.now() - 24 * HOUR) });
-    expect(old.expiresAt.getTime()).toBeLessThan(Date.now());
-    const when = new Date(Date.now() + 5 * HOUR);
-    expect((await patch(old.id, { scheduledAt: when.toISOString() })).statusCode).toBe(200);
-    const board = await app.inject({ method: 'GET', url: '/api/posts' });
-    expect(board.json().map((x: { id: string }) => x.id)).toContain(old.id);
   });
 
   it('a note-only edit on a 6-day-old flexible post leaves expiresAt unchanged', async () => {
@@ -265,14 +316,17 @@ describe('PATCH /api/posts/:id', () => {
     expect(row.note).toBe(p.note);
   });
 
-  it('rescheduling an expired scheduled post with a future scheduledAt -> 200 and back on the board', async () => {
+  it('an expired finalized post cannot be edited back onto the board, even with a future scheduledAt -> 409 POST_CLOSED', async () => {
     const p = await makePost({ posterUserId: userId, scheduledAt: new Date(Date.now() - 10 * HOUR) });
     expect(p.expiresAt.getTime()).toBeLessThan(Date.now());
     const when = new Date(Date.now() + 2 * HOUR);
-    expect((await patch(p.id, { scheduledAt: when.toISOString(), note: 'again' })).statusCode).toBe(200);
-    expect((await prisma.post.findUniqueOrThrow({ where: { id: p.id } })).expiresAt.getTime()).toBe(when.getTime() + 3 * HOUR);
-    const board = await app.inject({ method: 'GET', url: '/api/posts' });
-    expect(board.json().map((x: { id: string }) => x.id)).toContain(p.id);
+    const res = await patch(p.id, { scheduledAt: when.toISOString(), note: 'again' });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe('POST_CLOSED');
+    const row = await prisma.post.findUniqueOrThrow({ where: { id: p.id } });
+    expect(row.scheduledAt!.toISOString()).toBe(p.scheduledAt!.toISOString());
+    expect(row.expiresAt.toISOString()).toBe(p.expiresAt.toISOString());
+    expect(row.note).toBe(p.note);
   });
 
   it('minCp null clears it', async () => {

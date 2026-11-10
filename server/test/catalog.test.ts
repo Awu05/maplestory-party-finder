@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { buildTestApp, loginAs, makeBossDifficulty, makeCharacter, makeGuild, makeWorld, prisma, resetDb } from './helpers.js';
+import { buildTestApp, loginAs, makeBossDifficulty, makeCharacter, makeGuild, makeJobClass, makeWorld, prisma, resetDb } from './helpers.js';
 
 let app: FastifyInstance;
 let admin: string;
@@ -30,6 +30,7 @@ describe('catalog', () => {
     const world = await makeWorld({ name: 'Kronos' });
     const guild = await makeGuild({ name: 'G', worldIds: [world.id] });
     const bd = await makeBossDifficulty({ bossName: 'Lucid' });
+    const jc = await makeJobClass('Hero', 'warrior');
     const routes: ['GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE', string, object?][] = [
       ['GET', '/api/admin/guilds'],
       ['POST', '/api/admin/guilds', { name: 'X', worldIds: [world.id] }],
@@ -39,6 +40,9 @@ describe('catalog', () => {
       ['POST', '/api/admin/bosses', { name: 'Will', difficulties: [{ difficulty: 'Hard' }] }],
       ['PATCH', `/api/admin/bosses/${bd.bossId}`, { name: 'Renamed' }],
       ['DELETE', `/api/admin/bosses/${bd.bossId}`],
+      ['POST', '/api/admin/classes', { name: 'New', archetype: 'thief' }],
+      ['PATCH', `/api/admin/classes/${jc.id}`, { archetype: 'thief' }],
+      ['DELETE', `/api/admin/classes/${jc.id}`],
       ['PUT', '/api/admin/rarity-tiers', { tiers: [{ name: 'Gold', minCp: 1, sortOrder: 0 }] }],
     ];
     for (const [method, url, payload] of routes) {
@@ -51,6 +55,7 @@ describe('catalog', () => {
     expect(await prisma.world.findMany({ select: { name: true, active: true } })).toEqual([{ name: 'Kronos', active: true }]);
     expect(await prisma.boss.findMany({ select: { name: true } })).toEqual([{ name: 'Lucid' }]);
     expect(await prisma.rarityTier.count()).toBe(0);
+    expect(await prisma.jobClass.findMany({ select: { name: true, archetype: true } })).toEqual([{ name: 'Hero', archetype: 'warrior' }]);
   });
 
   it('admin creates guild with worlds', async () => {
@@ -210,24 +215,6 @@ describe('catalog', () => {
       ['Hard', 4],
       ['Normal', 6],
     ]);
-  });
-
-  it('deleting a boss difficulty referenced by a CharacterBoss -> 409 IN_USE', async () => {
-    const bd = await makeBossDifficulty({ difficulty: 'Hard', bossName: 'Zakum' });
-    const c = await makeCharacter();
-    await prisma.characterBoss.create({ data: { characterId: c.id, bossDifficultyId: bd.id, experience: 'cleared' } });
-    const patch = await app.inject({
-      method: 'PATCH',
-      url: `/api/admin/bosses/${bd.bossId}`,
-      headers: { cookie: admin },
-      payload: { difficulties: [{ difficulty: 'Normal' }] },
-    });
-    expect(patch.statusCode).toBe(409);
-    expect(patch.json().error.code).toBe('IN_USE');
-    expect(await prisma.bossDifficulty.count({ where: { bossId: bd.bossId } })).toBe(1);
-    const del = await app.inject({ method: 'DELETE', url: `/api/admin/bosses/${bd.bossId}`, headers: { cookie: admin } });
-    expect(del.statusCode).toBe(409);
-    expect(del.json().error.code).toBe('IN_USE');
   });
 
   it('deletes an unreferenced boss', async () => {

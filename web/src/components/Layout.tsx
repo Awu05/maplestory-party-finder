@@ -1,15 +1,30 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useMe } from '../api/hooks';
 import { api } from '../api/client';
 import { NotificationBell } from './NotificationBell';
+import { ProfileDialog } from './ProfileDialog';
 
 export function Layout() {
   // A failed /me (server error, network down) counts as logged out once it settles.
   const { data: me, isPending: mePending } = useMe();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const profileRef = useRef<HTMLButtonElement>(null);
+  const returnFocus = useRef(false);
+  // Focus the Profile button only after the popup has unmounted; while it is open the page behind it is inert.
+  useEffect(() => {
+    if (!profileOpen && returnFocus.current) {
+      returnFocus.current = false;
+      profileRef.current?.focus();
+    }
+  }, [profileOpen]);
+  const closeProfile = () => {
+    returnFocus.current = true;
+    setProfileOpen(false);
+  };
   const close = () => setOpen(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const loginFailed = searchParams.get('login') === 'failed';
@@ -85,14 +100,34 @@ export function Layout() {
           {me && <NotificationBell />}
           {me ? (
             <>
-              <span className="user">
-                {me.avatarUrl && <img className="avatar" src={me.avatarUrl} alt="" />}
+              <button
+                ref={profileRef}
+                type="button"
+                className="user"
+                aria-haspopup="dialog"
+                aria-label={`Profile: ${me.displayName ?? me.discordUsername}`}
+                onClick={() => {
+                  close();
+                  setProfileOpen(true);
+                }}
+              >
+                {me.avatarUrl ? <img className="avatar" src={me.avatarUrl} alt="" /> : (
+                  <span className="avatar avatar--placeholder" aria-hidden="true">{(me.displayName ?? me.discordUsername).slice(0, 1).toUpperCase()}</span>
+                )}
                 {/* Visually hidden on phones by the @media rule in global.css. */}
-                <span className="user-name">{me.discordUsername}</span>
-              </span>
-              <button type="button" className="btn btn--secondary logout" onClick={logout}>
-                Log out
+                <span className="user-name">{me.displayName ?? me.discordUsername}</span>
               </button>
+              {profileOpen && (
+                <ProfileDialog
+                  me={me}
+                  onClose={closeProfile}
+                  onLogout={() => {
+                    // The Profile button goes away on log out: nothing to refocus.
+                    setProfileOpen(false);
+                    void logout();
+                  }}
+                />
+              )}
             </>
           ) : (
             !mePending && (

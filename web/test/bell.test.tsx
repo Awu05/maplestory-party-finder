@@ -161,6 +161,7 @@ describe('NotificationBell', () => {
     client.setQueryDefaults(['notifications'], { gcTime: Infinity });
     renderWithProviders(<App />, { client });
     await screen.findByRole('button', { name: 'Notifications, 1 unread' });
+    fireEvent.click(screen.getByRole('button', { name: /^Profile:/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Log out' }));
     await screen.findByRole('link', { name: 'Log in with Discord' });
     await waitFor(() => expect(client.getQueryCache().findAll({ queryKey: ['notifications'] })).toHaveLength(0));

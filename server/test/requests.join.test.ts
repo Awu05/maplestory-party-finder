@@ -2,7 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import type { Character, Post, World } from '@prisma/client';
 import {
-  addMember, buildTestApp, loginAs, makeBossDifficulty, makeCharacter, makePost, makeWorld, prisma, resetDb, type RecordingEvents,
+  addMember, buildTestApp, loginAs, makeCharacter, makePost, makeWorld, prisma, resetDb, type RecordingEvents,
 } from './helpers.js';
 
 let app: FastifyInstance;
@@ -29,8 +29,6 @@ beforeEach(async () => {
   alice = await makeCharacter({ ownerId: u1Id, worldId: kronos.id, ign: 'Alice' });
   bob = await makeCharacter({ ownerId: u2Id, worldId: kronos.id, ign: 'Bob', combatPower: 2_500_000n });
   zed = await makeCharacter({ ownerId: u2Id, worldId: bera.id, ign: 'Zed' });
-  const bd = await makeBossDifficulty({ bossName: 'Lucid' });
-  await prisma.characterBoss.create({ data: { characterId: bob.id, bossDifficultyId: bd.id, experience: 'cleared' } });
   post = await makePost({ posterCharacterId: alice.id, partySize: 3 });
 });
 afterAll(async () => {
@@ -56,7 +54,7 @@ const otherApplicant = async (postId: string, discordId: string) => {
 };
 
 describe('create join request', () => {
-  it('u-2 requests with Bob -> 201 pending; event; poster sees it in incomingRequests with bosses', async () => {
+  it('u-2 requests with Bob -> 201 pending; event; poster sees it in incomingRequests', async () => {
     const res = await requestJoin(post.id, bob.id, u2);
     expect(res.statusCode).toBe(201);
     const dto = res.json();
@@ -67,13 +65,16 @@ describe('create join request', () => {
     const detail = (await getPost(post.id, u1)).json();
     expect(detail.incomingRequests).toHaveLength(1);
     expect(detail.incomingRequests[0].id).toBe(dto.id);
-    expect(detail.incomingRequests[0].character.bosses).toEqual([
-      { bossDifficultyId: expect.any(Number), bossName: 'Lucid', difficulty: 'Normal', experience: 'cleared' },
-    ]);
+    expect(detail.incomingRequests[0].character).toMatchObject({ id: bob.id, ign: 'Bob' });
     expect(detail.sentInvites).toEqual([]);
     // Non-posters never see incoming requests.
     expect((await getPost(post.id, u2)).json().incomingRequests).toEqual([]);
     expect((await getPost(post.id)).json().incomingRequests).toEqual([]);
+  });
+
+  it('guildless applicant -> 400 NO_GUILD', async () => {
+    await prisma.character.update({ where: { id: bob.id }, data: { guildId: null } });
+    expectError(await requestJoin(post.id, bob.id, u2), 400, 'NO_GUILD');
   });
 
   it('Zed (other world) -> 400 WRONG_WORLD', async () => {

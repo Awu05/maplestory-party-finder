@@ -1,7 +1,19 @@
 import { randomBytes } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import type { MeDTO } from '@pf/shared';
-import { getViewer } from './guards.js';
+import { z } from 'zod';
+import { getViewer, requireUser } from './guards.js';
+
+// Control and invisible format characters (e.g. zero-width spaces) are stripped, so a name can't render blank.
+const profileBody = z
+  .object({
+    displayName: z
+      .string()
+      .transform((s) => s.replace(/[\p{Cc}\p{Cf}]/gu, '').trim())
+      .pipe(z.string().max(50))
+      .nullable(),
+  })
+  .strict();
 
 export async function authRoutes(api: FastifyInstance): Promise<void> {
   const { prisma, discord, config } = api.deps;
@@ -49,9 +61,20 @@ export async function authRoutes(api: FastifyInstance): Promise<void> {
     return {
       id: viewer.user.id,
       discordUsername: viewer.user.username,
+      displayName: viewer.user.displayName,
       avatarUrl: viewer.user.avatar,
       isAdmin: viewer.isAdmin,
     };
+  });
+
+  api.patch('/auth/me', async (req): Promise<MeDTO> => {
+    const viewer = await requireUser(req);
+    const { displayName } = profileBody.parse(req.body);
+    const user = await prisma.user.update({
+      where: { id: viewer.user.id },
+      data: { displayName: displayName || null },
+    });
+    return { id: user.id, discordUsername: user.username, displayName: user.displayName, avatarUrl: user.avatar, isAdmin: viewer.isAdmin };
   });
 
   api.post('/auth/logout', async (req, reply) => {

@@ -11,9 +11,6 @@
     "pretest": "prisma generate",
     "test": "vitest run"
   },
-  "prisma": {
-    "seed": "tsx prisma/seed.ts"
-  },
   "dependencies": {
     "@fastify/multipart": "^10.1.8",
     "@fastify/secure-session": "^8.4.2",

@@ -1,13 +1,13 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
 import type { PostSummaryDTO } from '@pf/shared';
 import type { DomainEvent, DomainEvents } from '../events.js';
-import { bossLabel, buildAcceptPing, buildNewPostMessage, buildRequestPing, type WebhookPayload } from '../discord/messages.js';
+import { bossLabel, buildAcceptPing, buildNewPostMessage, buildRequestPing, buildTimeSetPing, type WebhookPayload } from '../discord/messages.js';
 import { enqueueDelivery } from '../discord/outbox.js';
 import { postSummaryInclude, toPostSummaryDTO } from '../posts/serialize.js';
 import type { Storage } from '../storage/storage.js';
 import { errName, type Logger } from '../log.js';
 
-type NotificationKind = 'join_request' | 'invite' | 'accepted' | 'declined' | 'auto_declined' | 'removed' | 'member_left';
+type NotificationKind = 'join_request' | 'invite' | 'accepted' | 'declined' | 'auto_declined' | 'removed' | 'member_left' | 'time_set';
 
 const requestDispatchInclude = {
   character: { select: { ownerId: true, guildId: true, ign: true, jobName: true, level: true, combatPower: true } },
@@ -78,6 +78,8 @@ export class EventDispatcher implements DomainEvents {
       }
       case 'member.left':
         return this.memberLeft(e);
+      case 'post.finalized':
+        return this.postFinalized(e.postId, e.actorUserId);
       default:
         return; // post.updated, post.closed, post.reopened, request.cancelled notify no one
     }
@@ -90,16 +92,21 @@ export class EventDispatcher implements DomainEvents {
   private async postCreated(postId: string): Promise<void> {
     const row = await this.prisma.post.findUnique({ where: { id: postId }, include: postSummaryInclude });
     if (!row) return;
-    const payload = buildNewPostMessage(this.dto(row), this.webOrigin);
+    const post = this.dto(row);
     const guilds = await this.prisma.guild.findMany({
       where: { active: true, webhookUrl: { not: null }, worlds: { some: { worldId: row.worldId } } },
-      select: { id: true },
+      select: { id: true, bossRoleIds: true },
       orderBy: { id: 'asc' },
     });
     if (guilds.length === 0) return;
     // One insert for the whole broadcast.
     await this.prisma.webhookDelivery.createMany({
-      data: guilds.map((g) => ({ guildId: g.id, eventType: 'post.created', payload: payload as unknown as Prisma.InputJsonValue, postId })),
+      data: guilds.map((g) => {
+        const mappings = g.bossRoleIds as Record<string, string>;
+        const roles = row.bosses.map((b) => mappings[String(b.bossDifficulty.bossId)]).filter((id): id is string => typeof id === 'string');
+        const payload = buildNewPostMessage(post, this.webOrigin, roles);
+        return { guildId: g.id, eventType: 'post.created', payload: payload as unknown as Prisma.InputJsonValue, postId };
+      }),
     });
   }
 
@@ -166,6 +173,34 @@ export class EventDispatcher implements DomainEvents {
     }
   }
 
+  private async postFinalized(postId: string, actorUserId: string): Promise<void> {
+    const row = await this.prisma.post.findUnique({ where: { id: postId }, include: postSummaryInclude });
+    if (!row?.scheduledAt) return;
+    const post = this.dto(row);
+    const scheduledAt = row.scheduledAt.toISOString();
+    const posterIgn = post.poster.snapshot.ign;
+    const members = await this.prisma.postMember.findMany({
+      where: { postId, role: 'member', characterId: { not: null }, userId: { not: row.posterUserId } },
+      select: { userId: true, character: { select: { guildId: true } } },
+      orderBy: { joinedAt: 'asc' },
+    });
+    for (const m of members) {
+      // One member's failure (a bad guild row, a lost connection) must not stop the rest.
+      try {
+        await this.notify(m.userId, actorUserId, 'time_set', `${posterIgn} set the time for ${bossesLabel(post)}`, postId);
+        await this.ping(m.character?.guildId ?? null, m.userId, actorUserId, 'post.finalized', (recipientDiscordId) =>
+          buildTimeSetPing({ recipientDiscordId, posterIgn, post, scheduledAt, webOrigin: this.webOrigin }),
+        );
+      } catch (err) {
+        try {
+          this.log.error({ event: 'post.finalized', postId, errName: errName(err), ...errCode(err) }, 'member notification failed');
+        } catch {
+          // A failing logger must not stop the loop either.
+        }
+      }
+    }
+  }
+
   private async notify(userId: string, actorUserId: string | null, kind: NotificationKind, text: string, postId: string, link = postPath(postId)): Promise<void> {
     if (userId === actorUserId) return;
     await this.prisma.notification.create({ data: { userId, kind, text, link } });
@@ -173,13 +208,13 @@ export class EventDispatcher implements DomainEvents {
 
   /** Enqueues a ping to `guildId` mentioning the recipient, unless the guild can't receive it or the recipient is the actor. */
   private async ping(
-    guildId: string,
+    guildId: string | null,
     recipientUserId: string,
     actorUserId: string,
     eventType: string,
     build: (recipientDiscordId: string) => WebhookPayload,
   ): Promise<void> {
-    if (recipientUserId === actorUserId) return;
+    if (guildId === null || recipientUserId === actorUserId) return;
     const guild = await this.prisma.guild.findUnique({ where: { id: guildId }, select: { active: true, webhookUrl: true } });
     if (!guild?.active || !guild.webhookUrl) return;
     const user = await this.prisma.user.findUnique({ where: { id: recipientUserId }, select: { discordId: true } });

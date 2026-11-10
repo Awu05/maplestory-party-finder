@@ -3,9 +3,10 @@ import { z } from 'zod';
 import { getViewer, requireUser } from '../auth/guards.js';
 import { readImageUpload } from '../storage/imageType.js';
 import {
-  claimRefresh, createCharacter, deleteCharacter, getCharacter, getOwnedCharacter, listCharacters, lookupCharacters,
-  syncCharacterFromNexon, updateCharacter,
+  claimRefresh, createCharacter, createManualCharacter, deleteCharacter, getCharacter, getOwnedCharacter, listCharacters, lookupCharacters,
+  moveCharacterWorld, refreshCharacter, updateCharacter,
 } from './service.js';
+import type { RefreshResultDTO } from '@pf/shared';
 import { characterInclude, toCharacterDTO } from './serialize.js';
 
 const lookupBody = z.object({ ign: z.string().trim().min(1) });
@@ -15,16 +16,23 @@ const createBody = z.object({
   nexonWorldId: z.number().int(),
   combatPower: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
   guildId: z.string().min(1),
-  bosses: z.array(
-    z.object({ bossDifficultyId: z.number().int(), experience: z.enum(['learning', 'cleared', 'can_carry']) }),
-  ),
-  playTimes: z
-    .array(z.number().int().min(0).max(167))
-    .refine((p) => new Set(p).size === p.length, 'Duplicate playTimes'),
-  note: z.string().max(300),
 });
 
-const updateBody = createBody.pick({ combatPower: true, guildId: true, bosses: true, playTimes: true, note: true }).partial();
+const manualBody = z.object({
+  ign: z.string().trim().min(1).max(32),
+  worldId: z.number().int(),
+  jobName: z.string().trim().min(1),
+  level: z.number().int().min(1).max(300),
+  combatPower: createBody.shape.combatPower,
+  guildId: z.string().min(1),
+});
+
+const updateBody = createBody
+  .pick({ combatPower: true, guildId: true })
+  .extend({ jobName: z.string().trim().min(1), level: z.number().int().min(1).max(300) })
+  .partial();
+
+const moveBody = z.object({ worldId: z.number().int(), guildId: z.string().min(1).nullable() });
 
 const listQuery = z.object({
   guildId: z.string().min(1).optional(),
@@ -47,6 +55,13 @@ export async function characterRoutes(app: FastifyInstance): Promise<void> {
     const viewer = await requireUser(req);
     const input = createBody.parse(req.body);
     const row = await createCharacter({ prisma, nexon }, viewer.user.id, input);
+    return reply.status(201).send(toCharacterDTO(row, viewer.user.id, storage));
+  });
+
+  app.post('/characters/manual', async (req, reply) => {
+    const viewer = await requireUser(req);
+    const input = manualBody.parse(req.body);
+    const row = await createManualCharacter(prisma, viewer.user.id, input);
     return reply.status(201).send(toCharacterDTO(row, viewer.user.id, storage));
   });
 
@@ -99,12 +114,19 @@ export async function characterRoutes(app: FastifyInstance): Promise<void> {
     return toCharacterDTO(updated, viewer.user.id, storage);
   });
 
-  app.post('/characters/:id/refresh', async (req) => {
+  app.post('/characters/:id/refresh', async (req): Promise<RefreshResultDTO> => {
     const viewer = await requireUser(req);
     const { id } = req.params as { id: string };
-    await getOwnedCharacter(prisma, id, viewer.user.id);
+    const row = await getOwnedCharacter(prisma, id, viewer.user.id);
     await claimRefresh(prisma, id);
-    await syncCharacterFromNexon(prisma, nexon, id);
-    return toCharacterDTO(await getCharacter(prisma, id), viewer.user.id, storage);
+    const { outcome, candidates } = await refreshCharacter(prisma, nexon, row);
+    return { outcome, candidates, character: toCharacterDTO(await getCharacter(prisma, id), viewer.user.id, storage) };
+  });
+
+  app.post('/characters/:id/move', async (req) => {
+    const viewer = await requireUser(req);
+    const { id } = req.params as { id: string };
+    const input = moveBody.parse(req.body);
+    return toCharacterDTO(await moveCharacterWorld(prisma, nexon, viewer.user.id, id, input), viewer.user.id, storage);
   });
 }

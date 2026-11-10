@@ -1,20 +1,17 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { buildTestApp, loginAs, makeBossDifficulty, makeGuild, makeWorld, prisma, resetDb, type FakeNexon } from './helpers.js';
+import { buildTestApp, loginAs, makeGuild, makeWorld, prisma, resetDb, type FakeNexon } from './helpers.js';
 
 let app: FastifyInstance;
 let nexon: FakeNexon;
 let cookie: string;
 let guildId: string;
-let bossDifficultyId: number;
 
 beforeEach(async () => {
   await resetDb();
   ({ app, nexon } = await buildTestApp());
   const world = await makeWorld({ nexonWorldId: 45, name: 'Kronos' });
   guildId = (await makeGuild({ worldIds: [world.id] })).id;
-  const bd = await makeBossDifficulty({ bossName: 'Lucid', difficulty: 'Hard' });
-  bossDifficultyId = bd.id;
   nexon.set([{ ign: 'Lily', nexonWorldId: 45, level: 279, jobName: 'Angelic Buster', imageUrl: 'https://msavatar1.nexon.net/x.png' }]);
   cookie = await loginAs(app, 'u-1');
 });
@@ -27,9 +24,6 @@ const body = (over: Record<string, unknown> = {}) => ({
   nexonWorldId: 45,
   combatPower: 5_000_000,
   guildId,
-  bosses: [{ bossDifficultyId, experience: 'can_carry' }],
-  playTimes: [10, 11],
-  note: 'hi',
   ...over,
 });
 const create = (over: Record<string, unknown> = {}, c: string | null = cookie) =>
@@ -64,9 +58,19 @@ describe('characters create', () => {
       guild: { id: guildId },
       isOwner: true,
       owner: { discordUsername: 'tester' },
-      playTimes: [10, 11],
-      bosses: [{ bossName: 'Lucid', difficulty: 'Hard', experience: 'can_carry' }],
     });
+  });
+
+  it('body of only ign, world, CP and guild -> DTO without note, playTimes or bosses', async () => {
+    const res = await create();
+    expect(res.statusCode).toBe(201);
+    for (const key of ['note', 'playTimes', 'bosses']) expect(res.json()).not.toHaveProperty(key);
+  });
+
+  it('old clients sending the removed fields still succeed (unknown keys stripped)', async () => {
+    const res = await create({ bosses: [], playTimes: [1], note: 'hi' });
+    expect(res.statusCode).toBe(201);
+    expect(res.json()).not.toHaveProperty('note');
   });
 
   it('large combat power is exact', async () => {
@@ -127,11 +131,8 @@ describe('characters create', () => {
 
   it('validation errors', async () => {
     for (const over of [
-      { playTimes: [200] },
-      { playTimes: [5, 5] },
-      { note: 'x'.repeat(301) },
-      { bosses: [{ bossDifficultyId: 99999, experience: 'cleared' }] },
-      { bosses: [{ bossDifficultyId, experience: 'cleared' }, { bossDifficultyId, experience: 'learning' }] },
+      { combatPower: 0 },
+      { ign: '' },
     ]) {
       const res = await create(over);
       expect(res.statusCode).toBe(400);

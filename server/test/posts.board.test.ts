@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import {
   addMember, buildTestApp, loginAs, makeBossDifficulty, makeCharacter, makeGuild, makePost, makeUser, makeWorld, prisma, resetDb,
 } from './helpers.js';
+import { postIdsFreeAt } from '../src/posts/service.js';
 
 const HOUR = 3_600_000;
 let app: FastifyInstance;
@@ -72,8 +73,100 @@ describe('GET /api/posts', () => {
     expect(await ids('?flexible=1')).toEqual([flex.id]);
   });
 
+  it('flexible=1 returns only unfinalized posts, with or without free times', async () => {
+    const finalized = await mk({ scheduledAt: new Date(Date.now() + 2 * HOUR) });
+    const finalizedWithGrid = await mk({ scheduledAt: new Date(Date.now() + 2 * HOUR), freeTimes: [68], freeTimesZone: 'America/New_York' });
+    const open = await mk({ scheduledAt: null });
+    const grid = await mk({ scheduledAt: null, freeTimes: [68], freeTimesZone: 'America/New_York' });
+    const ids = (await list('?flexible=1')).map((p) => p.id).sort();
+    expect(ids).toEqual([open.id, grid.id].sort());
+    expect(ids).not.toContain(finalized.id);
+    expect(ids).not.toContain(finalizedWithGrid.id);
+  });
+
+  it('serializes freeTimes and freeTimesZone', async () => {
+    const p = await mk({ scheduledAt: null, freeTimes: [20, 68], freeTimesZone: 'America/New_York' });
+    const q = await mk({ scheduledAt: null });
+    const rows = (await list()) as unknown as { id: string; freeTimes: number[]; freeTimesZone: string | null }[];
+    expect(rows.find((r) => r.id === p.id)).toMatchObject({ freeTimes: [20, 68], freeTimesZone: 'America/New_York' });
+    expect(rows.find((r) => r.id === q.id)).toMatchObject({ freeTimes: [], freeTimesZone: null });
+  });
+
+  describe('freeAt', () => {
+    // Tue 2026-11-10 20:00 in New York (EST, UTC-5) is hour-of-week 2 * 24 + 20 = 68.
+    const ny = (over: Parameters<typeof makePost>[0] = {}) =>
+      mk({ scheduledAt: null, freeTimes: [68], freeTimesZone: 'America/New_York', ...over });
+    const ids = async (qs: string) => (await list(qs)).map((p) => p.id).sort();
+
+    it("matches the instant's hour-of-week in the post's own zone", async () => {
+      const p = await ny();
+      // Tue 5pm in Los Angeles = Tue 8pm in New York.
+      expect(await ids('?freeAt=2026-11-11T01:00:00Z')).toEqual([p.id]);
+      // Tue 8pm in Los Angeles = Tue 11pm in New York.
+      expect(await ids('?freeAt=2026-11-11T04:00:00Z')).toEqual([]);
+    });
+
+    it("uses each post's zone: the same wall hour in another zone matches a different instant", async () => {
+      const nyPost = await ny();
+      const kolkata = await mk({ scheduledAt: null, freeTimes: [68], freeTimesZone: 'Asia/Kolkata' });
+      // Tue 20:00 in Kolkata (UTC+5:30) = 14:30Z; any minute in that hour matches.
+      expect(await ids('?freeAt=2026-11-10T14:30:00Z')).toEqual([kolkata.id]);
+      expect(await ids('?freeAt=2026-11-10T15:29:00Z')).toEqual([kolkata.id]);
+      expect(await ids('?freeAt=2026-11-10T15:30:00Z')).toEqual([]);
+      expect(await ids('?freeAt=2026-11-11T01:59:59Z')).toEqual([nyPost.id]);
+    });
+
+    it('a NY post free at 68 is found by the instant a Kolkata viewer sends for cell 78 (the last minute of that hour)', async () => {
+      const p = await ny();
+      // Kolkata cell 78 is Wed 6a IST; the web sends its last minute, 6:59 IST = 01:29Z = Tue 8:29pm EST.
+      expect(await ids('?freeAt=2026-11-11T01:29:00.000Z')).toEqual([p.id]);
+      // The start of that cell (6:00 IST = Tue 7:30pm EST) would land in poster hour 67 instead.
+      expect(await ids('?freeAt=2026-11-11T00:30:00.000Z')).toEqual([]);
+    });
+
+    it('uses the post zone across a DST change (wall-clock hours, not fixed UTC hours)', async () => {
+      const p = await ny();
+      // Tue 2026-10-27 20:00 EDT (UTC-4) = 2026-10-28T00:00Z.
+      expect(await ids('?freeAt=2026-10-28T00:00:00Z')).toEqual([p.id]);
+      expect(await ids('?freeAt=2026-10-28T01:00:00Z')).toEqual([]);
+    });
+
+    it('a post with no zone or no free times never matches', async () => {
+      const p = await ny();
+      await mk({ scheduledAt: null });
+      await mk({ scheduledAt: null, freeTimes: [], freeTimesZone: null });
+      // Stored inconsistently (times without a zone): still never matches.
+      await mk({ scheduledAt: null, freeTimes: [68], freeTimesZone: null });
+      expect(await ids('?freeAt=2026-11-11T01:00:00Z')).toEqual([p.id]);
+    });
+
+    it('combines with other filters', async () => {
+      const recruiting = await ny();
+      const lfp = await ny({ type: 'lfp', partySize: null });
+      await ny({ status: 'closed' });
+      await ny({ expiresAt: new Date(Date.now() - 60_000) });
+      expect(await ids('?freeAt=2026-11-11T01:00:00Z')).toEqual([recruiting.id, lfp.id].sort());
+      expect(await ids('?freeAt=2026-11-11T01:00:00Z&type=lfp')).toEqual([lfp.id]);
+      expect(await ids('?freeAt=2026-11-11T01:00:00Z&type=recruiting')).toEqual([recruiting.id]);
+      expect(await ids('?freeAt=2026-11-11T04:00:00Z&type=lfp')).toEqual([]);
+      expect(await ids(`?freeAt=2026-11-11T01:00:00Z&bossDifficultyId=${limbo}`)).toEqual([]);
+    });
+  });
+
+  it('the Free-at prefilter only returns live open posts', async () => {
+    const free = { scheduledAt: null, freeTimes: [68], freeTimesZone: 'America/New_York' };
+    const live = await mk(free);
+    await mk({ ...free, status: 'closed' });
+    await mk({ ...free, status: 'full' });
+    await mk({ ...free, deletedAt: new Date() });
+    await mk({ ...free, expiresAt: new Date(Date.now() - 60_000) });
+    const now = new Date();
+    expect(await postIdsFreeAt(prisma, new Date('2026-11-11T01:00:00Z'), now)).toEqual([live.id]);
+    expect((await list('?freeAt=2026-11-11T01:00:00Z')).map((p) => p.id)).toEqual([live.id]);
+  });
+
   it('rejects invalid params', async () => {
-    for (const qs of ['?worldIds=a,b', '?type=x', '?from=nope', '?bossId=x', `?flexible=1&from=${new Date().toISOString()}`, `?flexible=1&to=${new Date().toISOString()}`]) {
+    for (const qs of ['?worldIds=a,b', '?type=x', '?from=nope', '?freeAt=nope', '?bossId=x', `?flexible=1&from=${new Date().toISOString()}`, `?flexible=1&to=${new Date().toISOString()}`]) {
       const res = await app.inject({ method: 'GET', url: `/api/posts${qs}` });
       expect(res.statusCode).toBe(400);
       expect(res.json().error.code).toBe('VALIDATION');

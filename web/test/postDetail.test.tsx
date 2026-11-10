@@ -9,17 +9,14 @@ const character = (id: string, ign: string, cp = 1_500_000_000): CharacterDTO =>
   id,
   ign,
   world: { id: 5, name: 'Kronos' },
-  jobName: 'Bishop',
+  jobName: 'Bishop', archetype: 'magician',
   level: 280,
   imageUrl: `http://img/${ign}.png`,
   combatPower: cp,
   cpUpdatedAt: '2026-11-01T00:00:00Z',
-  guild: { id: 'g1', name: 'Maple Guild', iconUrl: null },
+  guild: { id: 'g1', name: 'Maple Guild', iconUrl: null }, manual: false,
   screenshotUrl: null,
-  note: '',
-  playTimes: [],
-  bosses: [],
-  owner: { discordUsername: `${ign}#1` },
+  owner: { discordUsername: `${ign}#1`, displayName: null },
   isOwner: false,
   syncStatus: 'ok',
   lastSyncedAt: '2026-11-01T00:00:00Z',
@@ -58,6 +55,8 @@ const post = (over: Partial<PostDetailDTO> = {}): PostDetailDTO => {
     poster,
     bosses: [{ bossDifficultyId: 7, bossName: 'Lucid', difficulty: 'Hard' }],
     scheduledAt: '2026-12-01T20:00:00Z',
+    freeTimes: [],
+    freeTimesZone: null,
     expiresAt: '2026-12-02T00:00:00Z',
     createdAt: '2026-11-09T00:00:00Z',
     partySize: 4,
@@ -99,14 +98,13 @@ const called = (fetchMock: ReturnType<typeof mockApi>, url: string, method: stri
 afterEach(() => vi.restoreAllMocks());
 
 describe('PostDetailPage lineup', () => {
-  it('lineup renders poster + member cards with boss badges and "CP at join" captions; recruiting partySize 4 with 2 members shows 2 Open slot placeholders', async () => {
+  it('lineup renders poster + member cards and "CP at join" captions; recruiting partySize 4 with 2 members shows 2 Open slot placeholders', async () => {
     const p = post({
       members: [member('m1', 'Lily', 'poster'), member('m2', 'Bob', 'member', { character: character('c-m2', 'Bob', 1_600_000_000) })],
     });
     renderPage({ '/api/posts/p1': p });
     expect(await screen.findByRole('button', { name: /Lily, level 280/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Bob, level 280/ })).toBeInTheDocument();
-    expect(screen.getAllByText(/Hard Lucid: not listed/).length).toBeGreaterThanOrEqual(2);
     expect(screen.getAllByText(/CP at join 1\.5B/)).toHaveLength(2);
     expect(screen.getAllByText(/now 1\.6B/)).toHaveLength(1);
     expect(screen.getAllByText('Open slot')).toHaveLength(2);
@@ -231,5 +229,43 @@ describe('PostDetailPage errors', () => {
   it('404 shows unavailable message', async () => {
     renderPage({});
     expect(await screen.findByText("This post isn't available.")).toBeInTheDocument();
+  });
+});
+
+describe('PostDetailPage when section', () => {
+  it('finalized post shows "Final time: ..."', async () => {
+    renderPage({ '/api/posts/p1': post({ scheduledAt: '2026-12-01T20:00:00Z' }) });
+    expect(await screen.findByText(/Final time: /)).toBeInTheDocument();
+  });
+
+  it('shows the time once: the header carries world and guild, not the time', async () => {
+    renderPage({ '/api/posts/p1': post({ scheduledAt: '2026-12-01T20:00:00Z' }) });
+    await screen.findByText(/Final time: /);
+    const head = document.querySelector('.post-detail__head')!;
+    expect(head).toHaveTextContent(/Kronos · /);
+    expect(head).not.toHaveTextContent(/Dec/);
+    expect(screen.getAllByText(/Dec 1/)).toHaveLength(1);
+  });
+
+  it('an LFP post never shows a final time, even with a stale scheduledAt', async () => {
+    renderPage({
+      '/api/posts/p1': post({ type: 'lfp', partySize: null, minCp: null, scheduledAt: '2026-12-01T20:00:00Z', freeTimes: [30], freeTimesZone: 'UTC' }),
+    });
+    expect(await screen.findByRole('region', { name: 'When' })).toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: 'When' })).queryByText(/Final time/)).toBeNull();
+  });
+
+  it('unfinalized post with free times shows "Time not set yet", the read-only grid and the zone caption', async () => {
+    renderPage({ '/api/posts/p1': post({ scheduledAt: null, freeTimes: [30, 31], freeTimesZone: 'UTC' }) });
+    expect(await screen.findByText('Time not set yet')).toBeInTheDocument();
+    expect(screen.getByText(/^Shown in your time zone \(/)).toBeInTheDocument();
+    expect(screen.getByRole('grid')).toHaveAttribute('aria-readonly', 'true');
+  });
+
+  it('old post with no free times and a null zone shows "Flexible" and no grid', async () => {
+    renderPage({ '/api/posts/p1': post({ scheduledAt: null, freeTimes: [], freeTimesZone: null }) });
+    expect(await screen.findByText('Time not set yet')).toBeInTheDocument();
+    expect(screen.getAllByText('Flexible').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('grid')).toBeNull();
   });
 });

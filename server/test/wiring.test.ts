@@ -2,7 +2,6 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { WebhookWorker } from '../src/discord/outbox.js';
 import { buildTestApp, loginAs, makeBossDifficulty, makeCharacter, makeGuild, makeWorld, prisma, resetDb } from './helpers.js';
 
-const HOUR = 3_600_000;
 const HOOK = 'https://discord.test/api/webhooks/1/secret';
 
 afterAll(async () => {
@@ -29,7 +28,7 @@ describe('notifications wiring (dispatcher + worker, end to end)', () => {
     // 1. post -> one delivery enqueued
     const created = await app.inject({
       method: 'POST', url: '/api/posts', headers: { cookie: u1 },
-      payload: { type: 'recruiting', characterId: alice.id, bossDifficultyIds: [lucid], scheduledAt: new Date(Date.now() + 24 * HOUR).toISOString(), partySize: 4, note: '' },
+      payload: { type: 'recruiting', characterId: alice.id, bossDifficultyIds: [lucid], partySize: 4, note: '' },
     });
     expect(created.statusCode).toBe(201);
     await events.drain();

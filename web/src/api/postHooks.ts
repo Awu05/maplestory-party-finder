@@ -1,7 +1,8 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { DAY_MS, SCHEDULED_GRACE_MS, type MyRequestsDTO, type PostDetailDTO, type PostSummaryDTO, type PostType, type RequestDTO } from '@pf/shared';
+import { DAY_MS, nextOccurrence, SCHEDULED_GRACE_MS, type MyRequestsDTO, type PostDetailDTO, type PostSummaryDTO, type PostType, type RequestDTO } from '@pf/shared';
 import { api } from './client';
 import { useMe } from './hooks';
+import { browserTimeZone } from '../lib/timeZone';
 
 export interface PostFilters {
   type?: PostType;
@@ -10,6 +11,8 @@ export interface PostFilters {
   guildId?: string;
   worldIds?: number[];
   when?: 'any' | '24h' | '7d' | 'flexible';
+  /** Viewer-local hour-of-week (day * 24 + hour, 0 = Sunday): posts whose free times are shown in that cell. */
+  freeAt?: number;
 }
 
 export function boardQueryString(f: PostFilters, now: Date = new Date()): string {
@@ -26,14 +29,30 @@ export function boardQueryString(f: PostFilters, now: Date = new Date()): string
   } else if (f.when === 'flexible') {
     p.set('flexible', '1');
   }
+  if (f.freeAt !== undefined) p.set('freeAt', freeAtInstant(f.freeAt, now));
   return p.toString();
 }
 
+/**
+ * The instant sent as `freeAt` for a viewer-local hour-of-week: the last minute of its next occurrence.
+ * The grid rounds a poster hour down into the viewer cell holding its start, so in half-hour zones the
+ * cell's end, not its start, falls in the poster hour shown there.
+ */
+export function freeAtInstant(hourOfWeek: number, now: Date = new Date()): string {
+  const start = nextOccurrence(hourOfWeek, browserTimeZone(), now);
+  return new Date(start.getTime() + 59 * 60_000).toISOString();
+}
+
 export function usePosts(filters: PostFilters, opts: { enabled?: boolean } = {}) {
+  // The key holds the freeAt instant, not just the hour-of-week, so a cached result never answers for
+  // an occurrence that has passed.
+  // One clock read feeds both the key and the request, so they can't disagree at an hour boundary.
+  const now = new Date();
+  const freeAt = filters.freeAt !== undefined ? freeAtInstant(filters.freeAt, now) : undefined;
   return useQuery({
-    queryKey: ['posts', 'board', filters],
+    queryKey: ['posts', 'board', filters, freeAt],
     queryFn: () => {
-      const qs = boardQueryString(filters);
+      const qs = boardQueryString(filters, now);
       return api<PostSummaryDTO[]>(qs ? `/api/posts?${qs}` : '/api/posts');
     },
     enabled: opts.enabled ?? true,
@@ -54,7 +73,9 @@ export interface PostInput {
   type: PostType;
   characterId: string;
   bossDifficultyIds: number[];
-  scheduledAt: string | null;
+  /** Local hour-of-week slots (day * 24 + hour, 0 = Sunday) in freeTimesZone. */
+  freeTimes: number[];
+  freeTimesZone: string | null;
   partySize?: number;
   minCp?: number;
   note: string;
@@ -97,6 +118,15 @@ export function useRenewPost(id: string) {
   const invalidate = useInvalidatePosts();
   return useMutation({
     mutationFn: () => api<PostDetailDTO>(`/api/posts/${id}/renew`, { method: 'POST' }),
+    onSuccess: invalidate,
+  });
+}
+
+export function useFinalizeTime(postId: string) {
+  const invalidate = useInvalidatePosts();
+  return useMutation({
+    mutationFn: (scheduledAt: string) =>
+      api<PostDetailDTO>(`/api/posts/${postId}/final-time`, { method: 'PUT', json: { scheduledAt } }),
     onSuccess: invalidate,
   });
 }

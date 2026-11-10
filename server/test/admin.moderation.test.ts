@@ -196,7 +196,7 @@ describe('characters', () => {
 
     const c3 = await loginAs(app, 'u-3', 'three');
     const c2cookie = await loginAs(app, 'u-2', 'two');
-    const edit = (cookie: string) => call('PATCH', `/api/characters/${c2.id}`, cookie, { note: 'hi' });
+    const edit = (cookie: string) => call('PATCH', `/api/characters/${c2.id}`, cookie, { combatPower: 2_000_000 });
     expect((await edit(c3)).statusCode).toBe(200);
     expect((await edit(c2cookie)).statusCode).toBe(403);
   });

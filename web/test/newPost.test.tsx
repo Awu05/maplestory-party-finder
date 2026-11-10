@@ -2,7 +2,9 @@ import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CharacterDTO, PartyMemberDTO, PostDetailDTO } from '@pf/shared';
 import { App } from '../src/App';
-import { localInputToUtcIso, utcIsoToLocalInput } from '../src/components/post/time';
+import { localInputToUtcIso } from '../src/components/post/time';
+vi.mock('../src/lib/timeZone', () => ({ browserTimeZone: () => 'America/New_York' }));
+
 import { mockApi, renderWithProviders } from './setup';
 
 const user = { id: 'u1', discordUsername: 'maple_fan', avatarUrl: null, isAdmin: false };
@@ -11,17 +13,14 @@ const lily: CharacterDTO = {
   id: 'c1',
   ign: 'Lily',
   world: { id: 5, name: 'Kronos' },
-  jobName: 'Bishop',
+  jobName: 'Bishop', archetype: 'magician',
   level: 280,
   imageUrl: 'http://img/lily.png',
   combatPower: 1_500_000_000,
   cpUpdatedAt: '2026-11-01T00:00:00Z',
-  guild: { id: 'g1', name: 'Maple Guild', iconUrl: null },
+  guild: { id: 'g1', name: 'Maple Guild', iconUrl: null }, manual: false,
   screenshotUrl: null,
-  note: '',
-  playTimes: [],
-  bosses: [],
-  owner: { discordUsername: 'lily#1' },
+  owner: { discordUsername: 'lily#1', displayName: null },
   isOwner: true,
   syncStatus: 'ok',
   lastSyncedAt: '2026-11-01T00:00:00Z',
@@ -52,6 +51,8 @@ function makePost(over: Partial<PostDetailDTO> = {}): PostDetailDTO {
     poster,
     bosses: [{ bossDifficultyId: 7, bossName: 'Lucid', difficulty: 'Hard' }],
     scheduledAt: localInputToUtcIso('2026-11-10T20:00'),
+    freeTimes: [],
+    freeTimesZone: null,
     expiresAt: '2026-11-17T00:00:00Z',
     createdAt: '2026-11-09T00:00:00Z',
     partySize: 4,
@@ -85,7 +86,7 @@ const body = (call: Parameters<typeof fetch>) => JSON.parse(String(call[1]?.body
 
 const pickBoss = async (name: string) => fireEvent.click(await screen.findByLabelText(name));
 const pickCharacter = async () => fireEvent.change(await screen.findByLabelText('Character'), { target: { value: 'c1' } });
-const setWhen = (v: string) => fireEvent.change(screen.getByLabelText('When'), { target: { value: v } });
+const pickSlot = (name: string) => fireEvent.click(screen.getByRole('button', { name }));
 const save = () => fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
 beforeEach(() => {
@@ -100,7 +101,6 @@ describe('NewPostPage (create)', () => {
     renderWithProviders(<App />, { route: '/posts/new' });
     await pickCharacter();
     await pickBoss('Hard Lucid');
-    setWhen('2026-11-10T20:00');
     fireEvent.change(screen.getByLabelText('Party size'), { target: { value: '4' } });
     fireEvent.change(screen.getByLabelText('Min CP'), { target: { value: '300,000,000' } });
     save();
@@ -110,7 +110,8 @@ describe('NewPostPage (create)', () => {
       type: 'recruiting',
       characterId: 'c1',
       bossDifficultyIds: [7],
-      scheduledAt: localInputToUtcIso('2026-11-10T20:00'),
+      freeTimes: [],
+      freeTimesZone: null,
       partySize: 4,
       minCp: 300000000,
       note: '',
@@ -125,28 +126,55 @@ describe('NewPostPage (create)', () => {
     expect(screen.queryByLabelText('Min CP')).not.toBeInTheDocument();
     await pickCharacter();
     await pickBoss('Hard Lucid');
-    setWhen('2026-11-10T20:00');
     save();
     await screen.findByRole('heading', { name: 'Lineup' });
     expect(body(writes(m)[0])).toEqual({
       type: 'lfp',
       characterId: 'c1',
       bossDifficultyIds: [7],
-      scheduledAt: localInputToUtcIso('2026-11-10T20:00'),
+      freeTimes: [],
+      freeTimesZone: null,
       note: '',
     });
   });
 
-  it('flexible sends scheduledAt null', async () => {
+  it('has no date input or Flexible checkbox, only the free-time grid', async () => {
+    mockApi(base);
+    renderWithProviders(<App />, { route: '/posts/new' });
+    await pickCharacter();
+    expect(screen.queryByLabelText('When')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Flexible')).not.toBeInTheDocument();
+    expect(screen.getByText("When you're free")).toBeInTheDocument();
+    expect(screen.getByText("Leave empty if you're flexible")).toBeInTheDocument();
+  });
+
+  it('the grid is described by the "Leave empty" hint', async () => {
+    mockApi(base);
+    renderWithProviders(<App />, { route: '/posts/new' });
+    await pickCharacter();
+    expect(screen.getByRole('grid', { name: "When you're free" })).toHaveAccessibleDescription("Leave empty if you're flexible");
+  });
+
+  it('sends the selected free times with the browser zone', async () => {
     const m = mockApi({ ...base, '/api/posts/p1': makePost(), 'POST /api/posts': makePost() });
     renderWithProviders(<App />, { route: '/posts/new' });
     await pickCharacter();
     await pickBoss('Hard Lucid');
-    fireEvent.click(screen.getByLabelText('Flexible'));
-    expect(screen.getByLabelText('When')).toBeDisabled();
+    pickSlot('Tue 8p');
+    pickSlot('Sat 2p');
     save();
     await screen.findByRole('heading', { name: 'Lineup' });
-    expect(body(writes(m)[0]).scheduledAt).toBeNull();
+    expect(body(writes(m)[0])).toMatchObject({ freeTimes: [68, 158], freeTimesZone: 'America/New_York' });
+  });
+
+  it('an empty grid sends no free times and a null zone', async () => {
+    const m = mockApi({ ...base, '/api/posts/p1': makePost(), 'POST /api/posts': makePost() });
+    renderWithProviders(<App />, { route: '/posts/new' });
+    await pickCharacter();
+    await pickBoss('Hard Lucid');
+    save();
+    await screen.findByRole('heading', { name: 'Lineup' });
+    expect(body(writes(m)[0])).toMatchObject({ freeTimes: [], freeTimesZone: null });
   });
 
   it('selecting Normal Limbo (cap 3) limits party size options to 2..3 and clamps 4 to 3', async () => {
@@ -164,20 +192,8 @@ describe('NewPostPage (create)', () => {
     const m = mockApi(base);
     renderWithProviders(<App />, { route: '/posts/new' });
     await pickCharacter();
-    setWhen('2026-11-10T20:00');
     save();
     expect(await screen.findByRole('alert')).toHaveTextContent('Pick at least one boss.');
-    expect(writes(m)).toHaveLength(0);
-  });
-
-  it('rejects a time in the past', async () => {
-    const m = mockApi(base);
-    renderWithProviders(<App />, { route: '/posts/new' });
-    await pickCharacter();
-    await pickBoss('Hard Lucid');
-    setWhen('2026-11-08T20:00');
-    save();
-    expect(await screen.findByRole('alert')).toHaveTextContent('Pick a time in the future.');
     expect(writes(m)).toHaveLength(0);
   });
 
@@ -200,16 +216,39 @@ describe('NewPostPage (edit)', () => {
     const m = mockApi({ ...base, '/api/posts/p1': makePost(), 'PATCH /api/posts/p1': makePost() });
     renderWithProviders(<App />, { route: '/posts/p1/edit' });
     await waitFor(() => expect(screen.getByLabelText('Note')).toHaveValue('Chill run'));
-    expect(screen.getByLabelText('When')).toHaveValue('2026-11-10T20:00');
     expect(screen.getByLabelText('Hard Lucid')).toBeChecked();
     expect(screen.getByLabelText('Min CP')).toHaveValue('300,000,000');
     expect(screen.getByLabelText('Party size')).toHaveValue('4');
-    expect(utcIsoToLocalInput(makePost().scheduledAt!)).toBe('2026-11-10T20:00');
     fireEvent.change(screen.getByLabelText('Note'), { target: { value: 'New note' } });
     fireEvent.change(screen.getByLabelText('Party size'), { target: { value: '5' } });
     save();
     await screen.findByRole('heading', { name: 'Lineup' });
     expect(body(writes(m)[0])).toEqual({ partySize: 5, note: 'New note' });
+  });
+
+  it('shows stored free times selected and PATCHes without them when only the note changes', async () => {
+    const post = makePost({ freeTimes: [68], freeTimesZone: 'America/New_York' });
+    const m = mockApi({ ...base, '/api/posts/p1': post, 'PATCH /api/posts/p1': post });
+    renderWithProviders(<App />, { route: '/posts/p1/edit' });
+    await waitFor(() => expect(screen.getByLabelText('Note')).toHaveValue('Chill run'));
+    expect(screen.getByRole('button', { name: 'Tue 8p' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.change(screen.getByLabelText('Note'), { target: { value: 'New' } });
+    save();
+    await screen.findByRole('heading', { name: 'Lineup' });
+    expect(body(writes(m)[0])).toEqual({ note: 'New' });
+  });
+
+  it('converts a post stored in another zone and re-stores changes in the browser zone', async () => {
+    // Tue 8p Los Angeles is Tue 11p New York.
+    const post = makePost({ freeTimes: [68], freeTimesZone: 'America/Los_Angeles' });
+    const m = mockApi({ ...base, '/api/posts/p1': post, 'PATCH /api/posts/p1': post });
+    renderWithProviders(<App />, { route: '/posts/p1/edit' });
+    await waitFor(() => expect(screen.getByLabelText('Note')).toHaveValue('Chill run'));
+    expect(screen.getByRole('button', { name: 'Tue 11p' })).toHaveAttribute('aria-pressed', 'true');
+    pickSlot('Wed 1a');
+    save();
+    await screen.findByRole('heading', { name: 'Lineup' });
+    expect(body(writes(m)[0])).toEqual({ freeTimes: [71, 73], freeTimesZone: 'America/New_York' });
   });
 
   it('says "No changes to save." and does not send when nothing changed', async () => {

@@ -61,6 +61,13 @@ describe('create invite', () => {
     expect(detail.sentInvites.map((r: any) => r.character.ign)).toEqual(['Bob']);
   });
 
+  it('guildless poster character -> 400 NO_GUILD', async () => {
+    await prisma.character.update({ where: { id: bob.id }, data: { guildId: null } });
+    const res = await invite(lfp.id, postA.id, u1);
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('NO_GUILD');
+  });
+
   it("someone else's recruiting post -> 403 NOT_OWNER", async () => {
     expectError(await invite(lfp.id, postB.id, u1), 403, 'NOT_OWNER');
   });

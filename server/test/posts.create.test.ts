@@ -34,7 +34,6 @@ const body = (over: Record<string, unknown> = {}) => ({
   type: 'recruiting',
   characterId: lilyId,
   bossDifficultyIds: [hardLucid],
-  scheduledAt: new Date(Date.now() + 24 * HOUR).toISOString(),
   partySize: 4,
   note: 'hi',
   ...over,
@@ -52,12 +51,44 @@ describe('POST /api/posts', () => {
     expect(events.events).toContainEqual({ type: 'post.created', postId: res.json().id });
   });
 
-  it('computes expiresAt', async () => {
-    const at = new Date(Date.now() + 24 * HOUR);
-    const a = (await post(body({ scheduledAt: at.toISOString() }))).json();
-    expect(new Date(a.expiresAt).getTime()).toBe(at.getTime() + 3 * HOUR);
-    const b = (await post(body({ scheduledAt: null }))).json();
-    expect(new Date(b.expiresAt).getTime()).toBe(new Date(b.createdAt).getTime() + 7 * 24 * HOUR);
+  it('stores sorted unique free times and the zone, unfinalized, expiring created + 7 days', async () => {
+    const res = await post(body({ freeTimes: [68, 20, 68], freeTimesZone: 'America/New_York' }));
+    expect(res.statusCode).toBe(201);
+    const json = res.json();
+    expect(json).toMatchObject({ freeTimes: [20, 68], freeTimesZone: 'America/New_York', scheduledAt: null });
+    expect(new Date(json.expiresAt).getTime()).toBe(new Date(json.createdAt).getTime() + 7 * 24 * HOUR);
+    const row = await prisma.post.findUniqueOrThrow({ where: { id: json.id } });
+    expect(row).toMatchObject({ freeTimes: [20, 68], freeTimesZone: 'America/New_York', scheduledAt: null });
+    expect(row.expiresAt.getTime()).toBe(row.createdAt.getTime() + 7 * 24 * HOUR);
+  });
+
+  it("stores the zone's canonical name", async () => {
+    const res = await post(body({ freeTimes: [20], freeTimesZone: 'america/new_york' }));
+    expect(res.statusCode).toBe(201);
+    expect(res.json().freeTimesZone).toBe('America/New_York');
+    expect((await prisma.post.findUniqueOrThrow({ where: { id: res.json().id } })).freeTimesZone).toBe('America/New_York');
+  });
+
+  it('empty free times store no zone', async () => {
+    const res = await post(body({ freeTimes: [], freeTimesZone: 'America/New_York' }));
+    expect(res.statusCode).toBe(201);
+    expect(res.json()).toMatchObject({ freeTimes: [], freeTimesZone: null });
+    const omitted = await post(body());
+    expect(omitted.statusCode).toBe(201);
+    expect(omitted.json()).toMatchObject({ freeTimes: [], freeTimesZone: null });
+  });
+
+  it.each([
+    ['a future scheduledAt', new Date(Date.now() + 24 * HOUR).toISOString()],
+    ['a scheduledAt 31 days ahead', new Date(Date.now() + 31 * 24 * HOUR).toISOString()],
+    ['a scheduledAt 1h ago', new Date(Date.now() - HOUR).toISOString()],
+  ])('ignores %s in the body: the post is created unfinalized', async (_n, scheduledAt) => {
+    const res = await post(body({ scheduledAt }));
+    expect(res.statusCode).toBe(201);
+    expect(res.json().scheduledAt).toBeNull();
+    const row = await prisma.post.findUniqueOrThrow({ where: { id: res.json().id } });
+    expect(row.scheduledAt).toBeNull();
+    expect(row.expiresAt.getTime()).toBe(row.createdAt.getTime() + 7 * 24 * HOUR);
   });
 
   it('creates an lfp post without party size', async () => {
@@ -72,8 +103,17 @@ describe('POST /api/posts', () => {
     ['recruiting without party size', { partySize: undefined }],
     ['lfp with partySize', { type: 'lfp' }],
     ['lfp with minCp', { type: 'lfp', partySize: undefined, minCp: 5 }],
-    ['scheduledAt 31 days ahead', { scheduledAt: new Date(Date.now() + 31 * 24 * HOUR).toISOString() }],
-    ['scheduledAt 1h ago', { scheduledAt: new Date(Date.now() - HOUR).toISOString() }],
+    ['freeTimes [168]', { freeTimes: [168], freeTimesZone: 'America/New_York' }],
+    ['freeTimes [-1]', { freeTimes: [-1], freeTimesZone: 'America/New_York' }],
+    ['freeTimes [1.5]', { freeTimes: [1.5], freeTimesZone: 'America/New_York' }],
+    ['169 freeTimes entries', { freeTimes: Array.from({ length: 169 }, (_, i) => i % 168), freeTimesZone: 'America/New_York' }],
+    ['freeTimes not an array', { freeTimes: 5, freeTimesZone: 'America/New_York' }],
+    ['non-empty freeTimes with no zone', { freeTimes: [20] }],
+    ['non-empty freeTimes with a null zone', { freeTimes: [20], freeTimesZone: null }],
+    ['zone Mars/Base', { freeTimes: [20], freeTimesZone: 'Mars/Base' }],
+    ['UTC-offset zone +05:30', { freeTimes: [20], freeTimesZone: '+05:30' }],
+    ['UTC-offset zone -08:00', { freeTimes: [20], freeTimesZone: '-08:00' }],
+    ['zone Mars/Base with empty freeTimes', { freeTimes: [], freeTimesZone: 'Mars/Base' }],
     ['duplicate bossDifficultyIds', { bossDifficultyIds: [hardLucid, hardLucid] }],
     ['unknown bossDifficultyId', { bossDifficultyIds: [999999] }],
     ['no bosses', { bossDifficultyIds: [] }],
@@ -93,6 +133,13 @@ describe('POST /api/posts', () => {
 
   it('visitor -> 401', async () => {
     expect((await post(body(), null)).statusCode).toBe(401);
+  });
+
+  it('guildless character -> 400 NO_GUILD', async () => {
+    await prisma.character.update({ where: { id: lilyId }, data: { guildId: null } });
+    const res = await post(body());
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('NO_GUILD');
   });
 
   it('inactive guild / world -> 400', async () => {

@@ -39,6 +39,7 @@ export async function createJoinRequest(
       const character = await tx.character.findUnique({ where: { id: characterId } });
       if (!character) throw new AppError(404, 'NOT_FOUND', 'Character not found');
       if (character.ownerId !== viewer.user.id) throw new AppError(403, 'NOT_OWNER', 'You do not own this character');
+      if (character.guildId === null) throw new AppError(400, 'NO_GUILD', 'Pick a guild for this character first');
       if (character.worldId !== post.worldId) throw new AppError(400, 'WRONG_WORLD', "That character is not on the post's world");
       if (isMember(post, character.id)) throw new AppError(409, 'ALREADY_MEMBER', 'That character is already in the party');
       const pending = await tx.request.count({ where: { postId, characterId, status: 'pending' } });
@@ -93,6 +94,7 @@ export async function createInvite(
       // The poster's character is nulled out when it is deleted.
       const character = characterId === null ? null : await tx.character.findUnique({ where: { id: characterId } });
       if (!character) throw new AppError(409, 'POST_CLOSED', 'That post is no longer available');
+      if (character.guildId === null) throw new AppError(400, 'NO_GUILD', 'Pick a guild for this character first');
       if (isMember(recruiting, character.id)) throw new AppError(409, 'ALREADY_MEMBER', 'That character is already in the party');
       const pending = await tx.request.count({ where: { postId: recruitingPostId, characterId: character.id, status: 'pending' } });
       if (pending > 0) throw new AppError(409, 'ALREADY_PENDING', 'That character already has a pending request');

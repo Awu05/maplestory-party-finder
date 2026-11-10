@@ -1,30 +1,28 @@
-export type ExperienceLevel = 'learning' | 'cleared' | 'can_carry';
-
-export const EXPERIENCE_LABELS: Record<ExperienceLevel, string> = {
-  learning: 'Learning',
-  cleared: 'Cleared before',
-  can_carry: 'Can teach/carry',
-};
-
+import type { Archetype } from './archetype';
 export interface CharacterDTO {
   id: string;
   ign: string;
   world: { id: number; name: string };
   jobName: string;
+  archetype: Archetype;
   level: number;
   imageUrl: string;
   combatPower: number;
   cpUpdatedAt: string;
-  guild: { id: string; name: string; iconUrl: string | null };
+  guild: { id: string; name: string; iconUrl: string | null } | null;
+  manual: boolean;
   screenshotUrl: string | null;
-  note: string;
-  playTimes: number[];
-  bosses: { bossDifficultyId: number; bossName: string; difficulty: string; experience: ExperienceLevel }[];
-  owner: { discordUsername: string };
+  owner: { discordUsername: string; displayName: string | null };
   isOwner: boolean;
   syncStatus: 'ok' | 'stale';
   lastSyncedAt: string;
 }
+
+export type RefreshOutcome = 'synced' | 'stale' | 'not_found' | 'unavailable' | 'found_elsewhere';
+
+export type WorldCandidateDTO = { worldId: number; worldName: string; level: number; jobName: string; imageUrl: string };
+
+export type RefreshResultDTO = { outcome: RefreshOutcome; character: CharacterDTO; candidates: WorldCandidateDTO[] };
 
 export type NexonCharacterPreview = {
   ign: string;
@@ -43,7 +41,7 @@ export type GuildDTO = {
   active: boolean;
 };
 
-export type AdminGuildDTO = GuildDTO & { webhookUrl: string | null };
+export type AdminGuildDTO = GuildDTO & { webhookUrl: string | null; bossRoleIds: Record<string, string> };
 
 export type WorldDTO = {
   id: number;
@@ -62,7 +60,7 @@ export type BossDTO = {
 
 export type RarityTierDTO = { id: number; name: string; minCp: number; sortOrder: number };
 
-export type MeDTO = { id: string; discordUsername: string; avatarUrl: string | null; isAdmin: boolean } | null;
+export type MeDTO = { id: string; discordUsername: string; displayName: string | null; avatarUrl: string | null; isAdmin: boolean } | null;
 
 export type PostType = 'lfp' | 'recruiting';
 export type PostStatus = 'open' | 'full' | 'closed';
@@ -87,6 +85,8 @@ export interface PostSummaryDTO {
   id: string; type: PostType; world: { id: number; name: string }; guild: { id: string; name: string };
   poster: PartyMemberDTO; bosses: PostBossDTO[];
   scheduledAt: string | null; expiresAt: string; createdAt: string;
+  /** Local hour-of-week slots (day * 24 + hour, 0 = Sunday) in freeTimesZone; scheduledAt is the final time. */
+  freeTimes: number[]; freeTimesZone: string | null;
   partySize: number | null; memberCount: number; minCp: number | null; note: string;
   status: PostStatus; // effective
   deleted: boolean; isPoster: boolean;
@@ -119,5 +119,7 @@ export interface WebhookHealthDTO {
   guildId: string; guildName: string; hasWebhook: boolean; active: boolean;
   lastSentAt: string | null; pending: number; failedLast24h: number; recentFailures: WebhookFailureDTO[]; // <= 10
 }
-export interface AdminUserDTO { id: string; discordUsername: string; avatarUrl: string | null; banned: boolean; isAdmin: boolean; createdAt: string; characterCount: number }
+export interface AdminUserDTO { id: string; discordUsername: string; displayName: string | null; avatarUrl: string | null; banned: boolean; isAdmin: boolean; createdAt: string; characterCount: number }
 export interface AdminPostDTO extends PostSummaryDTO { deletedAt: string | null; closedReason: string | null; posterDiscordUsername: string }
+
+export type JobClassDTO = { id: number; name: string; archetype: Exclude<Archetype, 'unknown'> };

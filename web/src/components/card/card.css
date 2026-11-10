@@ -173,7 +173,7 @@
   border-radius: 8px;
   background: linear-gradient(180deg, color-mix(in srgb, var(--frame-a) 14%, var(--card-panel)), var(--card-panel) 45%);
   overflow: hidden;
-  font-size: clamp(9px, 6.4cqw, 14px);
+  font-size: clamp(10px, 7cqw, 15.5px);
   line-height: 1.2;
 }
 
@@ -242,36 +242,6 @@
   box-shadow: 0 0 0 1px rgb(255 255 255 / 0.6);
 }
 
-/* Boss context badges */
-.card__context {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25em;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.card__badge {
-  padding: 0.1em 0.45em;
-  border-radius: 4px;
-  font-size: 0.7em;
-  font-weight: 700;
-  background: color-mix(in srgb, var(--card-muted) 22%, var(--card-panel));
-  color: var(--card-muted);
-}
-.card__badge--learning {
-  background: #1d3352;
-  color: #a9cdf7;
-}
-.card__badge--cleared {
-  background: #1c3a1e;
-  color: #a6dca8;
-}
-.card__badge--can_carry {
-  background: #47360d;
-  color: #f5d68a;
-}
-
 /* Stats box, styled like an attack panel */
 .card__stats {
   display: flex;
@@ -320,7 +290,7 @@
   font-size: 1.2em;
 }
 .card__cp small {
-  margin-left: 0.15em;
+  margin-left: 0.5em;
   font-size: 0.55em;
   font-weight: 700;
   color: var(--card-muted);
@@ -350,6 +320,9 @@
   font-size: 0.68em;
   font-style: italic;
   color: var(--card-muted);
+}
+.card__owner {
+  display: block;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -431,31 +404,6 @@
   border-radius: 6px;
   border: 1px solid var(--border);
 }
-.card-modal__bosses {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  gap: 0.3rem;
-}
-.card-modal__bosses li {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem 0.75rem;
-}
-.card-modal__bosses ul {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem 0.75rem;
-  color: var(--muted);
-}
-.card-modal__note {
-  margin: 0;
-  white-space: pre-wrap;
-}
 .card-modal__actions {
   display: flex;
   gap: 0.5rem;
@@ -472,4 +420,11 @@
   .card-modal__side .card {
     width: min(220px, 70vw);
   }
+}
+
+.card__manual {
+  display: block;
+  font-style: normal;
+  font-size: 0.9em;
+  opacity: 0.85;
 }

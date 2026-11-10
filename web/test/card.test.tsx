@@ -1,10 +1,11 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import type { CharacterDTO, RarityTierDTO } from '@pf/shared';
 import { afterEach, vi } from 'vitest';
 import { formatCp } from '../src/components/card/format';
 import { CharacterCard } from '../src/components/card/CharacterCard';
 import { CardDetailModal } from '../src/components/card/CardDetailModal';
-import { PlayTimeGrid } from '../src/components/PlayTimeGrid';
 
 const tiers: RarityTierDTO[] = [
   { id: 1, name: 'Common', minCp: 0, sortOrder: 0 },
@@ -17,17 +18,14 @@ function makeCharacter(overrides: Partial<CharacterDTO> = {}): CharacterDTO {
     id: 'c1',
     ign: 'Lily',
     world: { id: 1, name: 'Kronos' },
-    jobName: 'Angelic Buster',
+    jobName: 'Angelic Buster', archetype: 'pirate',
     level: 279,
     imageUrl: 'https://example.com/lily.png',
     combatPower: 1_500_000_000,
     cpUpdatedAt: new Date(Date.now() - 3 * 86_400_000).toISOString(),
-    guild: { id: 'g1', name: 'Mapleholics', iconUrl: null },
+    guild: { id: 'g1', name: 'Mapleholics', iconUrl: null }, manual: false,
     screenshotUrl: '/uploads/lily.png',
-    note: 'Free most weekends',
-    playTimes: [],
-    bosses: [{ bossDifficultyId: 1, bossName: 'Lucid', difficulty: 'Hard', experience: 'can_carry' }],
-    owner: { discordUsername: 'maple_fan' },
+    owner: { discordUsername: 'maple_fan', displayName: null },
     isOwner: false,
     syncStatus: 'ok',
     lastSyncedAt: new Date().toISOString(),
@@ -51,6 +49,36 @@ describe('formatCp', () => {
 });
 
 describe('CharacterCard', () => {
+  it('shows the display name with Discord username fallback', () => {
+    const owner = { discordUsername: 'maple_fan', displayName: 'Maple Friend' };
+    const { rerender } = render(<CharacterCard character={makeCharacter({ owner })} tiers={tiers} />);
+    expect(screen.getByText('Maple Friend')).toBeVisible();
+    expect(screen.queryByText('maple_fan')).toBeNull();
+    rerender(<CharacterCard character={makeCharacter()} tiers={tiers} />);
+    expect(screen.getByText('maple_fan')).toBeVisible();
+  });
+
+  it('labels manual characters and shows No guild for guildless ones', () => {
+    const { rerender } = render(<CharacterCard character={makeCharacter()} tiers={tiers} />);
+    expect(screen.queryByText('Added manually')).toBeNull();
+    rerender(<CharacterCard character={makeCharacter({ manual: true, guild: null })} tiers={tiers} />);
+    expect(screen.getByText('Added manually')).toBeInTheDocument();
+    expect(screen.getByText('No guild')).toBeInTheDocument();
+  });
+
+  it('"Added manually" sits on its own line, outside the truncated Discord name', () => {
+    const long = { discordUsername: 'x'.repeat(80), displayName: null };
+    render(<CharacterCard character={makeCharacter({ manual: true, owner: long })} tiers={tiers} />);
+    const manual = screen.getByText('Added manually');
+    expect(manual.closest('.card__owner')).toBeNull();
+    expect(screen.getByText('x'.repeat(80)).closest('.card__owner')).not.toBeNull();
+    const css = readFileSync(resolve(__dirname, '../src/components/card/card.css'), 'utf8');
+    const body = (sel: string) => new RegExp(`(?:^|\\n)${sel.replace('.', '\\.')}\\s*\\{([^}]*)\\}`).exec(css)?.[1] ?? '';
+    expect(body('.card__owner')).toMatch(/text-overflow:\s*ellipsis/);
+    expect(body('.card__footer')).not.toMatch(/white-space:\s*nowrap/);
+    expect(body('.card__manual')).toMatch(/display:\s*block/);
+  });
+
   it('card applies archetype and foil classes', () => {
     render(<CharacterCard character={makeCharacter()} tiers={tiers} onOpen={() => {}} />);
     const card = screen.getByRole('button', { name: 'Lily, level 279 Angelic Buster' });
@@ -91,28 +119,13 @@ describe('CharacterCard', () => {
   });
 
   it('xenon gets card--xenon', () => {
-    render(<CharacterCard character={makeCharacter({ jobName: 'Xenon' })} tiers={tiers} onOpen={() => {}} />);
+    render(<CharacterCard character={makeCharacter({ jobName: 'Xenon', archetype: 'xenon' })} tiers={tiers} onOpen={() => {}} />);
     expect(screen.getByRole('button')).toHaveClass('card--xenon');
   });
 
   it('unknown class gets card--unknown', () => {
-    render(<CharacterCard character={makeCharacter({ jobName: 'Mystery Job' })} tiers={tiers} onOpen={() => {}} />);
+    render(<CharacterCard character={makeCharacter({ jobName: 'Mystery Job', archetype: 'unknown' })} tiers={tiers} onOpen={() => {}} />);
     expect(screen.getByRole('button')).toHaveClass('card--unknown');
-  });
-
-  it('boss context badges', () => {
-    render(
-      <CharacterCard
-        character={makeCharacter()}
-        tiers={tiers}
-        bossContext={[
-          { bossDifficultyId: 1, label: 'Hard Lucid' },
-          { bossDifficultyId: 2, label: 'Hard Will' },
-        ]}
-      />,
-    );
-    expect(screen.getByText('Hard Lucid: Can teach/carry')).toBeInTheDocument();
-    expect(screen.getByText('Hard Will: not listed')).toBeInTheDocument();
   });
 
   it('Enter opens', () => {
@@ -132,7 +145,18 @@ describe('CharacterCard', () => {
 });
 
 describe('CardDetailModal', () => {
-  it('modal shows discord username, note, screenshot img; Edit only for owner', () => {
+  it('shows the chosen name and copies the real Discord username', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
+    render(<CardDetailModal character={makeCharacter({ owner: { discordUsername: 'maple_fan', displayName: 'Maple Friend' } })} tiers={tiers} onClose={() => {}} />);
+    expect(screen.getByText('@maple_fan')).toBeVisible();
+    expect(screen.getAllByText('Maple Friend').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Copy Discord username' }));
+    expect(writeText).toHaveBeenCalledWith('maple_fan');
+    expect(await screen.findByText('Copied')).toBeVisible();
+  });
+
+  it('modal shows discord username, screenshot img, and no boss, play time or note sections; Edit only for owner', () => {
     const onEdit = vi.fn();
     const { rerender } = render(
       <CardDetailModal character={makeCharacter()} tiers={tiers} onClose={() => {}} onEdit={onEdit} />,
@@ -141,13 +165,12 @@ describe('CardDetailModal', () => {
     expect(dialog).toHaveAttribute('aria-modal', 'true');
     expect(within(dialog).getAllByText('maple_fan').length).toBeGreaterThan(0);
     expect(within(dialog).getByRole('button', { name: 'Copy Discord username' })).toBeInTheDocument();
-    expect(within(dialog).getByText('Free most weekends')).toBeInTheDocument();
     const shot = within(dialog).getByRole('img', { name: 'Lily Scouter screenshot' });
     expect(shot).toHaveAttribute('src', '/uploads/lily.png');
     expect(shot.closest('a')).toHaveAttribute('target', '_blank');
     expect(within(dialog).getByText('CP updated 3 days ago')).toBeInTheDocument();
-    expect(within(dialog).getByText('Lucid')).toBeInTheDocument();
-    expect(within(dialog).getByText('Hard: Can teach/carry')).toBeInTheDocument();
+    for (const heading of ['Bosses', 'Note']) expect(within(dialog).queryByText(heading)).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(/Play times/)).not.toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
 
     rerender(
@@ -175,21 +198,9 @@ describe('CardDetailModal', () => {
     const dialog = screen.getByRole('dialog');
     fireEvent(dialog, new Event('cancel', { cancelable: true }));
     expect(onClose).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByText('Free most weekends'));
+    fireEvent.click(screen.getByRole('heading', { name: 'Lily' }));
     expect(onClose).toHaveBeenCalledTimes(1);
     fireEvent.click(dialog);
     expect(onClose).toHaveBeenCalledTimes(2);
-  });
-});
-
-describe('PlayTimeGrid (read-only)', () => {
-  it('renders a UTC hour as the matching local cell', () => {
-    // UTC-5 (getTimezoneOffset returns +300): UTC Sun 00:00 is local Sat 7 PM.
-    vi.spyOn(Date.prototype, 'getTimezoneOffset').mockReturnValue(300);
-    render(<PlayTimeGrid value={[0]} readOnly />);
-    const selected = screen.getByRole('gridcell', { name: 'Sat 7p' });
-    expect(selected).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('gridcell', { name: 'Sun 12a' })).toHaveAttribute('aria-selected', 'false');
-    expect(screen.getAllByRole('gridcell').filter((c) => c.getAttribute('aria-selected') === 'true')).toHaveLength(1);
   });
 });

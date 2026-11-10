@@ -8,17 +8,14 @@ const character = (id: string, ign: string): CharacterDTO => ({
   id,
   ign,
   world: { id: 5, name: 'Kronos' },
-  jobName: 'Bishop',
+  jobName: 'Bishop', archetype: 'magician',
   level: 280,
   imageUrl: `http://img/${ign}.png`,
   combatPower: 1_500_000_000,
   cpUpdatedAt: '2026-11-01T00:00:00Z',
-  guild: { id: 'g1', name: 'Maple Guild', iconUrl: null },
+  guild: { id: 'g1', name: 'Maple Guild', iconUrl: null }, manual: false,
   screenshotUrl: null,
-  note: '',
-  playTimes: [],
-  bosses: [],
-  owner: { discordUsername: `${ign}#1` },
+  owner: { discordUsername: `${ign}#1`, displayName: null },
   isOwner: false,
   syncStatus: 'ok',
   lastSyncedAt: '2026-11-01T00:00:00Z',
@@ -46,6 +43,8 @@ const p1: PostSummaryDTO = {
   poster: lily,
   bosses: [{ bossDifficultyId: 7, bossName: 'Lucid', difficulty: 'Hard' }],
   scheduledAt: null,
+  freeTimes: [],
+  freeTimesZone: null,
   expiresAt: '2026-11-16T00:00:00Z',
   createdAt: '2026-11-09T00:00:00Z',
   partySize: null,
@@ -101,7 +100,7 @@ describe('Board preview', () => {
     expect(await within(pane).findByRole('heading', { name: 'Normal Will' })).toBeInTheDocument();
     expect(fetchMock.mock.calls.map(([u]) => String(u))).toContain('/api/posts/p2');
     expect(within(pane).getByText('Open')).toBeInTheDocument();
-    expect(within(pane).getByText(/Flexible · Kronos · Maple Guild/)).toBeInTheDocument();
+    expect(within(pane).getByText('Kronos · Maple Guild')).toBeInTheDocument();
     expect(within(pane).getByText('Min CP 300M')).toBeInTheDocument();
     expect(within(pane).getByText('Chill run')).toBeInTheDocument();
     const lineup = within(pane).getByRole('list', { name: 'Lineup' });
@@ -235,5 +234,40 @@ describe('Board list refetch indicator', () => {
     await waitFor(() => expect(screen.getByRole('listbox', { name: 'Posts' })).toHaveAttribute('aria-busy', 'true'));
     release();
     await waitFor(() => expect(screen.getByRole('listbox', { name: 'Posts' })).not.toHaveAttribute('aria-busy'));
+  });
+});
+
+describe('Board preview free times', () => {
+  it('an old post with no zone and no free times shows "Flexible" and no grid', async () => {
+    const p = { ...p2, scheduledAt: null, freeTimes: [], freeTimesZone: null };
+    mockApi({ ...base, '/api/posts': [p1, p], '/api/posts/p2': detail(p) });
+    renderBoard();
+    const pane = await preview();
+    const when = await within(pane).findByRole('region', { name: 'When' });
+    expect(within(when).getByText('Flexible')).toBeInTheDocument();
+    expect(within(pane).queryByRole('grid')).toBeNull();
+  });
+
+  it('the collapsed grid takes its name from the summary instead of repeating it', async () => {
+    const p = { ...p2, freeTimes: [30, 31], freeTimesZone: 'UTC' };
+    mockApi({ ...base, '/api/posts': [p1, p], '/api/posts/p2': detail(p) });
+    renderBoard();
+    const pane = await preview();
+    const summary = await within(pane).findByText('Free times', { selector: 'summary' });
+    const grid = within(pane).getByRole('grid', { hidden: true });
+    expect(grid).not.toHaveAttribute('aria-label');
+    expect(grid).toHaveAttribute('aria-labelledby', summary.id);
+    expect(grid).toHaveAccessibleName('Free times');
+  });
+
+  it('shows the read-only grid with a zone caption, and the time only once (in the When section)', async () => {
+    const p = { ...p2, freeTimes: [30, 31], freeTimesZone: 'UTC' };
+    mockApi({ ...base, '/api/posts': [p1, p], '/api/posts/p2': detail(p) });
+    renderBoard();
+    const pane = await preview();
+    expect(await within(pane).findByText(/Time not set yet/)).toBeInTheDocument();
+    expect(within(pane).getByText(/^Shown in your time zone \(/)).toBeInTheDocument();
+    expect(within(pane).getByText('Kronos · Maple Guild')).toBeInTheDocument();
+    expect(within(pane).queryByText(/Free times · /)).toBeNull();
   });
 });

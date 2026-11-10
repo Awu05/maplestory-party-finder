@@ -13,6 +13,7 @@ export function AdminLayout() {
         <NavLink to="guilds">Guilds</NavLink>
         <NavLink to="worlds">Worlds</NavLink>
         <NavLink to="bosses">Bosses</NavLink>
+        <NavLink to="classes">Classes</NavLink>
         <NavLink to="tiers">Rarity tiers</NavLink>
         <NavLink to="webhooks">Webhooks</NavLink>
         <NavLink to="users">Users</NavLink>

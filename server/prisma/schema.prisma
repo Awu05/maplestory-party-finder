@@ -12,10 +12,14 @@ enum WorldType {
   interactive
 }
 
-enum Experience {
-  learning
-  cleared
-  can_carry
+enum Archetype {
+  warrior
+  magician
+  bowman
+  thief
+  pirate
+  xenon
+  unknown
 }
 
 enum SyncStatus {
@@ -27,6 +31,7 @@ model User {
   id            String         @id @default(cuid())
   discordId     String         @unique
   username      String
+  displayName   String?
   avatar        String?
   banned        Boolean        @default(false)
   createdAt     DateTime       @default(now())
@@ -54,6 +59,7 @@ model Guild {
   name              String            @unique
   iconUrl           String?
   webhookUrl        String?
+  bossRoleIds       Json              @default("{}")
   active            Boolean           @default(true)
   worlds            GuildWorld[]
   characters        Character[]
@@ -85,7 +91,6 @@ model BossDifficulty {
   difficulty String
   partyCap   Int             @default(6)
   sortOrder  Int             @default(0)
-  characters CharacterBoss[]
   posts      PostBoss[]
 
   @@unique([bossId, difficulty])
@@ -100,20 +105,19 @@ model Character {
   worldId                Int
   world                  World           @relation(fields: [worldId], references: [id])
   jobName                String
+  archetype              Archetype       @default(unknown)
   level                  Int
   imageUrl               String
   combatPower            BigInt
   cpUpdatedAt            DateTime
-  guildId                String
-  guild                  Guild           @relation(fields: [guildId], references: [id])
+  guildId                String?
+  guild                  Guild?          @relation(fields: [guildId], references: [id])
+  source                 CharacterSource @default(nexon)
   screenshotKey          String?
-  note                   String          @default("")
-  playTimes              Int[]           @default([])
   lastSyncedAt           DateTime
   syncStatus             SyncStatus      @default(ok)
   lastRefreshRequestedAt DateTime?
   createdAt              DateTime        @default(now())
-  bosses                 CharacterBoss[]
   posted                 Post[]          @relation("PostPoster")
   memberships            PostMember[]
   requests               Request[]
@@ -121,14 +125,9 @@ model Character {
   @@unique([ignLower, worldId])
 }
 
-model CharacterBoss {
-  characterId      String
-  character        Character      @relation(fields: [characterId], references: [id], onDelete: Cascade)
-  bossDifficultyId Int
-  bossDifficulty   BossDifficulty @relation(fields: [bossDifficultyId], references: [id])
-  experience       Experience
-
-  @@id([characterId, bossDifficultyId])
+enum CharacterSource {
+  nexon
+  manual
 }
 
 model RarityTier {
@@ -177,7 +176,12 @@ model Post {
   world             World        @relation(fields: [worldId], references: [id])
   guildId           String
   guild             Guild        @relation(fields: [guildId], references: [id])
+  /// The final time; null until the poster finalizes it.
   scheduledAt       DateTime?
+  /// Free hours as local hour-of-week (day * 24 + hour, 0 = Sunday) in freeTimesZone.
+  freeTimes         Int[]        @default([])
+  /// IANA zone of freeTimes; null when freeTimes is empty.
+  freeTimesZone     String?
   expiresAt         DateTime
   partySize         Int?
   minCp             BigInt?
@@ -252,7 +256,7 @@ model Notification {
   id        String    @id @default(cuid())
   userId    String
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  /// join_request | invite | accepted | declined | auto_declined | removed | member_left
+  /// join_request | invite | accepted | declined | auto_declined | removed | member_left | time_set
   kind      String
   text      String
   /// app-relative path, e.g. /posts/abc
@@ -288,4 +292,11 @@ model JobRun {
   name       String   @id
   lastRunAt  DateTime
   lastResult Json?
+}
+
+model JobClass {
+  id        Int       @id @default(autoincrement())
+  name      String
+  nameLower String    @unique
+  archetype Archetype
 }

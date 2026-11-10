@@ -20,3 +20,7 @@ const LOOKUP = new Map<string, Archetype>(
 export function classToArchetype(jobName: string): Archetype {
   return LOOKUP.get(norm(jobName)) ?? 'unknown';
 }
+
+export const KNOWN_CLASSES: { name: string; archetype: Exclude<Archetype, 'unknown'> }[] = (
+  Object.entries(TABLE) as [Exclude<Archetype, 'unknown'>, string[]][]
+).flatMap(([archetype, names]) => names.map((name) => ({ name, archetype })));

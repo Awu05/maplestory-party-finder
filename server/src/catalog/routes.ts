@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { z } from 'zod';
-import type { AdminGuildDTO, BossDTO, GuildDTO, RarityTierDTO, WorldDTO } from '@pf/shared';
+import type { AdminGuildDTO, BossDTO, GuildDTO, JobClassDTO, RarityTierDTO, WorldDTO } from '@pf/shared';
 import { getViewer, requireAdmin } from '../auth/guards.js';
 import { AppError } from '../http/errors.js';
 
@@ -9,17 +9,31 @@ const WEBHOOK_RE = /^https:\/\/(discord|discordapp)\.com\/api\/webhooks\/\d+\/[\
 
 const webhookUrl = z.string().regex(WEBHOOK_RE, 'Invalid Discord webhook URL');
 const worldIds = z.array(z.number().int());
+const bossRoleIds = z.record(
+  z.string().regex(/^[1-9]\d*$/).refine((id) => Number.isSafeInteger(Number(id)) && Number(id) <= 2147483647, 'Invalid boss ID'),
+  z.string().regex(/^[1-9]\d{16,19}$/, 'Enter a Discord role ID (17–20 digits)'),
+);
+
+async function assertBossesExist(prisma: PrismaClient, roles: Record<string, string> | undefined): Promise<void> {
+  if (!roles) return;
+  const ids = Object.keys(roles).map(Number);
+  if (ids.length && await prisma.boss.count({ where: { id: { in: ids } } }) !== ids.length) {
+    throw new AppError(400, 'VALIDATION', 'Unknown boss in Discord role mappings');
+  }
+}
 
 const guildCreate = z.object({
   name: z.string().trim().min(1),
   iconUrl: z.string().min(1).nullish(),
   webhookUrl: webhookUrl.nullish(),
+  bossRoleIds: bossRoleIds.optional(),
   worldIds,
 });
 const guildPatch = z.object({
   name: z.string().trim().min(1).optional(),
   iconUrl: z.string().min(1).nullish(),
   webhookUrl: webhookUrl.nullish(),
+  bossRoleIds: bossRoleIds.optional(),
   active: z.boolean().optional(),
   worldIds: worldIds.optional(),
 });
@@ -64,6 +78,10 @@ const tiersInput = z.object({
   ),
 });
 
+const archetypeEnum = z.enum(['warrior', 'magician', 'bowman', 'thief', 'pirate', 'xenon']);
+const classCreate = z.object({ name: z.string().trim().min(1).max(40), archetype: archetypeEnum });
+const classPatch = z.object({ archetype: archetypeEnum });
+
 const idParam = z.object({ id: z.coerce.number().int() });
 const guildIdParam = z.object({ id: z.string().min(1) });
 
@@ -80,7 +98,7 @@ function toGuildDTO(g: GuildRow): GuildDTO {
 }
 
 function toAdminGuildDTO(g: GuildRow): AdminGuildDTO {
-  return { ...toGuildDTO(g), webhookUrl: g.webhookUrl };
+  return { ...toGuildDTO(g), webhookUrl: g.webhookUrl, bossRoleIds: g.bossRoleIds as Record<string, string> };
 }
 
 function toWorldDTO(w: { id: number; nexonWorldId: number; name: string; worldType: string; active: boolean }): WorldDTO {
@@ -102,6 +120,10 @@ function toBossDTO(b: BossRow): BossDTO {
 
 function toTierDTO(t: { id: number; name: string; minCp: bigint; sortOrder: number }): RarityTierDTO {
   return { id: t.id, name: t.name, minCp: Number(t.minCp), sortOrder: t.sortOrder };
+}
+
+function toClassDTO(c: { id: number; name: string; archetype: string }): JobClassDTO {
+  return { id: c.id, name: c.name, archetype: c.archetype as JobClassDTO['archetype'] };
 }
 
 function isCode(err: unknown, code: string): boolean {
@@ -153,6 +175,11 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     return bosses.map(toBossDTO);
   });
 
+  app.get('/classes', async () => {
+    const classes = await prisma.jobClass.findMany();
+    return classes.sort((a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' })).map(toClassDTO);
+  });
+
   app.get('/rarity-tiers', async () => {
     const tiers = await prisma.rarityTier.findMany({ orderBy: { minCp: 'asc' } });
     return tiers.map(toTierDTO);
@@ -169,6 +196,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     await requireAdmin(req);
     const body = guildCreate.parse(req.body);
     await assertWorldsExist(prisma, body.worldIds);
+    await assertBossesExist(prisma, body.bossRoleIds);
     const guild = await mapDuplicate(
       () =>
         prisma.guild.create({
@@ -176,6 +204,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
             name: body.name,
             iconUrl: body.iconUrl ?? null,
             webhookUrl: body.webhookUrl ?? null,
+            bossRoleIds: body.bossRoleIds ?? {},
             worlds: { create: [...new Set(body.worldIds)].map((worldId) => ({ worldId })) },
           },
           include: { worlds: true },
@@ -190,6 +219,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     const { id } = guildIdParam.parse(req.params);
     const body = guildPatch.parse(req.body);
     if (body.worldIds) await assertWorldsExist(prisma, body.worldIds);
+    await assertBossesExist(prisma, body.bossRoleIds);
     const guild = await mapDuplicate(
       () =>
         prisma.$transaction(async (tx) => {
@@ -206,6 +236,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
               name: body.name,
               iconUrl: body.iconUrl,
               webhookUrl: body.webhookUrl,
+              bossRoleIds: body.bossRoleIds,
               active: body.active,
             },
             include: { worlds: true },
@@ -274,10 +305,8 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
             const stale = existing.filter((e) => !wanted.has(e.difficulty));
             if (stale.length > 0) {
               const staleIds = stale.map((s) => s.id);
-              const used =
-                (await tx.characterBoss.count({ where: { bossDifficultyId: { in: staleIds } } })) +
-                (await tx.postBoss.count({ where: { bossDifficultyId: { in: staleIds } } }));
-              if (used > 0) throw new AppError(409, 'IN_USE', 'A removed difficulty is referenced by characters or posts');
+              const used = await tx.postBoss.count({ where: { bossDifficultyId: { in: staleIds } } });
+              if (used > 0) throw new AppError(409, 'IN_USE', 'A removed difficulty is referenced by posts');
               await tx.bossDifficulty.deleteMany({ where: { id: { in: stale.map((s) => s.id) } } });
             }
             const byName = new Map(existing.map((e) => [e.difficulty, e]));
@@ -305,12 +334,60 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     const { id } = idParam.parse(req.params);
     await prisma.$transaction(async (tx) => {
       if (!(await tx.boss.findUnique({ where: { id } }))) throw new AppError(404, 'NOT_FOUND');
-      const used =
-        (await tx.characterBoss.count({ where: { bossDifficulty: { bossId: id } } })) +
-        (await tx.postBoss.count({ where: { bossDifficulty: { bossId: id } } }));
-      if (used > 0) throw new AppError(409, 'IN_USE', 'Boss is referenced by characters or posts');
+      const used = await tx.postBoss.count({ where: { bossDifficulty: { bossId: id } } });
+      if (used > 0) throw new AppError(409, 'IN_USE', 'Boss is referenced by posts');
       await tx.boss.delete({ where: { id } });
+      // Drop the boss's Discord role mapping from every guild so no stale key survives.
+      await tx.$executeRaw`UPDATE "Guild" SET "bossRoleIds" = "bossRoleIds" - ${String(id)} WHERE "bossRoleIds" ? ${String(id)}`;
     });
+    return reply.status(204).send();
+  });
+
+  // ---- Admin: classes ----
+  app.post('/admin/classes', async (req, reply) => {
+    await requireAdmin(req);
+    const body = classCreate.parse(req.body);
+    const created = await mapDuplicate(
+      () =>
+        prisma.$transaction(async (tx) => {
+          const jc = await tx.jobClass.create({
+            data: { name: body.name, nameLower: body.name.toLowerCase(), archetype: body.archetype },
+          });
+          await tx.character.updateMany({
+            where: { jobName: { equals: jc.name, mode: 'insensitive' } },
+            data: { archetype: jc.archetype },
+          });
+          return jc;
+        }),
+      'That class',
+    );
+    return reply.status(201).send(toClassDTO(created));
+  });
+
+  app.patch('/admin/classes/:id', async (req) => {
+    await requireAdmin(req);
+    const { id } = idParam.parse(req.params);
+    const body = classPatch.parse(req.body);
+    return prisma.$transaction(async (tx) => {
+      if (!(await tx.jobClass.findUnique({ where: { id } }))) throw new AppError(404, 'NOT_FOUND');
+      const jc = await tx.jobClass.update({ where: { id }, data: { archetype: body.archetype } });
+      await tx.character.updateMany({
+        where: { jobName: { equals: jc.name, mode: 'insensitive' } },
+        data: { archetype: jc.archetype },
+      });
+      return toClassDTO(jc);
+    });
+  });
+
+  app.delete('/admin/classes/:id', async (req, reply) => {
+    await requireAdmin(req);
+    const { id } = idParam.parse(req.params);
+    try {
+      await prisma.jobClass.delete({ where: { id } });
+    } catch (err) {
+      if (isCode(err, 'P2025')) throw new AppError(404, 'NOT_FOUND');
+      throw err;
+    }
     return reply.status(204).send();
   });
 

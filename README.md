@@ -36,6 +36,7 @@ Guilds can post new parties and pings to a Discord channel through a webhook.
 4. A guild only receives new-post messages if it is **active** and its **world list includes the post's world**. A guild with no worlds never gets new-post broadcasts (pings for requests and accepts still go to it).
 5. Links in Discord messages are built from `WEB_ORIGIN`, so set it to the public URL of the web app.
 6. Admin -> Webhooks is the delivery health page (recent deliveries and failures); the Send test message button on Admin -> Guilds verifies a guild's webhook.
+7. To notify boss roles on new posts, edit the guild in Admin -> Guilds and expand **Boss role pings**. Enter each boss's Discord role ID (enable Developer Mode in Discord, then right-click the role and Copy Role ID). Enable **Allow anyone to @mention this role** in Discord. All difficulties share the boss's role; each role is pinged once per new post. Leave a boss blank to skip its ping. Configure each guild's own role IDs; requests and accepts keep their direct user pings.
 
 ## Notifications & jobs
 
@@ -43,6 +44,23 @@ Guilds can post new parties and pings to a Discord channel through a webhook.
 - A background worker delivers queued webhook messages every 5 seconds. Failed deliveries are retried with increasing delays (30 s, 2 min, 10 min, 1 h) and given up on after 5 attempts; Discord rate limits are respected.
 - A daily sync refreshes every character from Nexon (skipping banned users' characters), oldest first, throttled. It checks hourly and runs when the last run was 24 hours ago or more, so the time of day drifts with the last run. It also prunes notifications older than 60 days and sent or failed deliveries older than 30 days.
 - Set `JOBS_ENABLED=false` to disable both jobs in a given instance.
+
+## Posts & free times
+
+- **Making a post.** Pick the hours you're free on the weekly "When you're free" grid. Leave it empty if you're flexible.
+- **Time zones.** Each viewer sees the free hours in their own time zone. The poster's time zone is stored with the post, so daylight-saving changes don't shift the hours; the server's own time zone (e.g. a home server in EST) doesn't matter. Viewers in half-hour time zones see whole-hour cells (rounded down).
+- **Finalize time.** The poster of a Recruiting post sets the actual time with **Finalize time** (**Change time** once set) on the post page. Party members get an in-app notification and a Discord ping showing the time in their own zone. A post with no final time expires 7 days after it's posted or renewed; once finalized it expires based on the final time.
+- **Board filters.** When: Any / Next 24h / This week / Not set (Next 24h and This week match finalized times). Free at picks a day and hour to find posts whose poster is free then.
+- **Discord new-post messages** show the final time, or "Not set yet — see free times on the post", or "Flexible".
+
+## Characters
+
+- **Display name.** Click your avatar or name in the header to open the Profile popup, where you choose a display name (up to 50 characters) or log out. Leave it blank to use your Discord username. Cards, party lineups and new Discord post messages use this name; character details still show your real Discord username for copying, and mentions still reach your Discord account.
+- **Characters Nexon can't find.** If Nexon can't find a character (e.g. on Challenger World), is unreachable or returns the wrong character, Add character offers "Add it manually": enter name, world, class and level. Manual characters use a default image, show "Added manually", and are skipped by the daily sync; their class and level can be edited.
+- **Refresh from Nexon on a manual character.** If Nexon now finds it on its own world, it becomes a normal synced character. If it is found on another active world of the same type (heroic/interactive), a popup offers to move it there. Moving clears the guild (or sets a newly picked one) and is refused while the character is in an open party or has pending requests/invites.
+- **Guild required.** A character with no guild can't post, request to join or be invited until a guild is picked on its edit page.
+- Characters have no bosses, play times or note; those live on posts.
+- **Admin -> Classes** adds and removes classes and sets each class's type (warrior/magician/bowman/thief/pirate/xenon), which drives the card frame color. Lists are alphabetical. It is seeded with the known classes.
 
 ## Development
 
@@ -54,7 +72,7 @@ npm run dev -w server          # generates the Prisma client, then starts the AP
 npm run dev -w web             # Vite on :5173, proxies /api and /uploads to the server
 ```
 
-`npm run db:setup` (root) does the same as `npm run db:setup -w server`; re-run it after pulling new migrations.
+`npm run db:setup` (root) does the same as `npm run db:setup -w server`; re-run it after pulling new migrations. It applies the migrations and the seed, which fills in existing characters' class type so card frames are colored. The Docker image runs this automatically on start.
 
 The Prisma client is generated by `prisma generate` (npm blocks Prisma's postinstall). `npm run dev`, `npm test` and `npm run build` in `server/` run it automatically; run `npx -w server prisma generate` manually if your editor needs the types first.
 

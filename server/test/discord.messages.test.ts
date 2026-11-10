@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PostSummaryDTO } from '@pf/shared';
 import {
-  bossLabel, buildAcceptPing, buildNewPostMessage, buildRequestPing, buildTestMessage, discordTime, neutralize,
+  bossLabel, buildAcceptPing, buildNewPostMessage, buildRequestPing, buildTestMessage, buildTimeSetPing, discordTime, neutralize,
 } from '../src/discord/messages';
 
 const ZW = '​';
@@ -21,6 +21,7 @@ function makePost(over: Partial<PostSummaryDTO> = {}): PostSummaryDTO {
       { bossDifficultyId: 2, bossName: 'Will', difficulty: 'Hard' },
     ],
     scheduledAt: '2025-11-10T20:00:00Z', expiresAt: '2025-11-11T00:00:00Z', createdAt: '2025-11-09T00:00:00Z',
+    freeTimes: [], freeTimesZone: null,
     partySize: 4, memberCount: 2, minCp: 50_000_000, note: 'bring pots',
     status: 'open', deleted: false, isPoster: false,
     ...over,
@@ -41,6 +42,14 @@ describe('helpers', () => {
 });
 
 describe('buildNewPostMessage', () => {
+  it('uses the display name and neutralizes mentions without changing ping recipients', () => {
+    const post = makePost();
+    post.poster.character!.owner.displayName = '@everyone Maple';
+    expect(fields(buildNewPostMessage(post, ORIGIN)).Discord).toBe(`@${ZW}everyone Maple (@alice)`);
+    const ping = buildAcceptPing({ recipientDiscordId: '123', ign: 'Alice', post, webOrigin: ORIGIN });
+    expect(ping.content).toContain('<@123>');
+    expect(ping.allowed_mentions).toEqual({ parse: [], users: ['123'] });
+  });
   it('omits the thumbnail when the snapshot image url is empty or relative', () => {
     for (const imageUrl of ['', '/uploads/a.png']) {
       const post = makePost();
@@ -86,6 +95,19 @@ describe('buildNewPostMessage', () => {
     expect(fields(buildNewPostMessage(makePost({ note: '  ' }), ORIGIN))).not.toHaveProperty('Note');
   });
 
+  it('When: a finalized post shows a Discord timestamp, even with free times', () => {
+    const f = fields(buildNewPostMessage(makePost({ freeTimes: [68], freeTimesZone: 'America/New_York' }), ORIGIN));
+    expect(f.When).toMatch(/^<t:/);
+    expect(f.When).toBe('<t:1762804800:F> (<t:1762804800:R>)');
+  });
+  it('When: not finalized with free times points to the post', () => {
+    const f = fields(buildNewPostMessage(makePost({ scheduledAt: null, freeTimes: [68], freeTimesZone: 'America/New_York' }), ORIGIN));
+    expect(f.When).toBe('Not set yet — see free times on the post');
+  });
+  it('When: not finalized with an empty grid is Flexible', () => {
+    const f = fields(buildNewPostMessage(makePost({ scheduledAt: null, freeTimes: [], freeTimesZone: null }), ORIGIN));
+    expect(f.When).toBe('Flexible');
+  });
   it('LFP embed has no Slots/Min CP fields and is green', () => {
     const p = buildNewPostMessage(makePost({ type: 'lfp', partySize: null, minCp: null }), ORIGIN);
     const f = fields(p);
@@ -129,5 +151,14 @@ describe('pings', () => {
     const p = buildTestMessage('@everyone Guild');
     expect(p.content).toBe(`✅ Party Finder is connected to @${ZW}everyone Guild.`);
     expect(p.allowed_mentions).toEqual({ parse: [] });
+  });
+});
+
+describe('buildTimeSetPing', () => {
+  it('neutralizes an @everyone poster IGN and boss name, and only pings the recipient', () => {
+    const post = makePost({ bosses: [{ bossDifficultyId: 1, bossName: '@everyone', difficulty: 'Hard' }] });
+    const p = buildTimeSetPing({ recipientDiscordId: '42', posterIgn: '@here Alice', post, scheduledAt: '2025-11-10T20:00:00Z', webOrigin: ORIGIN });
+    expect(p.content).toBe(`<@42> @${ZW}here Alice set the time for Hard @${ZW}everyone: <t:1762804800:F> → ${ORIGIN}/posts/p1`);
+    expect(p.allowed_mentions).toEqual({ parse: [], users: ['42'] });
   });
 });

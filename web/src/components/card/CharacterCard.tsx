@@ -1,23 +1,17 @@
 import type { KeyboardEvent } from 'react';
-import { EXPERIENCE_LABELS, classToArchetype, rarityFor } from '@pf/shared';
+import { rarityFor } from '@pf/shared';
 import type { CharacterDTO, RarityTierDTO } from '@pf/shared';
 import { formatCp } from './format';
 import './card.css';
 
-export interface BossContextEntry {
-  bossDifficultyId: number;
-  label: string;
-}
-
 interface Props {
   character: CharacterDTO;
   tiers: RarityTierDTO[];
-  bossContext?: BossContextEntry[];
   onOpen?: () => void;
 }
 
-export function CharacterCard({ character: c, tiers, bossContext, onOpen }: Props) {
-  const archetype = classToArchetype(c.jobName);
+export function CharacterCard({ character: c, tiers, onOpen }: Props) {
+  const archetype = c.archetype;
   const rarity = rarityFor(c.combatPower, tiers);
   const classes = ['card', `card--${archetype}`];
   if (rarity) classes.push(`card--rank-${rarity.rank}`);
@@ -48,19 +42,6 @@ export function CharacterCard({ character: c, tiers, bossContext, onOpen }: Prop
           {rarity && <span className="card__rarity">{rarity.tier.name}</span>}
         </div>
 
-        {bossContext && bossContext.length > 0 && (
-          <ul className="card__context">
-            {bossContext.map((b) => {
-              const exp = c.bosses.find((x) => x.bossDifficultyId === b.bossDifficultyId)?.experience;
-              return (
-                <li key={b.bossDifficultyId} className={exp ? `card__badge card__badge--${exp}` : 'card__badge'}>
-                  {`${b.label}: ${exp ? EXPERIENCE_LABELS[exp] : 'not listed'}`}
-                </li>
-              );
-            })}
-          </ul>
-        )}
-
         <dl className="card__stats">
           <div className="card__attack">
             <dt className="card__job">
@@ -74,7 +55,7 @@ export function CharacterCard({ character: c, tiers, bossContext, onOpen }: Prop
           </div>
           <div className="card__meta">
             <dt>Guild</dt>
-            <dd>{c.guild.name}</dd>
+            <dd>{c.guild?.name ?? 'No guild'}</dd>
           </div>
           <div className="card__meta">
             <dt>World</dt>
@@ -83,7 +64,11 @@ export function CharacterCard({ character: c, tiers, bossContext, onOpen }: Prop
         </dl>
 
         <footer className="card__footer">
-          <span className="card__footer-label">Discord</span> <span className="card__discord">{c.owner.discordUsername}</span>
+          {/* Only the owner line truncates; "Added manually" gets its own line so a long name can't hide it. */}
+          <span className="card__owner">
+            <span className="card__footer-label">Discord</span> <span className="card__discord">{c.owner.displayName ?? c.owner.discordUsername}</span>
+          </span>
+          {c.manual && <span className="card__manual">Added manually</span>}
         </footer>
       </div>
     </div>

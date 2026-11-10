@@ -1,8 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { MAX_POST_BOSSES } from '@pf/shared';
+import { isValidTimeZone, MAX_POST_BOSSES } from '@pf/shared';
 import { getViewer, requireAdmin, requireUser } from '../auth/guards.js';
-import { adminDeletePost, closePost, createPost, deletePost, editPost, getVisiblePost, listBoard, listMyParties, listMyPosts, removeMember, renewPost } from './service.js';
+import { adminDeletePost, closePost, createPost, deletePost, editPost, finalizePostTime, getVisiblePost, listBoard, listMyParties, listMyPosts, removeMember, renewPost } from './service.js';
 import { toPostDetailDTO, toPostSummaryDTO } from './serialize.js';
 
 // Field schemas are exported so the edit route can reuse them.
@@ -16,22 +16,44 @@ export const scheduledAtSchema = z.string().datetime().transform((s) => new Date
 export const noteSchema = z.string().max(300);
 export const partySizeSchema = z.number().int();
 export const minCpSchema = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
+/** Local hour-of-week slots (day * 24 + hour, 0 = Sunday, 0-167) in the poster's zone; the service dedupes and sorts. */
+export const freeTimesSchema = z.array(z.number().int().min(0).max(167)).max(168);
+export const freeTimesZoneSchema = z.string().nullable();
 
-export const createPostBody = z.object({
+/**
+ * A sent zone must be a real IANA zone, and non-empty freeTimes needs one. An edit that omits the
+ * zone keeps the stored one (`zoneMayBeStored`); the service then checks the resulting post.
+ */
+const checkFreeTimes = (zoneMayBeStored: boolean) => (b: { freeTimes?: number[]; freeTimesZone?: string | null }, ctx: z.RefinementCtx) => {
+  if (b.freeTimesZone != null && !isValidTimeZone(b.freeTimesZone)) {
+    ctx.addIssue({ code: 'custom', path: ['freeTimesZone'], message: 'Unknown time zone' });
+  }
+  const missingZone = b.freeTimesZone === null || (b.freeTimesZone === undefined && !zoneMayBeStored);
+  if (b.freeTimes && b.freeTimes.length > 0 && missingZone) {
+    ctx.addIssue({ code: 'custom', path: ['freeTimesZone'], message: 'freeTimesZone is required with freeTimes' });
+  }
+};
+
+// No scheduledAt: the final time is set separately, and zod strips it as an unknown key.
+const postFields = z.object({
   type: postTypeSchema,
   characterId: z.string().min(1),
   bossDifficultyIds: bossDifficultyIdsSchema,
-  scheduledAt: scheduledAtSchema,
+  freeTimes: freeTimesSchema.default([]),
+  freeTimesZone: freeTimesZoneSchema.optional(),
   partySize: partySizeSchema.optional(),
   minCp: minCpSchema.optional(),
   note: noteSchema,
 });
 
+export const createPostBody = postFields.superRefine(checkFreeTimes(false));
+
 // Every create field optional; minCp may be null to clear it. At least one field is required.
-export const editPostBody = createPostBody
+export const editPostBody = postFields
   .partial()
-  .extend({ minCp: minCpSchema.nullable().optional() })
-  .refine((b) => Object.values(b).some((v) => v !== undefined), 'Provide at least one field to change');
+  .extend({ freeTimes: freeTimesSchema.optional(), minCp: minCpSchema.nullable().optional() })
+  .refine((b) => Object.values(b).some((v) => v !== undefined), 'Provide at least one field to change')
+  .superRefine(checkFreeTimes(true));
 
 const boardQuery = z.object({
   type: postTypeSchema.optional(),
@@ -46,6 +68,7 @@ const boardQuery = z.object({
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
   flexible: z.enum(['1']).optional(),
+  freeAt: z.coerce.date().optional(),
 }).refine((q) => !(q.flexible && (q.from || q.to)), 'flexible cannot be combined with from/to');
 
 export async function postRoutes(app: FastifyInstance): Promise<void> {
@@ -114,6 +137,16 @@ export async function postRoutes(app: FastifyInstance): Promise<void> {
     const now = new Date();
     const row = await renewPost(prisma, viewer, id, now);
     events.emit({ type: 'post.updated', postId: id });
+    return toPostDetailDTO(row, viewer, storage, now);
+  });
+
+  app.put('/posts/:id/final-time', async (req) => {
+    const viewer = await requireUser(req);
+    const { id } = req.params as { id: string };
+    const { scheduledAt } = z.object({ scheduledAt: z.string().datetime().transform((s) => new Date(s)) }).parse(req.body);
+    const now = new Date();
+    const row = await finalizePostTime(prisma, viewer, id, scheduledAt, now);
+    events.emit({ type: 'post.finalized', postId: id, actorUserId: viewer.user.id });
     return toPostDetailDTO(row, viewer, storage, now);
   });
 

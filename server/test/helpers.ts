@@ -6,6 +6,7 @@ import os from 'node:os';
 import { LocalDiskStorage, type Storage } from '../src/storage/storage.js';
 import path from 'node:path';
 import { PrismaClient, type Boss, type BossDifficulty, type Character, type Guild, type Post, type PostMember, type Prisma, type User, type World } from '@prisma/client';
+import { classToArchetype, type Archetype } from '@pf/shared';
 import type { Config } from '../src/config.js';
 import type { NexonCharacter, NexonClient } from '../src/nexon/client.js';
 import { NexonUnavailableError } from '../src/nexon/client.js';
@@ -54,7 +55,7 @@ export function makeWorld(over: Partial<World> = {}): Promise<World> {
   return prisma.world.create({ data: { nexonWorldId: 45, name: 'Kronos', worldType: 'heroic', ...over } });
 }
 
-export function makeGuild(over: { worldIds?: number[] } & Partial<Guild> = {}): Promise<Guild> {
+export function makeGuild(over: { worldIds?: number[]; bossRoleIds?: Record<string, string> } & Partial<Omit<Guild, 'bossRoleIds'>> = {}): Promise<Guild> {
   const { worldIds = [], ...rest } = over;
   return prisma.guild.create({
     data: {
@@ -82,11 +83,13 @@ export async function makeCharacter(over: Partial<Prisma.CharacterUncheckedCreat
   const worldId = over.worldId ?? (await prisma.world.findFirst())?.id ?? (await makeWorld()).id;
   const guildId = over.guildId ?? (await makeGuild({ worldIds: [worldId] })).id;
   const ign = over.ign ?? `Char${n}`;
+  const jobName = over.jobName ?? 'Hero';
   return prisma.character.create({
     data: {
       ign,
       ignLower: ign.toLowerCase(),
-      jobName: 'Hero',
+      jobName,
+      archetype: classToArchetype(jobName),
       level: 275,
       imageUrl: 'https://example.com/char.png',
       combatPower: 1_000_000n,
@@ -98,6 +101,10 @@ export async function makeCharacter(over: Partial<Prisma.CharacterUncheckedCreat
       guildId,
     },
   });
+}
+
+export function makeJobClass(name: string, archetype: Exclude<Archetype, 'unknown'>) {
+  return prisma.jobClass.create({ data: { name, nameLower: name.toLowerCase(), archetype } });
 }
 
 export class RecordingEvents implements DomainEvents {
@@ -138,7 +145,7 @@ export async function makePost(
       posterUserId: rest.posterUserId ?? poster.ownerId,
       posterCharacterId: poster.id,
       worldId: rest.worldId ?? poster.worldId,
-      guildId: rest.guildId ?? poster.guildId,
+      guildId: rest.guildId ?? poster.guildId!,
       bosses: { create: bossDifficultyIds.map((bossDifficultyId) => ({ bossDifficultyId })) },
     },
   });
@@ -155,7 +162,7 @@ export async function makePost(
         level: poster.level,
         imageUrl: poster.imageUrl,
         worldName: poster.world.name,
-        guildName: poster.guild.name,
+        guildName: poster.guild?.name ?? 'No guild',
       },
     },
   });
@@ -177,7 +184,7 @@ export async function addMember(postId: string, characterId: string): Promise<Po
         level: c.level,
         imageUrl: c.imageUrl,
         worldName: c.world.name,
-        guildName: c.guild.name,
+        guildName: c.guild?.name ?? 'No guild',
       },
     },
   });

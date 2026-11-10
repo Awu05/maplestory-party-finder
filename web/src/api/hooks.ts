@@ -5,10 +5,12 @@ import type {
   AdminPostDTO,
   AdminUserDTO,
   BossDTO,
+  JobClassDTO,
   CharacterDTO,
   GuildDTO,
   MeDTO,
   NexonCharacterPreview,
+  RefreshResultDTO,
   RarityTierDTO,
   WebhookHealthDTO,
   WorldDTO,
@@ -21,10 +23,23 @@ export function useMe() {
   return useQuery({ queryKey: ['me'], queryFn: () => api<MeDTO>('/api/auth/me'), staleTime: FIVE_MIN });
 }
 
+export function useUpdateProfile() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (displayName: string | null) => api<MeDTO>('/api/auth/me', { method: 'PATCH', json: { displayName } }),
+    onSuccess: async (me) => {
+      qc.setQueryData(['me'], me);
+      await Promise.all(['characters', 'posts', 'requests', 'admin'].map((key) => qc.invalidateQueries({ queryKey: [key] })));
+    },
+  });
+}
+
 export const useWorlds = () =>
   useQuery({ queryKey: ['worlds'], queryFn: () => api<WorldDTO[]>('/api/worlds'), staleTime: FIVE_MIN });
 export const useGuilds = () =>
   useQuery({ queryKey: ['guilds'], queryFn: () => api<GuildDTO[]>('/api/guilds'), staleTime: FIVE_MIN });
+export const useClasses = () =>
+  useQuery({ queryKey: ['classes'], queryFn: () => api<JobClassDTO[]>('/api/classes'), staleTime: FIVE_MIN });
 export const useBosses = () =>
   useQuery({ queryKey: ['bosses'], queryFn: () => api<BossDTO[]>('/api/bosses'), staleTime: FIVE_MIN });
 export const useRarityTiers = () =>
@@ -70,11 +85,20 @@ export interface CreateCharacterInput {
   nexonWorldId: number;
   combatPower: number;
   guildId: string;
-  bosses: { bossDifficultyId: number; experience: 'learning' | 'cleared' | 'can_carry' }[];
-  playTimes: number[];
-  note: string;
 }
-export type UpdateCharacterInput = Partial<Omit<CreateCharacterInput, 'ign' | 'nexonWorldId'>>;
+export interface ManualCharacterInput {
+  ign: string;
+  worldId: number;
+  jobName: string;
+  level: number;
+  combatPower: number;
+  guildId: string;
+}
+/** jobName and level are accepted for manual characters only. */
+export type UpdateCharacterInput = Partial<Omit<CreateCharacterInput, 'ign' | 'nexonWorldId'>> & {
+  jobName?: string;
+  level?: number;
+};
 
 function useInvalidateCharacters() {
   const qc = useQueryClient();
@@ -91,6 +115,15 @@ export function useCreateCharacter() {
   const invalidate = useInvalidateCharacters();
   return useMutation({
     mutationFn: (input: CreateCharacterInput) => api<CharacterDTO>('/api/characters', { method: 'POST', json: input }),
+    onSuccess: invalidate,
+  });
+}
+
+export function useCreateManualCharacter() {
+  const invalidate = useInvalidateCharacters();
+  return useMutation({
+    mutationFn: (input: ManualCharacterInput) =>
+      api<CharacterDTO>('/api/characters/manual', { method: 'POST', json: input }),
     onSuccess: invalidate,
   });
 }
@@ -136,7 +169,16 @@ export function useLookupCharacter() {
 export function useRefreshCharacter(id: string) {
   const invalidate = useInvalidateCharactersAndPosts();
   return useMutation({
-    mutationFn: () => api<CharacterDTO>(`/api/characters/${id}/refresh`, { method: 'POST' }),
+    mutationFn: () => api<RefreshResultDTO>(`/api/characters/${id}/refresh`, { method: 'POST' }),
+    onSuccess: invalidate,
+  });
+}
+
+export function useMoveCharacter(id: string) {
+  const invalidate = useInvalidateCharactersAndPosts();
+  return useMutation({
+    mutationFn: (input: { worldId: number; guildId: string | null }) =>
+      api<CharacterDTO>(`/api/characters/${id}/move`, { method: 'POST', json: input }),
     onSuccess: invalidate,
   });
 }
@@ -155,7 +197,7 @@ function useAdminMutation<I, O>(fn: (input: I) => Promise<O>) {
     mutationFn: fn,
     onSuccess: () =>
       Promise.all(
-        (['admin', 'guilds', 'worlds', 'bosses', 'rarity-tiers', 'characters'] as const).map((k) =>
+        (['admin', 'guilds', 'worlds', 'bosses', 'classes', 'rarity-tiers', 'characters', 'posts'] as const).map((k) =>
           qc.invalidateQueries({ queryKey: [k] }),
         ),
       ),
@@ -166,6 +208,7 @@ export interface GuildInput {
   name?: string;
   iconUrl?: string | null;
   webhookUrl?: string | null;
+  bossRoleIds?: Record<string, string>;
   active?: boolean;
   worldIds?: number[];
 }
@@ -202,6 +245,17 @@ export const useUpdateBoss = () =>
   );
 export const useDeleteBoss = () =>
   useAdminMutation((id: number) => api<void>(`/api/admin/bosses/${id}`, { method: 'DELETE' }));
+
+export const useCreateClass = () =>
+  useAdminMutation((input: { name: string; archetype: JobClassDTO['archetype'] }) =>
+    api<JobClassDTO>('/api/admin/classes', { method: 'POST', json: input }),
+  );
+export const useUpdateClass = () =>
+  useAdminMutation(({ id, ...json }: { id: number; archetype: JobClassDTO['archetype'] }) =>
+    api<JobClassDTO>(`/api/admin/classes/${id}`, { method: 'PATCH', json }),
+  );
+export const useDeleteClass = () =>
+  useAdminMutation((id: number) => api<void>(`/api/admin/classes/${id}`, { method: 'DELETE' }));
 
 export const useSaveTiers = () =>
   useAdminMutation((tiers: { name: string; minCp: number; sortOrder: number }[]) =>

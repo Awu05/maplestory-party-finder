@@ -4,7 +4,7 @@ import type { PostBossDTO, PostSummaryDTO } from '@pf/shared';
 export type WebhookPayload = {
   content?: string;
   embeds?: object[];
-  allowed_mentions: { parse: string[]; users?: string[] };
+  allowed_mentions: { parse: string[]; users?: string[]; roles?: string[] };
   username?: string;
 };
 
@@ -35,22 +35,29 @@ export function discordTime(iso: string | null): string {
   return `<t:${t}:F> (<t:${t}:R>)`;
 }
 
-export function buildNewPostMessage(post: PostSummaryDTO, webOrigin: string): WebhookPayload {
+export function buildNewPostMessage(post: PostSummaryDTO, webOrigin: string, bossRoleIds: string[] = []): WebhookPayload {
+  const roles = [...new Set(bossRoleIds.filter((id) => /^[1-9]\d{16,19}$/.test(id)))];
   const recruiting = post.type === 'recruiting';
   const snap = post.poster.snapshot;
   const field = (name: string, value: string) => ({ name, value: clip(neutralize(value), FIELD_MAX), inline: true });
 
-  const fields = [field('World', post.world.name), field('When', discordTime(post.scheduledAt))];
+  const when = post.scheduledAt
+    ? discordTime(post.scheduledAt)
+    : post.freeTimes.length > 0 ? 'Not set yet — see free times on the post' : 'Flexible';
+  const fields = [field('World', post.world.name), field('When', when)];
   if (recruiting && post.partySize != null) fields.push(field('Slots', `${post.memberCount}/${post.partySize}`));
   if (post.minCp != null) fields.push(field('Min CP', formatCpShort(post.minCp)));
   fields.push(field('Poster', `${snap.ign} · ${snap.jobName} · Lv ${snap.level} · CP ${formatCpShort(post.poster.cpAtJoin)}`));
   fields.push(field('Guild', post.guild.name));
-  const username = post.poster.character?.owner.discordUsername;
-  if (username) fields.push(field('Discord', username));
+  const owner = post.poster.character?.owner;
+  // Always include the real handle: a display name alone can't be searched on Discord and could copy someone else's.
+  const discord = owner && (owner.displayName ? `${owner.displayName} (@${owner.discordUsername})` : owner.discordUsername);
+  if (discord) fields.push(field('Discord', discord));
   const note = clip(neutralize(post.note.trim()), NOTE_MAX);
   if (note) fields.push({ name: 'Note', value: note, inline: false });
 
   return {
+    ...(roles.length ? { content: roles.map((id) => `<@&${id}>`).join(' ') } : {}),
     embeds: [{
       title: clip(neutralize(`${POST_TYPE_LABELS[post.type]}: ${bossesLabel(post)}`), TITLE_MAX),
       url: postLink(post, webOrigin),
@@ -58,7 +65,7 @@ export function buildNewPostMessage(post: PostSummaryDTO, webOrigin: string): We
       ...(/^https?:\/\//.test(snap.imageUrl) ? { thumbnail: { url: snap.imageUrl } } : {}),
       fields,
     }],
-    allowed_mentions: { parse: [] },
+    allowed_mentions: { parse: [], ...(roles.length ? { roles } : {}) },
   };
 }
 
@@ -88,6 +95,21 @@ export function buildAcceptPing(args: {
   const { recipientDiscordId: id, ign, post } = args;
   return {
     content: `<@${id}> ${neutralize(ign)} was accepted into ${neutralize(post.poster.snapshot.ign)}'s ${neutralize(bossesLabel(post))} run → ${postLink(post, args.webOrigin)}`,
+    allowed_mentions: { parse: [], users: [id] },
+  };
+}
+
+export function buildTimeSetPing(args: {
+  recipientDiscordId: string;
+  posterIgn: string;
+  post: PostSummaryDTO;
+  scheduledAt: string;
+  webOrigin: string;
+}): WebhookPayload {
+  const { recipientDiscordId: id, post } = args;
+  const unix = Math.floor(Date.parse(args.scheduledAt) / 1000);
+  return {
+    content: `<@${id}> ${neutralize(args.posterIgn)} set the time for ${neutralize(bossesLabel(post))}: <t:${unix}:F> → ${postLink(post, args.webOrigin)}`,
     allowed_mentions: { parse: [], users: [id] },
   };
 }

@@ -14,7 +14,7 @@ import { LineupView } from '../components/post/LineupView';
 import { PostCard } from '../components/post/PostCard';
 import { StatusPill } from '../components/post/StatusPill';
 import { bossLabel } from '../components/post/labels';
-import { formatWhen } from '../components/post/time';
+import { whenLabel } from '../components/post/time';
 import { useLastActionError } from '../components/post/useLastActionError';
 import '../components/post/post.css';
 
@@ -30,7 +30,7 @@ function PartyItem({ party, tiers }: { party: PostDetailDTO; tiers: RarityTierDT
     <li className="post-card">
       <div className="post-card__head">
         <StatusPill status={party.status} deleted={party.deleted} />
-        <span className="post-card__when">{formatWhen(party.scheduledAt)}</span>
+        <span className="post-card__when">{whenLabel(party)}</span>
       </div>
       <ul className="post-card__bosses">
         {party.bosses.map((b) => (
@@ -60,7 +60,7 @@ function PartiesTab({ tiers }: { tiers: RarityTierDTO[] }) {
         {upcoming.length === 0 ? (
           <p>No upcoming parties.</p>
         ) : (
-          <ul className="post-list-plain">
+          <ul className="post-list-plain my-parties__list">
             {upcoming.map((p) => (
               <PartyItem key={p.id} party={p} tiers={tiers} />
             ))}
@@ -70,7 +70,7 @@ function PartiesTab({ tiers }: { tiers: RarityTierDTO[] }) {
       {past.length > 0 && (
         <section aria-label="Past">
           <h2>Past</h2>
-          <ul className="post-list-plain">
+          <ul className="post-list-plain my-parties__list">
             {past.map((p) => (
               <PartyItem key={p.id} party={p} tiers={tiers} />
             ))}
@@ -88,7 +88,7 @@ function PostsTab({ tiers }: { tiers: RarityTierDTO[] }) {
   const list: PostSummaryDTO[] = posts.data ?? [];
   if (list.length === 0) return <p>You haven&apos;t posted anything.</p>;
   return (
-    <ul className="post-list-plain">
+    <ul className="post-list-plain my-parties__list">
       {list.map((p) => (
         <li key={p.id}>
           <StatusPill status={p.status} deleted={p.deleted} />
@@ -127,7 +127,7 @@ function RequestsTab({ tiers }: { tiers: RarityTierDTO[] }) {
         {incomingInvites.length === 0 ? (
           <p>No invites.</p>
         ) : (
-          <ul className="post-list-plain">
+          <ul className="post-list-plain my-parties__list">
             {incomingInvites.map((r) =>
               item(
                 r,
@@ -162,7 +162,7 @@ function RequestsTab({ tiers }: { tiers: RarityTierDTO[] }) {
         {outgoingRequests.length === 0 ? (
           <p>No outgoing requests.</p>
         ) : (
-          <ul className="post-list-plain">
+          <ul className="post-list-plain my-parties__list">
             {outgoingRequests.map((r) =>
               item(
                 r,
@@ -207,7 +207,7 @@ export function MyPartiesPage() {
   const tierList = tiers.data ?? [];
 
   return (
-    <section>
+    <section className="my-parties">
       <h1>My parties</h1>
       <div role="group" aria-label="Sections" className="actions my-tabs">
         {TABS.map((t) => (
