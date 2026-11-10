@@ -14,6 +14,7 @@ export function AdminLayout() {
         <NavLink to="worlds">Worlds</NavLink>
         <NavLink to="bosses">Bosses</NavLink>
         <NavLink to="tiers">Rarity tiers</NavLink>
+        <NavLink to="webhooks">Webhooks</NavLink>
       </nav>
       <Outlet />
     </section>

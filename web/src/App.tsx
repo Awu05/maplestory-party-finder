@@ -12,6 +12,7 @@ import { GuildsAdmin } from './pages/admin/GuildsAdmin';
 import { WorldsAdmin } from './pages/admin/WorldsAdmin';
 import { BossesAdmin } from './pages/admin/BossesAdmin';
 import { TiersAdmin } from './pages/admin/TiersAdmin';
+import { WebhooksAdmin } from './pages/admin/WebhooksAdmin';
 
 export function App() {
   return (
@@ -32,6 +33,7 @@ export function App() {
           <Route path="worlds" element={<WorldsAdmin />} />
           <Route path="bosses" element={<BossesAdmin />} />
           <Route path="tiers" element={<TiersAdmin />} />
+          <Route path="webhooks" element={<WebhooksAdmin />} />
         </Route>
       </Route>
     </Routes>

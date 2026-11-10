@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { AdminGuildDTO } from '@pf/shared';
-import { useAdminGuilds, useAdminWorlds, useCreateGuild, useUpdateGuild } from '../../api/hooks';
+import { useAdminGuilds, useAdminWorlds, useCreateGuild, useTestWebhook, useUpdateGuild } from '../../api/hooks';
 import { friendlyError } from '../../api/errors';
 
 interface Draft {
@@ -9,6 +9,21 @@ interface Draft {
   iconUrl: string;
   webhookUrl: string;
   worldIds: number[];
+}
+
+function TestWebhookButton({ guild }: { guild: AdminGuildDTO }) {
+  const test = useTestWebhook();
+  const data = test.data;
+  return (
+    <>
+      <button type="button" aria-label={`Send test message ${guild.name}`} disabled={test.isPending} onClick={() => test.mutate(guild.id)}>
+        Send test message
+      </button>
+      {data?.ok === true && <span role="status"> Sent ✓</span>}
+      {data?.ok === false && <span role="alert" className="admin__error"> Failed: {data.error}</span>}
+      {test.isError && <span role="alert" className="admin__error"> {friendlyError(test.error)}</span>}
+    </>
+  );
 }
 
 const blank: Draft = { id: null, name: '', iconUrl: '', webhookUrl: '', worldIds: [] };
@@ -69,7 +84,9 @@ export function GuildsAdmin() {
                   onChange={(e) => update.mutate({ id: g.id, active: e.target.checked })}
                 />
               </td>
-              <td><button type="button" aria-label={`Edit ${g.name}`} onClick={() => edit(g)}>Edit</button></td>
+              <td><button type="button" aria-label={`Edit ${g.name}`} onClick={() => edit(g)}>Edit</button>
+                {g.webhookUrl && <TestWebhookButton guild={g} />}
+              </td>
             </tr>
           ))}
         </tbody>

@@ -7,6 +7,7 @@ import type {
   MeDTO,
   NexonCharacterPreview,
   RarityTierDTO,
+  WebhookHealthDTO,
   WorldDTO,
 } from '@pf/shared';
 import { api } from './client';
@@ -203,3 +204,20 @@ export const useSaveTiers = () =>
   useAdminMutation((tiers: { name: string; minCp: number; sortOrder: number }[]) =>
     api<RarityTierDTO[]>('/api/admin/rarity-tiers', { method: 'PUT', json: { tiers } }),
   );
+
+export const useWebhookHealth = () =>
+  useQuery({
+    queryKey: ['admin', 'webhooks', 'health'],
+    queryFn: () => api<WebhookHealthDTO[]>('/api/admin/webhooks/health'),
+    refetchInterval: 60_000,
+  });
+
+export type TestWebhookResult = { ok: true } | { ok: false; error: string };
+export function useTestWebhook() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (guildId: string) =>
+      api<TestWebhookResult>(`/api/admin/guilds/${guildId}/test-webhook`, { method: 'POST' }),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['admin', 'webhooks', 'health'] }),
+  });
+}

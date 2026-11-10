@@ -18,3 +18,6 @@
   .admin__table td { border: 0; display: flex; justify-content: space-between; gap: 1rem; }
   .admin__table td::before { content: attr(data-label); font-weight: 600; }
 }
+.pill { display: inline-block; padding: 0.1rem 0.6rem; border-radius: 999px; font-size: 0.85em; color: #fff; background: #2e7d32; }
+.pill--red { background: #c0392b; }
+.pill--gray { background: #7f8c8d; }
