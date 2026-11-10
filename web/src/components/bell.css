@@ -1,6 +1,5 @@
 .bell {
   position: relative;
-  order: 1;
 }
 .bell-button {
   position: relative;
@@ -34,7 +33,7 @@
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
 }
 .bell-head {
   display: flex;
@@ -78,8 +77,6 @@
 }
 @media (max-width: 640px) {
   .bell {
-    order: 0;
-    margin-left: auto;
     position: static;
   }
   .bell-panel {
@@ -91,7 +88,4 @@
     max-height: calc(100vh - 3.25rem);
     border-radius: 0;
   }
-}
-.bell + .menu-button {
-  margin-left: 0.5rem;
 }

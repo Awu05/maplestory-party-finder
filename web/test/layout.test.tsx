@@ -80,6 +80,23 @@ describe('Layout', () => {
     expect(screen.queryByRole('link', { name: 'My parties' })).not.toBeInTheDocument();
   });
 
+  it('bell button precedes the Discord username in document order', async () => {
+    mockApi({ '/api/auth/me': user, '/api/notifications?limit=30': { items: [], unreadCount: 0 } });
+    renderWithProviders(<App />);
+    const name = await screen.findByText('maple_fan');
+    const bell = await screen.findByRole('button', { name: /notifications/i });
+    expect(bell.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('brand renders Party and Finder', async () => {
+    mockApi({ '/api/auth/me': null });
+    renderWithProviders(<App />);
+    const brand = await screen.findByRole('link', { name: 'PartyFinder' });
+    expect(brand).toHaveClass('brand');
+    expect(brand.firstChild?.textContent).toBe('Party');
+    expect(brand.querySelector('span')?.textContent).toBe('Finder');
+  });
+
   it('My parties shown when logged in', async () => {
     mockApi({ '/api/auth/me': user });
     renderWithProviders(<App />);

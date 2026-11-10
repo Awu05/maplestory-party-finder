@@ -175,9 +175,9 @@ input[type='radio'] {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 0.75rem;
-  padding: 0.6rem 1rem;
-  background: var(--header-bg);
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface);
   border-bottom: 1px solid var(--border);
 }
 .brand {
@@ -192,24 +192,32 @@ input[type='radio'] {
 .nav {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: var(--space-4);
   flex: 1;
 }
-.nav a:not(.button) {
-  color: var(--text);
+.nav a {
+  padding: var(--space-1) 0;
+  color: var(--muted);
   text-decoration: none;
+  border-bottom: 2px solid transparent;
+}
+.nav a:hover {
+  color: var(--text);
 }
 .nav a.active {
-  font-weight: 700;
-  text-decoration: underline;
+  color: var(--text);
+  font-weight: 600;
+  border-bottom-color: var(--accent);
 }
-.spacer {
-  flex: 1;
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
 }
 .user {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-2);
 }
 .avatar {
   width: 28px;
@@ -218,7 +226,6 @@ input[type='radio'] {
 }
 .menu-button {
   display: none;
-  margin-left: auto;
 }
 .banner {
   display: flex;
@@ -239,6 +246,11 @@ input[type='radio'] {
 @media (max-width: 639px) {
   .menu-button {
     display: inline-block;
+    order: 2;
+  }
+  .header-right {
+    margin-left: auto;
+    order: 1;
   }
   .nav {
     display: none;
@@ -246,11 +258,9 @@ input[type='radio'] {
     align-items: flex-start;
     width: 100%;
     flex-basis: 100%;
+    order: 3;
   }
   .nav.open {
     display: flex;
-  }
-  .spacer {
-    display: none;
   }
 }

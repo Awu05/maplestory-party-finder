@@ -45,9 +45,8 @@ export function Layout() {
     <>
       <header className="app-header">
         <Link to="/" className="brand" onClick={close}>
-          Party Finder
+          Party<span>Finder</span>
         </Link>
-        {me && <NotificationBell />}
         <button
           type="button"
           className="menu-button"
@@ -79,15 +78,19 @@ export function Layout() {
               Admin
             </NavLink>
           )}
-          <span className="spacer" />
+        </nav>
+        <div className="header-right">
+          {me && <NotificationBell />}
           {me ? (
-            <span className="user">
-              {me.avatarUrl && <img className="avatar" src={me.avatarUrl} alt="" />}
-              <span>{me.discordUsername}</span>
-              <button type="button" onClick={logout}>
+            <>
+              <span className="user">
+                {me.avatarUrl && <img className="avatar" src={me.avatarUrl} alt="" />}
+                <span>{me.discordUsername}</span>
+              </span>
+              <button type="button" className="btn btn--secondary" onClick={logout}>
                 Log out
               </button>
-            </span>
+            </>
           ) : (
             me === null && (
               <a className="button" href="/api/auth/discord">
@@ -95,7 +98,7 @@ export function Layout() {
               </a>
             )
           )}
-        </nav>
+        </div>
       </header>
       {loginFailed && (
         <div className="banner" role="alert">
