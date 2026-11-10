@@ -49,7 +49,8 @@ function PreviewBody({ postId }: { postId: string }) {
           <Link className="btn btn--secondary" to={`/posts/${p.id}`}>
             Open post
           </Link>
-          {p.isPoster && (
+          {/* Same rule as the full page's posterActive: no editing a closed or deleted post. */}
+          {p.isPoster && !p.deleted && p.status !== 'closed' && (
             <Link className="btn btn--secondary" to={`/posts/${p.id}/edit`}>
               Edit
             </Link>

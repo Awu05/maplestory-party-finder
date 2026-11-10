@@ -183,6 +183,17 @@ describe('Board preview', () => {
     expect(within(pane).getByRole('link', { name: 'Open post' })).toHaveAttribute('href', '/posts/p2');
   });
 
+  it.each([
+    ['closed', { status: 'closed' as const }],
+    ['deleted', { deleted: true }],
+  ])("hides Edit on the poster's own %s post", async (_name, over) => {
+    mockApi({ ...base, '/api/posts/p2': detail({ ...p2, isPoster: true, ...over }) });
+    renderBoard();
+    const pane = await preview();
+    expect(await within(pane).findByRole('link', { name: 'Open post' })).toHaveAttribute('href', '/posts/p2');
+    expect(within(pane).queryByRole('link', { name: 'Edit' })).not.toBeInTheDocument();
+  });
+
   it('hides Edit from a non-poster', async () => {
     mockApi(base);
     renderBoard();
