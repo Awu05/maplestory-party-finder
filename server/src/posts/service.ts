@@ -300,7 +300,11 @@ export async function editPost(prisma: PrismaClient, viewer: Viewer, id: string,
   return prisma.$transaction(async (tx) => {
     const row = await loadPostForUpdate(tx, id);
     assertPoster(row, viewer);
-    if (row.status === 'closed' || row.deletedAt !== null) throw new AppError(409, 'POST_CLOSED', 'Post is closed');
+    // Only a new time can bring back an expired post; edits never extend expiry (Renew does that).
+    const scheduleChanged = input.scheduledAt !== undefined;
+    if (row.status === 'closed' || row.deletedAt !== null || (effectivePostStatus(row, now) === 'closed' && !scheduleChanged)) {
+      throw new AppError(409, 'POST_CLOSED', 'Post is closed');
+    }
 
     const type = input.type ?? row.type;
     const typeChanged = type !== row.type;
@@ -315,7 +319,7 @@ export async function editPost(prisma: PrismaClient, viewer: Viewer, id: string,
 
     const scheduledAt = input.scheduledAt !== undefined ? input.scheduledAt : row.scheduledAt;
     if (input.scheduledAt) assertScheduleWindow(input.scheduledAt, now);
-    const expiresAt = postExpiresAt(scheduledAt, now);
+    const expiresAt = scheduleChanged ? postExpiresAt(scheduledAt, now) : row.expiresAt;
 
     const bossesChanged = input.bossDifficultyIds !== undefined;
     const caps = bossesChanged

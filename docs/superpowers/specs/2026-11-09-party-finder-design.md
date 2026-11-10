@@ -124,6 +124,7 @@ Level, class, and image re-sync from Nexon automatically. *My call:* a daily bac
 ### 6.5 Lifecycle
 - Posts close automatically when the scheduled time has passed (*my call*: a few hours of grace) or when a Recruiting post's slots are full.
 - "Flexible" posts expire after a set period (*my call*: 7 days) unless renewed.
+  - *Ruling (deep review):* editing a post never extends its expiry; only a new time recomputes it, and an expired post can be edited only to give it a new time. Use **Renew** to extend a Flexible post. This supersedes the plan 2 rule that every edit recomputes `expiresAt`.
 - The poster can close or **delete** their own post at any time (user's decision).
 - **Only the poster can edit their post, and they can change any field** (user's decision): type, character, bosses, time, party size, minimum CP, and note. *My calls*, to keep existing parties valid:
   - Type and character are locked once others have joined.

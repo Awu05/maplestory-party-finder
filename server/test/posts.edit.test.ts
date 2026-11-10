@@ -216,6 +216,35 @@ describe('PATCH /api/posts/:id', () => {
     expect(board.json().map((x: { id: string }) => x.id)).toContain(old.id);
   });
 
+  it('a note-only edit on a 6-day-old flexible post leaves expiresAt unchanged', async () => {
+    const createdAt = new Date(Date.now() - 6 * 24 * HOUR);
+    const p = await makePost({ posterUserId: userId, scheduledAt: null, createdAt });
+    expect((await patch(p.id, { note: 'still here' })).statusCode).toBe(200);
+    expect((await prisma.post.findUniqueOrThrow({ where: { id: p.id } })).expiresAt.getTime()).toBe(p.expiresAt.getTime());
+  });
+
+  it('a note-only edit on an expired flexible post -> 409 POST_CLOSED, unchanged', async () => {
+    const createdAt = new Date(Date.now() - 8 * 24 * HOUR);
+    const p = await makePost({ posterUserId: userId, scheduledAt: null, createdAt });
+    expect(p.expiresAt.getTime()).toBeLessThan(Date.now());
+    const res = await patch(p.id, { note: 'revive me' });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe('POST_CLOSED');
+    const row = await prisma.post.findUniqueOrThrow({ where: { id: p.id } });
+    expect(row.expiresAt.getTime()).toBe(p.expiresAt.getTime());
+    expect(row.note).toBe(p.note);
+  });
+
+  it('rescheduling an expired scheduled post with a future scheduledAt -> 200 and back on the board', async () => {
+    const p = await makePost({ posterUserId: userId, scheduledAt: new Date(Date.now() - 10 * HOUR) });
+    expect(p.expiresAt.getTime()).toBeLessThan(Date.now());
+    const when = new Date(Date.now() + 2 * HOUR);
+    expect((await patch(p.id, { scheduledAt: when.toISOString(), note: 'again' })).statusCode).toBe(200);
+    expect((await prisma.post.findUniqueOrThrow({ where: { id: p.id } })).expiresAt.getTime()).toBe(when.getTime() + 3 * HOUR);
+    const board = await app.inject({ method: 'GET', url: '/api/posts' });
+    expect(board.json().map((x: { id: string }) => x.id)).toContain(p.id);
+  });
+
   it('minCp null clears it', async () => {
     const p = await makePost({ posterUserId: userId, minCp: 500n });
     expect((await patch(p.id, { minCp: null })).statusCode).toBe(200);
