@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useMe } from '../api/hooks';
 import { api } from '../api/client';
+import { NotificationBell } from './NotificationBell';
 
 export function Layout() {
   const { data: me } = useMe();
@@ -11,6 +12,7 @@ export function Layout() {
   const close = () => setOpen(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const loginFailed = searchParams.get('login') === 'failed';
+  const loginBanned = searchParams.get('login') === 'banned';
 
   function dismissLoginFailed() {
     setSearchParams(
@@ -32,6 +34,7 @@ export function Layout() {
     qc.setQueryData(['me'], null);
     // Post data is viewer-specific (isPoster, myPending, invites): drop it, refetching what's on screen.
     qc.removeQueries({ queryKey: ['posts'], type: 'inactive' });
+    qc.removeQueries({ queryKey: ['notifications'] });
     await Promise.all([
       qc.resetQueries({ queryKey: ['posts'], type: 'active' }),
       qc.invalidateQueries({ queryKey: ['characters'] }),
@@ -44,6 +47,7 @@ export function Layout() {
         <Link to="/" className="brand" onClick={close}>
           Party Finder
         </Link>
+        {me && <NotificationBell />}
         <button
           type="button"
           className="menu-button"
@@ -96,6 +100,14 @@ export function Layout() {
       {loginFailed && (
         <div className="banner" role="alert">
           <span>Login with Discord failed — try again</span>
+          <button type="button" aria-label="Dismiss" onClick={dismissLoginFailed}>
+            ×
+          </button>
+        </div>
+      )}
+      {loginBanned && (
+        <div className="banner" role="alert">
+          <span>Your account has been banned.</span>
           <button type="button" aria-label="Dismiss" onClick={dismissLoginFailed}>
             ×
           </button>
