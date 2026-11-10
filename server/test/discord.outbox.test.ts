@@ -61,14 +61,35 @@ describe('WebhookWorker', () => {
     expect(sender.calls).toHaveLength(2);
   });
 
-  it('429 reschedules by retryAfterMs without counting an attempt', async () => {
+  it('429 reschedules by retryAfterMs and counts an attempt', async () => {
     const { id } = await setup();
     sender.queue({ ok: false, status: 429, retryAfterMs: 5000, error: 'HTTP 429' });
-    await worker().runOnce();
+    expect(await worker().runOnce()).toEqual({ sent: 0, retried: 1, failed: 0 });
     const row = await get(id);
     expect(row.status).toBe('pending');
-    expect(row.attempts).toBe(0);
+    expect(row.attempts).toBe(1);
+    expect(row.lastError).toBe('HTTP 429');
     expect(row.nextAttemptAt).toEqual(at(5000));
+  });
+
+  it('5 consecutive 429s fail the delivery with HTTP 429', async () => {
+    const { id } = await setup();
+    for (let i = 0; i < 6; i++) sender.queue({ ok: false, status: 429, retryAfterMs: 2000, error: 'HTTP 429' });
+    for (let i = 0; i < 5; i++) {
+      await worker().runOnce();
+      const row = await get(id);
+      expect(row.attempts).toBe(i + 1);
+      if (i < 4) {
+        expect(row.status).toBe('pending');
+        expect(row.nextAttemptAt).toEqual(new Date(clock.getTime() + 2000));
+        clock = row.nextAttemptAt;
+      }
+    }
+    const row = await get(id);
+    expect(row).toMatchObject({ status: 'failed', attempts: 5, lastError: 'HTTP 429' });
+    clock = at(10 * 3_600_000);
+    await worker().runOnce();
+    expect(sender.calls).toHaveLength(5);
   });
 
   it('429 without retryAfterMs defaults to 5s', async () => {

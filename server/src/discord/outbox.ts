@@ -110,17 +110,19 @@ export class WebhookWorker {
     } else if (res.status === 404 || res.status === 401) {
       await upd({ status: 'failed', attempts: row.attempts + 1, lastError: res.error });
       counts.failed++;
-    } else if (res.status === 429) {
-      const wait = Math.min(Math.max(res.retryAfterMs ?? DEFAULT_RETRY_AFTER_MS, MIN_RETRY_AFTER_MS), MAX_RETRY_AFTER_MS);
-      await upd({ nextAttemptAt: new Date(this.now().getTime() + wait), lastError: res.error });
-      counts.retried++;
     } else {
+      // A 429 counts as an attempt too (else a webhook that is always rate-limited retries forever),
+      // but waits as long as Discord asked rather than the backoff.
       const attempts = row.attempts + 1;
+      const wait =
+        res.status === 429
+          ? Math.min(Math.max(res.retryAfterMs ?? DEFAULT_RETRY_AFTER_MS, MIN_RETRY_AFTER_MS), MAX_RETRY_AFTER_MS)
+          : BACKOFF[attempts - 1]!;
       if (attempts >= MAX_ATTEMPTS) {
         await upd({ status: 'failed', attempts, lastError: res.error });
         counts.failed++;
       } else {
-        await upd({ attempts, nextAttemptAt: new Date(this.now().getTime() + BACKOFF[attempts - 1]!), lastError: res.error });
+        await upd({ attempts, nextAttemptAt: new Date(this.now().getTime() + wait), lastError: res.error });
         counts.retried++;
       }
     }
