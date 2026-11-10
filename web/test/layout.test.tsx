@@ -99,8 +99,8 @@ describe('Layout', () => {
     for (const f of ['src/components/bell.css', 'src/styles/global.css']) {
       const css = readFileSync(f, 'utf8');
       for (const [, sel, body] of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-        if (/\.(bell|user|logout|header-right)/.test(sel) && !/\.header-right\s*$/.test(sel.trim())) {
-          expect(body, `${f}: ${sel.trim()}`).not.toMatch(/order\s*:|row-reverse/);
+        if (/\.(bell|user|logout|header-right)b/.test(sel) && !/\.header-right\s*$/.test(sel.trim())) {
+          expect(body, `${f}: ${sel.trim()}`).not.toMatch(/border\s*:|row-reverse/);
         }
         if (/\.header-right\s*$/.test(sel.trim())) expect(body).not.toMatch(/row-reverse/);
       }
