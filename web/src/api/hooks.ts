@@ -163,6 +163,15 @@ export function useRefreshCharacter(id: string) {
   });
 }
 
+export function useMoveCharacter(id: string) {
+  const invalidate = useInvalidateCharactersAndPosts();
+  return useMutation({
+    mutationFn: (input: { worldId: number; guildId: string | null }) =>
+      api<CharacterDTO>(`/api/characters/${id}/move`, { method: 'POST', json: input }),
+    onSuccess: invalidate,
+  });
+}
+
 // ---- Admin ----
 
 export const useAdminGuilds = () =>

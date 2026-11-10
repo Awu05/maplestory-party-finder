@@ -1,30 +1,47 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import type { RefreshResultDTO } from '@pf/shared';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useCharacters, useDeleteCharacter, useMe, useRarityTiers, useRefreshCharacter } from '../api/hooks';
 import { friendlyError } from '../api/errors';
 import { CharacterCard } from '../components/card/CharacterCard';
+import { MoveWorldDialog } from '../components/character/MoveWorldDialog';
 import './characters.css';
+
+const OUTCOME_MESSAGE: Record<RefreshResultDTO['outcome'], string> = {
+  synced: 'Synced from Nexon',
+  stale: "Couldn't reach Nexon — showing last known data",
+  not_found: 'Still not found on Nexon',
+  unavailable: "Couldn't reach Nexon, try again later",
+  found_elsewhere: '',
+};
 
 function Actions({ id, onMessage }: { id: string; onMessage: (m: string) => void }) {
   const navigate = useNavigate();
   const refresh = useRefreshCharacter(id);
   const del = useDeleteCharacter();
+  const refreshRef = useRef<HTMLButtonElement>(null);
+  const [found, setFound] = useState<RefreshResultDTO | null>(null);
+  const closeDialog = () => {
+    setFound(null);
+    refreshRef.current?.focus();
+  };
   return (
     <div className="actions my-card__actions">
       <button type="button" className="btn btn--secondary" onClick={() => navigate(`/me/characters/${id}/edit`)}>
         Edit
       </button>
       <button
+        ref={refreshRef}
         type="button"
         className="btn btn--secondary"
         disabled={refresh.isPending}
         onClick={() => {
           onMessage('');
           refresh.mutate(undefined, {
-            onSuccess: (r) =>
-              onMessage(
-                r.character.syncStatus === 'stale' ? "Couldn't reach Nexon — showing last known data" : 'Synced from Nexon',
-              ),
+            onSuccess: (r) => {
+              if (r.outcome === 'found_elsewhere') setFound(r);
+              else onMessage(OUTCOME_MESSAGE[r.outcome]);
+            },
             onError: (e) => onMessage(friendlyError(e)),
           });
         }}
@@ -42,6 +59,17 @@ function Actions({ id, onMessage }: { id: string; onMessage: (m: string) => void
       >
         Delete
       </button>
+      {found && (
+        <MoveWorldDialog
+          character={found.character}
+          candidates={found.candidates}
+          onClose={closeDialog}
+          onMoved={(c) => {
+            closeDialog();
+            onMessage(`Moved to ${c.world.name}`);
+          }}
+        />
+      )}
     </div>
   );
 }
