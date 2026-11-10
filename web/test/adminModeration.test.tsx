@@ -109,7 +109,7 @@ describe('admin posts', () => {
     renderWithProviders(<PostsAdmin />);
     expect(await screen.findByText(/Hard Lucid/)).toBeInTheDocument();
     expect(screen.getByText(/bob/)).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'deleted' } });
+    fireEvent.click(screen.getByRole('radio', { name: 'Deleted' }));
     await waitFor(() =>
       expect(fetchMock.mock.calls.some(([u]) => String(u) === '/api/admin/posts?status=deleted')).toBe(true),
     );

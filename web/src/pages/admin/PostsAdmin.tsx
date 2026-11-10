@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAdminDeletePost, useAdminPosts, useDebouncedValue } from '../../api/hooks';
 import { friendlyError } from '../../api/errors';
+import { ChipGroup } from '../../components/ui/Chips';
 import { StatusPill } from '../../components/post/StatusPill';
 import { bossLabel } from '../../components/post/labels';
 import { relativeTime } from '../../components/post/time';
@@ -24,12 +25,7 @@ export function PostsAdmin() {
     <div>
       <h2>Posts</h2>
       <div className="admin__row">
-        <label>
-          Status
-          <select value={status} onChange={(e) => setStatus(e.target.value)}>
-            {STATUSES.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
-          </select>
-        </label>
+        <ChipGroup label="Status" options={STATUSES.map(([value, label]) => ({ value, label }))} value={status} onChange={setStatus} />
         <input type="search" aria-label="Search IGN" placeholder="Search IGN" value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
       {posts.isError && <p role="alert" className="admin__error">{friendlyError(posts.error)}</p>}
@@ -54,6 +50,7 @@ export function PostsAdmin() {
                   <Link to={`/posts/${p.id}`} aria-label={`View ${p.id}`}>View</Link>{' '}
                   <button
                     type="button"
+                    className="btn btn--danger"
                     aria-label={`Delete permanently ${p.id}`}
                     disabled={remove.isPending}
                     onClick={() => {

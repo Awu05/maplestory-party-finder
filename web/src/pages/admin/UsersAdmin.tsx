@@ -64,6 +64,7 @@ function UserCharacters({ user }: { user: AdminUserDTO }) {
               </button>
               <button
                 type="button"
+                className="btn btn--danger"
                 aria-label={`Delete ${c.ign}`}
                 disabled={remove.isPending}
                 onClick={() => {
@@ -108,6 +109,7 @@ export function UsersAdmin() {
               {!u.isAdmin && (
                 <button
                   type="button"
+                  className={u.banned ? undefined : 'btn btn--danger'}
                   aria-label={`${u.banned ? 'Unban' : 'Ban'} ${u.discordUsername}`}
                   disabled={setBanned.isPending}
                   onClick={() => {

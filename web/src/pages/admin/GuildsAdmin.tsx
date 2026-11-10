@@ -135,7 +135,7 @@ export function GuildsAdmin() {
           </fieldset>
           {mutation.isError && <p role="alert" className="admin__error">{friendlyError(mutation.error)}</p>}
           <div className="admin__row">
-            <button type="submit" disabled={mutation.isPending}>{draft.id ? 'Save guild' : 'Create guild'}</button>
+            <button type="submit" className="btn btn--primary" disabled={mutation.isPending}>{draft.id ? 'Save guild' : 'Create guild'}</button>
             <button type="button" onClick={() => setDraft(null)}>Cancel</button>
           </div>
         </form>

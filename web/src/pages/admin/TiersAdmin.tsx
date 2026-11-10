@@ -80,7 +80,7 @@ export function TiersAdmin() {
           <button type="button" onClick={() => setRows([...rows, { name: '', minCp: '0', sortOrder: String(rows.length) }])}>
             Add tier
           </button>
-          <button type="submit" disabled={save.isPending}>Save tiers</button>
+          <button type="submit" className="btn btn--primary" disabled={save.isPending}>Save tiers</button>
         </div>
       </form>
 

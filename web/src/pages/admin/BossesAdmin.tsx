@@ -60,9 +60,9 @@ function BossEditor({ boss }: { boss?: BossDTO }) {
       {error && <p role="alert" className="admin__error">{friendlyError(error)}</p>}
       <div className="admin__row">
         <button type="button" onClick={() => setRows([...rows, { difficulty: '', partyCap: '6' }])}>Add difficulty</button>
-        <button type="submit">{boss ? 'Save boss' : 'Create boss'}</button>
+        <button type="submit" className="btn btn--primary">{boss ? 'Save boss' : 'Create boss'}</button>
         {boss && (
-          <button type="button" onClick={() => { if (window.confirm(`Delete ${boss.name}?`)) remove.mutate(boss.id); }}>
+          <button type="button" className="btn btn--danger" onClick={() => { if (window.confirm(`Delete ${boss.name}?`)) remove.mutate(boss.id); }}>
             Delete
           </button>
         )}
