@@ -60,4 +60,7 @@ describe('nextOccurrence', () => {
   it('wraps to next week', () => {
     expect(nextOccurrence(57, NY, now).toISOString()).toBe('2026-11-17T14:00:00.000Z');
   });
+  it('does not return an instant before the current hour during a repeated fall-back hour', () => {
+    expect(nextOccurrence(1, NY, new Date('2026-11-01T06:30:00Z')).toISOString()).toBe('2026-11-01T06:00:00.000Z');
+  });
 });

@@ -87,8 +87,11 @@ export function freeSlotsForViewer(freeTimes: number[], posterZone: string, view
   return [...out].sort((a, b) => a - b);
 }
 
+/** Slots in a spring-forward gap are skipped to the next week where the hour exists. */
 export function nextOccurrence(hourOfWeek: number, zone: string, now: Date): Date {
-  const start = zonedToInstant(instantToZoned(now, zone), zone).getTime();
+  const nowMs = now.getTime();
+  const p = parts(nowMs, zone);
+  const start = nowMs - (((p.minute * 60 + p.second) * 1000) + (((nowMs % 1000) + 1000) % 1000));
   for (let i = 0; i <= 24 * 14; i++) {
     const t = start + i * HOUR_MS;
     const z = instantToZoned(new Date(t), zone);
