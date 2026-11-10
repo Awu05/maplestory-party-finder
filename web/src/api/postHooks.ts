@@ -54,7 +54,9 @@ export interface PostInput {
   type: PostType;
   characterId: string;
   bossDifficultyIds: number[];
-  scheduledAt: string | null;
+  /** Local hour-of-week slots (day * 24 + hour, 0 = Sunday) in freeTimesZone. */
+  freeTimes: number[];
+  freeTimesZone: string | null;
   partySize?: number;
   minCp?: number;
   note: string;

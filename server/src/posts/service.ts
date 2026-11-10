@@ -14,10 +14,19 @@ export interface CreatePostInput {
   type: PostType;
   characterId: string;
   bossDifficultyIds: number[];
-  scheduledAt: Date | null;
+  freeTimes: number[];
+  freeTimesZone?: string | null;
   partySize?: number;
   minCp?: number;
   note: string;
+}
+
+/** Sorted unique free times, with the zone only when there are any. */
+function normalizeFreeTimes(freeTimes: number[], zone: string | null | undefined): { freeTimes: number[]; freeTimesZone: string | null } {
+  const sorted = [...new Set(freeTimes)].sort((a, b) => a - b);
+  if (sorted.length === 0) return { freeTimes: [], freeTimesZone: null };
+  if (!zone) throw new AppError(400, 'VALIDATION', 'freeTimesZone is required with freeTimes');
+  return { freeTimes: sorted, freeTimesZone: zone };
 }
 
 /** Throws 400 VALIDATION unless scheduledAt is within [now - 5min, now + 30d]. */
@@ -69,7 +78,7 @@ export async function createPost(prisma: PrismaClient, userId: string, input: Cr
   const character = await getPostingCharacter(prisma, input.characterId, userId);
 
   const now = new Date();
-  if (input.scheduledAt) assertScheduleWindow(input.scheduledAt, now);
+  const free = normalizeFreeTimes(input.freeTimes, input.freeTimesZone);
 
   const difficulties = await validateBosses(prisma, input.bossDifficultyIds);
   validateRecruitingFields(input.type, input.partySize, input.minCp, difficulties.map((d) => d.partyCap));
@@ -82,8 +91,10 @@ export async function createPost(prisma: PrismaClient, userId: string, input: Cr
         posterCharacterId: character.id,
         worldId: character.worldId,
         guildId: character.guildId,
-        scheduledAt: input.scheduledAt,
-        expiresAt: postExpiresAt(input.scheduledAt, now),
+        // Not finalized yet: the poster sets the final time later.
+        scheduledAt: null,
+        expiresAt: postExpiresAt(null, now),
+        ...free,
         createdAt: now,
         partySize: input.partySize ?? null,
         minCp: input.minCp === undefined ? null : BigInt(input.minCp),
@@ -113,12 +124,25 @@ export interface BoardFilter {
   from?: Date;
   to?: Date;
   flexible?: boolean;
+  /** Keeps posts free at this instant's hour-of-week in each post's own freeTimesZone. */
+  freeAt?: Date;
+}
+
+/** Ids of posts whose freeTimes contain `freeAt`'s local hour-of-week in their own zone. */
+async function postIdsFreeAt(prisma: PrismaClient, freeAt: Date): Promise<string[]> {
+  const rows = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT id FROM "Post"
+    WHERE "freeTimesZone" IS NOT NULL
+      AND ((EXTRACT(DOW FROM (${freeAt}::timestamptz AT TIME ZONE "freeTimesZone")) * 24
+           + EXTRACT(HOUR FROM (${freeAt}::timestamptz AT TIME ZONE "freeTimesZone")))::int) = ANY("freeTimes")`;
+  return rows.map((r) => r.id);
 }
 
 export async function listBoard(prisma: PrismaClient, f: BoardFilter, now: Date): Promise<PostSummaryRow[]> {
   const and: Prisma.PostWhereInput[] = [];
   if (f.bossId !== undefined) and.push({ bosses: { some: { bossDifficulty: { bossId: f.bossId } } } });
   if (f.bossDifficultyId !== undefined) and.push({ bosses: { some: { bossDifficultyId: f.bossDifficultyId } } });
+  if (f.freeAt !== undefined) and.push({ id: { in: await postIdsFreeAt(prisma, f.freeAt) } });
   return prisma.post.findMany({
     where: {
       deletedAt: null,
@@ -326,7 +350,8 @@ export interface EditPostInput {
   type?: PostType;
   characterId?: string;
   bossDifficultyIds?: number[];
-  scheduledAt?: Date | null;
+  freeTimes?: number[];
+  freeTimesZone?: string | null;
   partySize?: number;
   minCp?: number | null;
   note?: string;
@@ -339,16 +364,15 @@ export interface EditResult {
   becameFull: boolean;
 }
 
-/** Poster edits any field. The resulting post is validated as a whole, then applied. */
+/**
+ * Poster edits any field. The resulting post is validated as a whole, then applied. An edit never
+ * touches the final time (scheduledAt) or expiresAt: finalizing and Renew do that.
+ */
 export async function editPost(prisma: PrismaClient, viewer: Viewer, id: string, input: EditPostInput, now: Date): Promise<EditResult> {
   return prisma.$transaction(async (tx) => {
     const row = await loadPostForUpdate(tx, id);
     assertPoster(row, viewer);
-    // Only a new time can bring back an expired post; edits never extend expiry (Renew does that).
-    const scheduleChanged = input.scheduledAt !== undefined;
-    if (row.status === 'closed' || row.deletedAt !== null || (effectivePostStatus(row, now) === 'closed' && !scheduleChanged)) {
-      throw new AppError(409, 'POST_CLOSED', 'Post is closed');
-    }
+    if (effectivePostStatus(row, now) === 'closed') throw new AppError(409, 'POST_CLOSED', 'Post is closed');
 
     const type = input.type ?? row.type;
     const typeChanged = type !== row.type;
@@ -361,9 +385,10 @@ export async function editPost(prisma: PrismaClient, viewer: Viewer, id: string,
     const character = characterChanged ? await getPostingCharacter(tx, input.characterId!, viewer.user.id) : null;
     const worldChanged = character !== null && character.worldId !== row.worldId;
 
-    const scheduledAt = input.scheduledAt !== undefined ? input.scheduledAt : row.scheduledAt;
-    if (input.scheduledAt) assertScheduleWindow(input.scheduledAt, now);
-    const expiresAt = scheduleChanged ? postExpiresAt(scheduledAt, now) : row.expiresAt;
+    const freeChanged = input.freeTimes !== undefined || input.freeTimesZone !== undefined;
+    const free = freeChanged
+      ? normalizeFreeTimes(input.freeTimes ?? row.freeTimes, input.freeTimesZone !== undefined ? input.freeTimesZone : row.freeTimesZone)
+      : null;
 
     const bossesChanged = input.bossDifficultyIds !== undefined;
     const caps = bossesChanged
@@ -387,8 +412,8 @@ export async function editPost(prisma: PrismaClient, viewer: Viewer, id: string,
     }
 
     const becameFull = type === 'recruiting' && row.status === 'open' && partySize === memberCount;
-    const reopened =
-      type === 'recruiting' && row.status === 'full' && partySize !== null && memberCount < partySize && expiresAt.getTime() > now.getTime();
+    // Not expired: closed posts were refused above.
+    const reopened = type === 'recruiting' && row.status === 'full' && partySize !== null && memberCount < partySize;
 
     // Type or world changes void everything tied to the post; an LFP post's invites name its character,
     // so a new character voids them too; filling it only voids its own requests.
@@ -407,11 +432,10 @@ export async function editPost(prisma: PrismaClient, viewer: Viewer, id: string,
       where: { id },
       data: {
         type,
-        scheduledAt,
-        expiresAt,
         partySize,
         minCp,
         ...(input.note !== undefined ? { note: input.note } : {}),
+        ...(free ?? {}),
         ...(character ? { posterCharacterId: character.id, worldId: character.worldId, guildId: character.guildId } : {}),
         ...(bossesChanged
           ? { bosses: { deleteMany: {}, create: input.bossDifficultyIds!.map((bossDifficultyId) => ({ bossDifficultyId })) } }

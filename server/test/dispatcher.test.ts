@@ -8,7 +8,6 @@ import {
   type LogEntry,
 } from './helpers.js';
 
-const HOUR = 3_600_000;
 const HOOK = 'https://discord.test/api/webhooks/1/secret';
 
 let app: FastifyInstance;
@@ -75,7 +74,7 @@ describe('post.created', () => {
   it('Kronos recruiting post -> exactly one delivery, for G1 (active, webhook, plays Kronos)', async () => {
     const res = await call('POST', '/api/posts', u1, {
       type: 'recruiting', characterId: alice.id, bossDifficultyIds: [lucid],
-      scheduledAt: new Date(Date.now() + 24 * HOUR).toISOString(), partySize: 4, note: 'hi',
+      freeTimes: [68], freeTimesZone: 'America/New_York', partySize: 4, note: 'hi',
     });
     expect(res.statusCode).toBe(201);
     await events.drain();
@@ -83,6 +82,7 @@ describe('post.created', () => {
     expect(ds).toHaveLength(1);
     expect(ds[0]).toMatchObject({ guildId: g1.id, eventType: 'post.created', status: 'pending' });
     expect(JSON.stringify(ds[0]!.payload)).toContain(`http://localhost:5173/posts/${res.json().id}`);
+    expect(JSON.stringify(ds[0]!.payload)).toContain('Not set yet — see free times on the post');
     expect(await notes()).toEqual([]);
   });
 
@@ -90,7 +90,7 @@ describe('post.created', () => {
     const g6 = await makeGuild({ name: 'G6', worldIds: [kronosId], webhookUrl: HOOK });
     const res = await call('POST', '/api/posts', u1, {
       type: 'recruiting', characterId: alice.id, bossDifficultyIds: [lucid],
-      scheduledAt: new Date(Date.now() + 24 * HOUR).toISOString(), partySize: 4, note: 'hi',
+      partySize: 4, note: 'hi',
     });
     await events.drain();
     const ds = await deliveries();
@@ -348,7 +348,7 @@ describe('errors', () => {
       method: 'POST', url: '/api/posts', headers: { cookie: await loginAs(brokenApp, 'u-1', 'one') },
       payload: {
         type: 'recruiting', characterId: alice.id, bossDifficultyIds: [lucid],
-        scheduledAt: new Date(Date.now() + 24 * HOUR).toISOString(), partySize: 4, note: 'hi',
+        partySize: 4, note: 'hi',
       },
     });
     expect(res.statusCode).toBe(201);

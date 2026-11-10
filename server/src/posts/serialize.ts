@@ -73,6 +73,8 @@ export function toPostSummaryDTO(row: PostSummaryRow, viewerUserId: string | nul
     poster: toMemberDTO(poster, viewerUserId, storage),
     bosses: toBossDTOs(row),
     scheduledAt: row.scheduledAt?.toISOString() ?? null,
+    freeTimes: row.freeTimes,
+    freeTimesZone: row.freeTimesZone,
     expiresAt: row.expiresAt.toISOString(),
     createdAt: row.createdAt.toISOString(),
     partySize: row.partySize,

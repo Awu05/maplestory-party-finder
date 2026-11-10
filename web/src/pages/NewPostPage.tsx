@@ -63,7 +63,6 @@ function changedFields(v: Values, orig: Values): UpdatePostInput {
   if (v.type !== orig.type) out.type = v.type;
   if (v.characterId !== orig.characterId) out.characterId = v.characterId;
   if (!sameSet(v.bossIds, orig.bossIds)) out.bossDifficultyIds = v.bossIds;
-  if (timeChanged(v, orig)) out.scheduledAt = v.flexible ? null : localInputToUtcIso(v.when);
   if (v.type === 'recruiting') {
     const cp = parseCp(v.minCp);
     if (v.type !== orig.type) {
@@ -145,7 +144,9 @@ function PostForm({ characters, bosses, post }: FormProps) {
           type: v.type,
           characterId: v.characterId,
           bossDifficultyIds: v.bossIds,
-          scheduledAt: v.flexible ? null : localInputToUtcIso(v.when),
+          // The server no longer takes scheduledAt; the free-times grid replaces the time inputs.
+          freeTimes: [],
+          freeTimesZone: null,
           ...(v.type === 'recruiting' ? { partySize: v.partySize, ...(cp !== null ? { minCp: cp } : {}) } : {}),
           note: v.note,
         });

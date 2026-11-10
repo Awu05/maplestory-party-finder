@@ -49,6 +49,8 @@ function makePost(over: Partial<PostDetailDTO> = {}): PostDetailDTO {
     poster,
     bosses: [{ bossDifficultyId: 7, bossName: 'Lucid', difficulty: 'Hard' }],
     scheduledAt: localInputToUtcIso('2026-11-10T20:00'),
+    freeTimes: [],
+    freeTimesZone: null,
     expiresAt: '2026-11-17T00:00:00Z',
     createdAt: '2026-11-09T00:00:00Z',
     partySize: 4,
@@ -107,7 +109,8 @@ describe('NewPostPage (create)', () => {
       type: 'recruiting',
       characterId: 'c1',
       bossDifficultyIds: [7],
-      scheduledAt: localInputToUtcIso('2026-11-10T20:00'),
+      freeTimes: [],
+      freeTimesZone: null,
       partySize: 4,
       minCp: 300000000,
       note: '',
@@ -129,12 +132,13 @@ describe('NewPostPage (create)', () => {
       type: 'lfp',
       characterId: 'c1',
       bossDifficultyIds: [7],
-      scheduledAt: localInputToUtcIso('2026-11-10T20:00'),
+      freeTimes: [],
+      freeTimesZone: null,
       note: '',
     });
   });
 
-  it('flexible sends scheduledAt null', async () => {
+  it('flexible sends no scheduledAt and empty free times', async () => {
     const m = mockApi({ ...base, '/api/posts/p1': makePost(), 'POST /api/posts': makePost() });
     renderWithProviders(<App />, { route: '/posts/new' });
     await pickCharacter();
@@ -143,7 +147,8 @@ describe('NewPostPage (create)', () => {
     expect(screen.getByLabelText('When')).toBeDisabled();
     save();
     await screen.findByRole('heading', { name: 'Lineup' });
-    expect(body(writes(m)[0]).scheduledAt).toBeNull();
+    expect(body(writes(m)[0])).not.toHaveProperty('scheduledAt');
+    expect(body(writes(m)[0])).toMatchObject({ freeTimes: [], freeTimesZone: null });
   });
 
   it('selecting Normal Limbo (cap 3) limits party size options to 2..3 and clamps 4 to 3', async () => {

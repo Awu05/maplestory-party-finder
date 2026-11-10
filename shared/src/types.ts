@@ -85,6 +85,8 @@ export interface PostSummaryDTO {
   id: string; type: PostType; world: { id: number; name: string }; guild: { id: string; name: string };
   poster: PartyMemberDTO; bosses: PostBossDTO[];
   scheduledAt: string | null; expiresAt: string; createdAt: string;
+  /** Local hour-of-week slots (day * 24 + hour, 0 = Sunday) in freeTimesZone; scheduledAt is the final time. */
+  freeTimes: number[]; freeTimesZone: string | null;
   partySize: number | null; memberCount: number; minCp: number | null; note: string;
   status: PostStatus; // effective
   deleted: boolean; isPoster: boolean;

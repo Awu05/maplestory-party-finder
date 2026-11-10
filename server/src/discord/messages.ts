@@ -41,7 +41,10 @@ export function buildNewPostMessage(post: PostSummaryDTO, webOrigin: string, bos
   const snap = post.poster.snapshot;
   const field = (name: string, value: string) => ({ name, value: clip(neutralize(value), FIELD_MAX), inline: true });
 
-  const fields = [field('World', post.world.name), field('When', discordTime(post.scheduledAt))];
+  const when = post.scheduledAt
+    ? discordTime(post.scheduledAt)
+    : post.freeTimes.length > 0 ? 'Not set yet — see free times on the post' : 'Flexible';
+  const fields = [field('World', post.world.name), field('When', when)];
   if (recruiting && post.partySize != null) fields.push(field('Slots', `${post.memberCount}/${post.partySize}`));
   if (post.minCp != null) fields.push(field('Min CP', formatCpShort(post.minCp)));
   fields.push(field('Poster', `${snap.ign} · ${snap.jobName} · Lv ${snap.level} · CP ${formatCpShort(post.poster.cpAtJoin)}`));

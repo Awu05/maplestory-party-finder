@@ -21,6 +21,7 @@ function makePost(over: Partial<PostSummaryDTO> = {}): PostSummaryDTO {
       { bossDifficultyId: 2, bossName: 'Will', difficulty: 'Hard' },
     ],
     scheduledAt: '2025-11-10T20:00:00Z', expiresAt: '2025-11-11T00:00:00Z', createdAt: '2025-11-09T00:00:00Z',
+    freeTimes: [], freeTimesZone: null,
     partySize: 4, memberCount: 2, minCp: 50_000_000, note: 'bring pots',
     status: 'open', deleted: false, isPoster: false,
     ...over,
@@ -94,6 +95,19 @@ describe('buildNewPostMessage', () => {
     expect(fields(buildNewPostMessage(makePost({ note: '  ' }), ORIGIN))).not.toHaveProperty('Note');
   });
 
+  it('When: a finalized post shows a Discord timestamp, even with free times', () => {
+    const f = fields(buildNewPostMessage(makePost({ freeTimes: [68], freeTimesZone: 'America/New_York' }), ORIGIN));
+    expect(f.When).toMatch(/^<t:/);
+    expect(f.When).toBe('<t:1762804800:F> (<t:1762804800:R>)');
+  });
+  it('When: not finalized with free times points to the post', () => {
+    const f = fields(buildNewPostMessage(makePost({ scheduledAt: null, freeTimes: [68], freeTimesZone: 'America/New_York' }), ORIGIN));
+    expect(f.When).toBe('Not set yet — see free times on the post');
+  });
+  it('When: not finalized with an empty grid is Flexible', () => {
+    const f = fields(buildNewPostMessage(makePost({ scheduledAt: null, freeTimes: [], freeTimesZone: null }), ORIGIN));
+    expect(f.When).toBe('Flexible');
+  });
   it('LFP embed has no Slots/Min CP fields and is green', () => {
     const p = buildNewPostMessage(makePost({ type: 'lfp', partySize: null, minCp: null }), ORIGIN);
     const f = fields(p);

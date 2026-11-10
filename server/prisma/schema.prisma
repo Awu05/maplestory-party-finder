@@ -176,7 +176,12 @@ model Post {
   world             World        @relation(fields: [worldId], references: [id])
   guildId           String
   guild             Guild        @relation(fields: [guildId], references: [id])
+  /// The final time; null until the poster finalizes it.
   scheduledAt       DateTime?
+  /// Free hours as local hour-of-week (day * 24 + hour, 0 = Sunday) in freeTimesZone.
+  freeTimes         Int[]        @default([])
+  /// IANA zone of freeTimes; null when freeTimes is empty.
+  freeTimesZone     String?
   expiresAt         DateTime
   partySize         Int?
   minCp             BigInt?
