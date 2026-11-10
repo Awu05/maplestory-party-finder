@@ -54,10 +54,11 @@
 }
 
 @media (max-width: 640px) {
-  .menu-chip {
-    position: static;
-  }
+  /* Fixed positioning is relative to the viewport, so the popup spans the screen
+     regardless of ancestors; --menu-top is set inline from the button's rect on open. */
   .menu-chip-list {
+    position: fixed;
+    top: var(--menu-top);
     left: var(--space-4);
     right: var(--space-4);
     width: auto;

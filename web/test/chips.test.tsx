@@ -50,6 +50,22 @@ describe('ChipGroup', () => {
   });
 });
 
+describe('ChipGroup wrap-around', () => {
+  it('wraps from last to first and first to last', () => {
+    const onChange = vi.fn();
+    render(<Group onChange={onChange} />);
+    fireEvent.click(screen.getByRole('radio', { name: 'Gamma' }));
+    const gamma = screen.getByRole('radio', { name: 'Gamma' });
+    gamma.focus();
+    fireEvent.keyDown(gamma, { key: 'ArrowRight' });
+    expect(screen.getByRole('radio', { name: 'Alpha' })).toHaveFocus();
+    expect(onChange).toHaveBeenLastCalledWith('a');
+    fireEvent.keyDown(screen.getByRole('radio', { name: 'Alpha' }), { key: 'ArrowLeft' });
+    expect(screen.getByRole('radio', { name: 'Gamma' })).toHaveFocus();
+    expect(onChange).toHaveBeenLastCalledWith('c');
+  });
+});
+
 describe('ToggleChip', () => {
   it('toggles aria-pressed', () => {
     function T() {
@@ -131,5 +147,40 @@ describe('MenuChip', () => {
     const { button } = setup({ disabled: true });
     fireEvent.click(button);
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+  });
+
+  it('on open focuses the listbox, sets activedescendant and marks the selected option', () => {
+    const { button } = setup({ valueLabel: 'Beta', value: 'b' });
+    fireEvent.click(button);
+    const list = screen.getByRole('listbox');
+    expect(list).toHaveFocus();
+    const beta = screen.getByRole('option', { name: 'Beta' });
+    expect(beta).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('option', { name: 'Alpha' })).toHaveAttribute('aria-selected', 'false');
+    expect(list.getAttribute('aria-activedescendant')).toBe(beta.id);
+  });
+
+  it('ArrowUp, Home, End move the active option; Space picks', () => {
+    const { button, onChange } = setup({ valueLabel: 'Beta', value: 'b' });
+    fireEvent.click(button);
+    const list = screen.getByRole('listbox');
+    const active = () => document.getElementById(list.getAttribute('aria-activedescendant')!)?.textContent;
+    fireEvent.keyDown(list, { key: 'ArrowUp' });
+    expect(active()).toBe('Alpha');
+    fireEvent.keyDown(list, { key: 'End' });
+    expect(active()).toBe('Gamma');
+    fireEvent.keyDown(list, { key: 'Home' });
+    expect(active()).toBe('All');
+    fireEvent.keyDown(list, { key: 'End' });
+    fireEvent.keyDown(list, { key: ' ' });
+    expect(onChange).toHaveBeenCalledWith('c');
+  });
+
+  it('Tab closes and returns focus to the button', () => {
+    const { button } = setup();
+    fireEvent.click(button);
+    fireEvent.keyDown(screen.getByRole('listbox'), { key: 'Tab' });
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(button).toHaveFocus();
   });
 });

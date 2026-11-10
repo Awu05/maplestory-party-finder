@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import type { KeyboardEvent, ReactNode } from 'react';
+import type { CSSProperties, KeyboardEvent, ReactNode } from 'react';
 import './chips.css';
 
 interface Option<T extends string> {
@@ -93,6 +93,7 @@ export function MenuChip({
 }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
+  const [top, setTop] = useState(0);
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
@@ -102,6 +103,7 @@ export function MenuChip({
   const openMenu = () => {
     if (disabled) return;
     setActive(Math.max(0, items.findIndex((o) => o.value === value)));
+    setTop((buttonRef.current?.getBoundingClientRect().bottom ?? 0) + 4);
     setOpen(true);
   };
   const close = (refocus: boolean) => {
@@ -163,7 +165,7 @@ export function MenuChip({
         close(true);
         break;
       case 'Tab':
-        setOpen(false);
+        close(true);
         break;
     }
   };
@@ -196,6 +198,7 @@ export function MenuChip({
           tabIndex={-1}
           aria-activedescendant={`${id}-opt-${active}`}
           className="menu-chip-list"
+          style={{ '--menu-top': `${top}px` } as CSSProperties}
           onKeyDown={onListKey}
         >
           {items.map((o, i) => (
