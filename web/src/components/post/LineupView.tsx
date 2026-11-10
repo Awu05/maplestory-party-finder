@@ -3,7 +3,6 @@ import type { CharacterDTO, PartyMemberDTO, PostDetailDTO, RarityTierDTO } from 
 import { CharacterCard } from '../card/CharacterCard';
 import { CardDetailModal } from '../card/CardDetailModal';
 import { formatCp } from '../card/format';
-import { bossLabel } from './labels';
 import './post.css';
 
 interface Props {
@@ -20,10 +19,6 @@ interface Props {
 
 export function LineupView({ post, tiers = [], compact = false, onRemove, onLeave, busy = false }: Props) {
   const [open, setOpen] = useState<CharacterDTO | null>(null);
-  const bossContext = post.bosses.map((b) => ({
-    bossDifficultyId: b.bossDifficultyId,
-    label: bossLabel(b),
-  }));
   const showSlots = post.status !== 'closed' && !post.deleted;
   const emptySlots =
     showSlots && post.type === 'recruiting' && post.partySize !== null
@@ -35,7 +30,7 @@ export function LineupView({ post, tiers = [], compact = false, onRemove, onLeav
     return (
       <li key={m.id} className="lineup__item">
         {c ? (
-          <CharacterCard character={c} tiers={tiers} bossContext={bossContext} onOpen={() => setOpen(c)} />
+          <CharacterCard character={c} tiers={tiers} onOpen={() => setOpen(c)} />
         ) : (
           <div className="post-card__fallback" role="figure" aria-label={`Deleted character ${m.snapshot.ign}`}>
             <img src={m.snapshot.imageUrl} alt="" width={48} height={48} />

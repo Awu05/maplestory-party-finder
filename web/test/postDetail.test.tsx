@@ -16,9 +16,6 @@ const character = (id: string, ign: string, cp = 1_500_000_000): CharacterDTO =>
   cpUpdatedAt: '2026-11-01T00:00:00Z',
   guild: { id: 'g1', name: 'Maple Guild', iconUrl: null },
   screenshotUrl: null,
-  note: '',
-  playTimes: [],
-  bosses: [],
   owner: { discordUsername: `${ign}#1` },
   isOwner: false,
   syncStatus: 'ok',
@@ -99,14 +96,13 @@ const called = (fetchMock: ReturnType<typeof mockApi>, url: string, method: stri
 afterEach(() => vi.restoreAllMocks());
 
 describe('PostDetailPage lineup', () => {
-  it('lineup renders poster + member cards with boss badges and "CP at join" captions; recruiting partySize 4 with 2 members shows 2 Open slot placeholders', async () => {
+  it('lineup renders poster + member cards and "CP at join" captions; recruiting partySize 4 with 2 members shows 2 Open slot placeholders', async () => {
     const p = post({
       members: [member('m1', 'Lily', 'poster'), member('m2', 'Bob', 'member', { character: character('c-m2', 'Bob', 1_600_000_000) })],
     });
     renderPage({ '/api/posts/p1': p });
     expect(await screen.findByRole('button', { name: /Lily, level 280/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Bob, level 280/ })).toBeInTheDocument();
-    expect(screen.getAllByText(/Hard Lucid: not listed/).length).toBeGreaterThanOrEqual(2);
     expect(screen.getAllByText(/CP at join 1\.5B/)).toHaveLength(2);
     expect(screen.getAllByText(/now 1\.6B/)).toHaveLength(1);
     expect(screen.getAllByText('Open slot')).toHaveLength(2);

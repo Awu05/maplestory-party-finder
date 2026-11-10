@@ -274,10 +274,8 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
             const stale = existing.filter((e) => !wanted.has(e.difficulty));
             if (stale.length > 0) {
               const staleIds = stale.map((s) => s.id);
-              const used =
-                (await tx.characterBoss.count({ where: { bossDifficultyId: { in: staleIds } } })) +
-                (await tx.postBoss.count({ where: { bossDifficultyId: { in: staleIds } } }));
-              if (used > 0) throw new AppError(409, 'IN_USE', 'A removed difficulty is referenced by characters or posts');
+              const used = await tx.postBoss.count({ where: { bossDifficultyId: { in: staleIds } } });
+              if (used > 0) throw new AppError(409, 'IN_USE', 'A removed difficulty is referenced by posts');
               await tx.bossDifficulty.deleteMany({ where: { id: { in: stale.map((s) => s.id) } } });
             }
             const byName = new Map(existing.map((e) => [e.difficulty, e]));
@@ -305,10 +303,8 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     const { id } = idParam.parse(req.params);
     await prisma.$transaction(async (tx) => {
       if (!(await tx.boss.findUnique({ where: { id } }))) throw new AppError(404, 'NOT_FOUND');
-      const used =
-        (await tx.characterBoss.count({ where: { bossDifficulty: { bossId: id } } })) +
-        (await tx.postBoss.count({ where: { bossDifficulty: { bossId: id } } }));
-      if (used > 0) throw new AppError(409, 'IN_USE', 'Boss is referenced by characters or posts');
+      const used = await tx.postBoss.count({ where: { bossDifficulty: { bossId: id } } });
+      if (used > 0) throw new AppError(409, 'IN_USE', 'Boss is referenced by posts');
       await tx.boss.delete({ where: { id } });
     });
     return reply.status(204).send();

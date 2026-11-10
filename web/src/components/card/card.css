@@ -242,36 +242,6 @@
   box-shadow: 0 0 0 1px rgb(255 255 255 / 0.6);
 }
 
-/* Boss context badges */
-.card__context {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25em;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.card__badge {
-  padding: 0.1em 0.45em;
-  border-radius: 4px;
-  font-size: 0.7em;
-  font-weight: 700;
-  background: color-mix(in srgb, var(--card-muted) 22%, var(--card-panel));
-  color: var(--card-muted);
-}
-.card__badge--learning {
-  background: #1d3352;
-  color: #a9cdf7;
-}
-.card__badge--cleared {
-  background: #1c3a1e;
-  color: #a6dca8;
-}
-.card__badge--can_carry {
-  background: #47360d;
-  color: #f5d68a;
-}
-
 /* Stats box, styled like an attack panel */
 .card__stats {
   display: flex;
@@ -430,31 +400,6 @@
   width: 100%;
   border-radius: 6px;
   border: 1px solid var(--border);
-}
-.card-modal__bosses {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  gap: 0.3rem;
-}
-.card-modal__bosses li {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem 0.75rem;
-}
-.card-modal__bosses ul {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem 0.75rem;
-  color: var(--muted);
-}
-.card-modal__note {
-  margin: 0;
-  white-space: pre-wrap;
 }
 .card-modal__actions {
   display: flex;

@@ -70,9 +70,6 @@ export interface CreateCharacterInput {
   nexonWorldId: number;
   combatPower: number;
   guildId: string;
-  bosses: { bossDifficultyId: number; experience: 'learning' | 'cleared' | 'can_carry' }[];
-  playTimes: number[];
-  note: string;
 }
 export type UpdateCharacterInput = Partial<Omit<CreateCharacterInput, 'ign' | 'nexonWorldId'>>;
 

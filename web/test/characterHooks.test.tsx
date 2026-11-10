@@ -23,7 +23,7 @@ describe('character mutations refresh posts', () => {
   it('update', async () => {
     const { wrapper, invalidated } = setup();
     const { result } = renderHook(() => useUpdateCharacter('c1'), { wrapper });
-    act(() => result.current.mutate({ note: 'x' }));
+    act(() => result.current.mutate({ combatPower: 2_000_000 }));
     await invalidated();
   });
 

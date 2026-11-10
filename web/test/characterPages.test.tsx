@@ -1,13 +1,10 @@
-import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
-import { localHoursToUtcHours } from '@pf/shared';
 import type { CharacterDTO } from '@pf/shared';
 import { CharactersPage } from '../src/pages/CharactersPage';
 import { CharacterFormPage } from '../src/pages/CharacterFormPage';
 import { MyCharactersPage } from '../src/pages/MyCharactersPage';
-import { PlayTimeGrid } from '../src/components/PlayTimeGrid';
 import { mockApi, renderWithProviders } from './setup';
 
 const character: CharacterDTO = {
@@ -21,9 +18,6 @@ const character: CharacterDTO = {
   cpUpdatedAt: '2026-11-01T00:00:00Z',
   guild: { id: 'g1', name: 'Maple Guild', iconUrl: null },
   screenshotUrl: null,
-  note: 'Hello there',
-  playTimes: [],
-  bosses: [{ bossDifficultyId: 7, bossName: 'Lucid', difficulty: 'Hard', experience: 'cleared' }],
   owner: { discordUsername: 'lily#1' },
   isOwner: true,
   syncStatus: 'ok',
@@ -38,17 +32,6 @@ const shared = {
   ],
   '/api/worlds': [{ id: 1, nexonWorldId: 45, name: 'Kronos', worldType: 'heroic', active: true }],
   '/api/rarity-tiers': [],
-  '/api/bosses': [
-    {
-      id: 1,
-      name: 'Lucid',
-      imageUrl: null,
-      difficulties: [
-        { id: 6, difficulty: 'Normal', partyCap: 3 },
-        { id: 7, difficulty: 'Hard', partyCap: 3 },
-      ],
-    },
-  ],
 };
 
 const bodyOf = (call: unknown[]) => JSON.parse((call[1] as RequestInit).body as string);
@@ -154,10 +137,6 @@ async function fillAddForm() {
   fireEvent.click(await screen.findByRole('button', { name: /Lily.*Kronos/ }));
   fireEvent.change(await screen.findByLabelText('Combat power'), { target: { value: '1,500,000,000' } });
   fireEvent.change(screen.getByLabelText('Guild'), { target: { value: 'g1' } });
-  fireEvent.click(screen.getByRole('checkbox', { name: 'Hard Lucid' }));
-  fireEvent.change(screen.getByLabelText('Experience for Hard Lucid'), { target: { value: 'can_carry' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Sun 8p' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Sun 9p' }));
 }
 
 describe('CharacterFormPage', () => {
@@ -177,10 +156,17 @@ describe('CharacterFormPage', () => {
     expect(body.nexonWorldId).toBe(45);
     expect(body.combatPower).toBe(1500000000);
     expect(body.guildId).toBe('g1');
-    expect(body.bosses).toEqual([{ bossDifficultyId: 7, experience: 'can_carry' }]);
-    expect(body.playTimes).toEqual(
-      localHoursToUtcHours([{ day: 0, hour: 20 }, { day: 0, hour: 21 }], new Date().getTimezoneOffset()),
-    );
+    expect(Object.keys(body).sort()).toEqual(['combatPower', 'guildId', 'ign', 'nexonWorldId']);
+  });
+
+  it('the details form has only CP, guild and screenshot', async () => {
+    mockApi({ ...shared, 'POST /api/characters/lookup': [preview] });
+    renderWithProviders(formRoutes(), { route: '/me/characters/new' });
+    await fillAddForm();
+    expect(screen.getByLabelText('Combat power')).toBeInTheDocument();
+    expect(screen.getByLabelText('Guild')).toBeInTheDocument();
+    expect(screen.getByLabelText('Scouter screenshot')).toBeInTheDocument();
+    for (const text of [/Bosses/, /Play times/, /Note/]) expect(screen.queryByText(text)).toBeNull();
   });
 
   it('uploads the screenshot after create and surfaces an upload failure on the list page', async () => {
@@ -247,7 +233,7 @@ describe('CharacterFormPage', () => {
     );
   });
 
-  it('edit mode prefills CP and note and PATCHes', async () => {
+  it('edit mode prefills CP and guild and PATCHes', async () => {
     const fetchMock = mockApi({
       ...shared,
       '/api/characters/c1': character,
@@ -255,58 +241,11 @@ describe('CharacterFormPage', () => {
     });
     renderWithProviders(formRoutes(), { route: '/me/characters/c1/edit' });
     expect(await screen.findByLabelText('Combat power')).toHaveValue('1500000000');
-    expect(screen.getByLabelText(/Note/)).toHaveValue('Hello there');
-    expect(screen.getByText('11/300')).toBeInTheDocument();
-    expect(screen.getByLabelText('Experience for Hard Lucid')).toHaveValue('cleared');
-    fireEvent.change(screen.getByLabelText(/Note/), { target: { value: 'Updated' } });
+    expect(screen.getByLabelText('Guild')).toHaveValue('g1');
+    fireEvent.change(screen.getByLabelText('Combat power'), { target: { value: '1,600,000,000' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await screen.findByRole('heading', { name: 'My list' });
     const patch = fetchMock.mock.calls.find((c) => (c[1] as RequestInit)?.method === 'PATCH')!;
-    expect(bodyOf(patch)).toMatchObject({ note: 'Updated', combatPower: 1500000000, guildId: 'g1' });
-  });
-});
-
-describe('PlayTimeGrid (interactive)', () => {
-  function Harness({ initial = [] as number[] }) {
-    const [v, setV] = useState(initial);
-    return <PlayTimeGrid value={v} onChange={setV} />;
-  }
-  const pressed = () =>
-    screen.getAllByRole('button').filter((b) => b.getAttribute('aria-pressed') === 'true').map((b) => b.getAttribute('aria-label'));
-
-  it('click toggles a cell and a drag paints a range with the first cell\'s new state', () => {
-    render(<Harness />);
-    fireEvent.mouseDown(screen.getByRole('button', { name: 'Mon 1a' }));
-    fireEvent.mouseEnter(screen.getByRole('button', { name: 'Mon 2a' }));
-    fireEvent.mouseEnter(screen.getByRole('button', { name: 'Mon 3a' }));
-    fireEvent.mouseUp(window);
-    fireEvent.mouseEnter(screen.getByRole('button', { name: 'Mon 4a' }));
-    expect(pressed()).toEqual(['Mon 1a', 'Mon 2a', 'Mon 3a']);
-
-    // Dragging from a selected cell deselects.
-    fireEvent.mouseDown(screen.getByRole('button', { name: 'Mon 3a' }));
-    fireEvent.mouseEnter(screen.getByRole('button', { name: 'Mon 2a' }));
-    fireEvent.mouseUp(window);
-    expect(pressed()).toEqual(['Mon 1a']);
-  });
-
-  it('a drag released over another cell does not swallow the next keyboard activation', async () => {
-    render(<Harness />);
-    fireEvent.mouseDown(screen.getByRole('button', { name: 'Mon 1a' }));
-    fireEvent.mouseEnter(screen.getByRole('button', { name: 'Mon 2a' }));
-    fireEvent.mouseUp(window);
-    await new Promise((r) => setTimeout(r, 5));
-    const third = screen.getByRole('button', { name: 'Wed 3a' });
-    fireEvent.click(third);
-    expect(third).toHaveAttribute('aria-pressed', 'true');
-  });
-
-  it('keyboard activation (click without mouse) toggles', () => {
-    render(<Harness />);
-    const cell = screen.getByRole('button', { name: 'Tue 5p' });
-    fireEvent.click(cell);
-    expect(cell).toHaveAttribute('aria-pressed', 'true');
-    fireEvent.click(cell);
-    expect(cell).toHaveAttribute('aria-pressed', 'false');
+    expect(bodyOf(patch)).toEqual({ combatPower: 1600000000, guildId: 'g1' });
   });
 });

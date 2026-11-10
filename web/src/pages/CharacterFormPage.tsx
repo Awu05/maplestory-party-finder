@@ -1,10 +1,9 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import type { BossDTO, CharacterDTO, GuildDTO, NexonCharacterPreview } from '@pf/shared';
+import type { CharacterDTO, GuildDTO, NexonCharacterPreview } from '@pf/shared';
 import {
   uploadScreenshot,
-  useBosses,
   useCharacter,
   useCreateCharacter,
   useGuilds,
@@ -13,38 +12,24 @@ import {
   useUpdateCharacter,
 } from '../api/hooks';
 import { friendlyError } from '../api/errors';
-import { BossExperiencePicker } from '../components/BossExperiencePicker';
-import type { BossSelection } from '../components/BossExperiencePicker';
-import { PlayTimeGrid } from '../components/PlayTimeGrid';
 import './characters.css';
-
-const NOTE_MAX = 300;
 
 interface Details {
   combatPower: number;
   guildId: string;
-  bosses: BossSelection[];
-  playTimes: number[];
-  note: string;
 }
 
 interface FormProps {
   initial?: CharacterDTO;
   guilds: GuildDTO[];
-  bosses: BossDTO[];
   /** Resolves when saved; a rejection is shown as the form error. */
   onSubmit: (details: Details, screenshot: File | null) => Promise<void>;
 }
 
-function DetailsForm({ initial, guilds, bosses, onSubmit }: FormProps) {
+function DetailsForm({ initial, guilds, onSubmit }: FormProps) {
   const navigate = useNavigate();
   const [cp, setCp] = useState(initial ? String(initial.combatPower) : '');
   const [guildId, setGuildId] = useState(initial?.guild.id ?? '');
-  const [picked, setPicked] = useState<BossSelection[]>(
-    initial?.bosses.map((b) => ({ bossDifficultyId: b.bossDifficultyId, experience: b.experience })) ?? [],
-  );
-  const [playTimes, setPlayTimes] = useState<number[]>(initial?.playTimes ?? []);
-  const [note, setNote] = useState(initial?.note ?? '');
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -57,7 +42,7 @@ function DetailsForm({ initial, guilds, bosses, onSubmit }: FormProps) {
     if (!guildId) return setError('Pick a guild.');
     setSaving(true);
     try {
-      await onSubmit({ combatPower: Number(digits), guildId, bosses: picked, playTimes, note }, file);
+      await onSubmit({ combatPower: Number(digits), guildId }, file);
     } catch (err) {
       setError(friendlyError(err));
       setSaving(false);
@@ -82,19 +67,6 @@ function DetailsForm({ initial, guilds, bosses, onSubmit }: FormProps) {
               </option>
             ))}
         </select>
-      </label>
-      <div>
-        <h3>Bosses</h3>
-        <BossExperiencePicker value={picked} onChange={setPicked} bosses={bosses} />
-      </div>
-      <div>
-        <h3>Play times (your time)</h3>
-        <PlayTimeGrid value={playTimes} onChange={setPlayTimes} />
-      </div>
-      <label>
-        Note
-        <textarea value={note} maxLength={NOTE_MAX} rows={3} onChange={(e) => setNote(e.target.value)} />
-        <small>{`${note.length}/${NOTE_MAX}`}</small>
       </label>
       <label>
         Scouter screenshot
@@ -128,7 +100,7 @@ async function uploadThenNotice(id: string, file: File | null, saved: string) {
   return undefined;
 }
 
-function AddCharacter({ guilds, bosses }: { guilds: GuildDTO[]; bosses: BossDTO[] }) {
+function AddCharacter({ guilds }: { guilds: GuildDTO[] }) {
   const navigate = useNavigate();
   const lookup = useLookupCharacter();
   const create = useCreateCharacter();
@@ -190,7 +162,6 @@ function AddCharacter({ guilds, bosses }: { guilds: GuildDTO[]; bosses: BossDTO[
       {chosen && (
         <DetailsForm
           guilds={guilds}
-          bosses={bosses}
           onSubmit={async (details, screenshot) => {
             const created = await create.mutateAsync({ ign: chosen.ign, nexonWorldId: chosen.nexonWorldId, ...details });
             const state = await uploadThenNotice(created.id, screenshot, 'Character saved');
@@ -202,7 +173,7 @@ function AddCharacter({ guilds, bosses }: { guilds: GuildDTO[]; bosses: BossDTO[
   );
 }
 
-function EditCharacter({ id, guilds, bosses }: { id: string; guilds: GuildDTO[]; bosses: BossDTO[] }) {
+function EditCharacter({ id, guilds }: { id: string; guilds: GuildDTO[] }) {
   const navigate = useNavigate();
   const character = useCharacter(id);
   const update = useUpdateCharacter(id);
@@ -215,7 +186,6 @@ function EditCharacter({ id, guilds, bosses }: { id: string; guilds: GuildDTO[];
       <DetailsForm
         initial={character.data}
         guilds={guilds}
-        bosses={bosses}
         onSubmit={async (details, screenshot) => {
           await update.mutateAsync(details);
           const state = await uploadThenNotice(id, screenshot, 'Changes saved');
@@ -229,18 +199,17 @@ function EditCharacter({ id, guilds, bosses }: { id: string; guilds: GuildDTO[];
 export function CharacterFormPage() {
   const { id } = useParams();
   const guilds = useGuilds();
-  const bosses = useBosses();
 
-  if (guilds.isPending || bosses.isPending) return <p>Loading…</p>;
-  if (!guilds.data || !bosses.data) return <p role="alert">Couldn't load the form.</p>;
+  if (guilds.isPending) return <p>Loading…</p>;
+  if (!guilds.data) return <p role="alert">Couldn't load the form.</p>;
 
   return (
     <section>
       <h1>{id ? 'Edit character' : 'Add character'}</h1>
       {id ? (
-        <EditCharacter id={id} guilds={guilds.data} bosses={bosses.data} />
+        <EditCharacter id={id} guilds={guilds.data} />
       ) : (
-        <AddCharacter guilds={guilds.data} bosses={bosses.data} />
+        <AddCharacter guilds={guilds.data} />
       )}
     </section>
   );

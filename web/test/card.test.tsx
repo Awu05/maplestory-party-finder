@@ -4,7 +4,6 @@ import { afterEach, vi } from 'vitest';
 import { formatCp } from '../src/components/card/format';
 import { CharacterCard } from '../src/components/card/CharacterCard';
 import { CardDetailModal } from '../src/components/card/CardDetailModal';
-import { PlayTimeGrid } from '../src/components/PlayTimeGrid';
 
 const tiers: RarityTierDTO[] = [
   { id: 1, name: 'Common', minCp: 0, sortOrder: 0 },
@@ -24,9 +23,6 @@ function makeCharacter(overrides: Partial<CharacterDTO> = {}): CharacterDTO {
     cpUpdatedAt: new Date(Date.now() - 3 * 86_400_000).toISOString(),
     guild: { id: 'g1', name: 'Mapleholics', iconUrl: null },
     screenshotUrl: '/uploads/lily.png',
-    note: 'Free most weekends',
-    playTimes: [],
-    bosses: [{ bossDifficultyId: 1, bossName: 'Lucid', difficulty: 'Hard', experience: 'can_carry' }],
     owner: { discordUsername: 'maple_fan' },
     isOwner: false,
     syncStatus: 'ok',
@@ -100,21 +96,6 @@ describe('CharacterCard', () => {
     expect(screen.getByRole('button')).toHaveClass('card--unknown');
   });
 
-  it('boss context badges', () => {
-    render(
-      <CharacterCard
-        character={makeCharacter()}
-        tiers={tiers}
-        bossContext={[
-          { bossDifficultyId: 1, label: 'Hard Lucid' },
-          { bossDifficultyId: 2, label: 'Hard Will' },
-        ]}
-      />,
-    );
-    expect(screen.getByText('Hard Lucid: Can teach/carry')).toBeInTheDocument();
-    expect(screen.getByText('Hard Will: not listed')).toBeInTheDocument();
-  });
-
   it('Enter opens', () => {
     const onOpen = vi.fn();
     render(<CharacterCard character={makeCharacter()} tiers={tiers} onOpen={onOpen} />);
@@ -132,7 +113,7 @@ describe('CharacterCard', () => {
 });
 
 describe('CardDetailModal', () => {
-  it('modal shows discord username, note, screenshot img; Edit only for owner', () => {
+  it('modal shows discord username, screenshot img, and no boss, play time or note sections; Edit only for owner', () => {
     const onEdit = vi.fn();
     const { rerender } = render(
       <CardDetailModal character={makeCharacter()} tiers={tiers} onClose={() => {}} onEdit={onEdit} />,
@@ -141,13 +122,12 @@ describe('CardDetailModal', () => {
     expect(dialog).toHaveAttribute('aria-modal', 'true');
     expect(within(dialog).getAllByText('maple_fan').length).toBeGreaterThan(0);
     expect(within(dialog).getByRole('button', { name: 'Copy Discord username' })).toBeInTheDocument();
-    expect(within(dialog).getByText('Free most weekends')).toBeInTheDocument();
     const shot = within(dialog).getByRole('img', { name: 'Lily Scouter screenshot' });
     expect(shot).toHaveAttribute('src', '/uploads/lily.png');
     expect(shot.closest('a')).toHaveAttribute('target', '_blank');
     expect(within(dialog).getByText('CP updated 3 days ago')).toBeInTheDocument();
-    expect(within(dialog).getByText('Lucid')).toBeInTheDocument();
-    expect(within(dialog).getByText('Hard: Can teach/carry')).toBeInTheDocument();
+    for (const heading of ['Bosses', 'Note']) expect(within(dialog).queryByText(heading)).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(/Play times/)).not.toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
 
     rerender(
@@ -175,21 +155,9 @@ describe('CardDetailModal', () => {
     const dialog = screen.getByRole('dialog');
     fireEvent(dialog, new Event('cancel', { cancelable: true }));
     expect(onClose).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByText('Free most weekends'));
+    fireEvent.click(screen.getByRole('heading', { name: 'Lily' }));
     expect(onClose).toHaveBeenCalledTimes(1);
     fireEvent.click(dialog);
     expect(onClose).toHaveBeenCalledTimes(2);
-  });
-});
-
-describe('PlayTimeGrid (read-only)', () => {
-  it('renders a UTC hour as the matching local cell', () => {
-    // UTC-5 (getTimezoneOffset returns +300): UTC Sun 00:00 is local Sat 7 PM.
-    vi.spyOn(Date.prototype, 'getTimezoneOffset').mockReturnValue(300);
-    render(<PlayTimeGrid value={[0]} readOnly />);
-    const selected = screen.getByRole('gridcell', { name: 'Sat 7p' });
-    expect(selected).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('gridcell', { name: 'Sun 12a' })).toHaveAttribute('aria-selected', 'false');
-    expect(screen.getAllByRole('gridcell').filter((c) => c.getAttribute('aria-selected') === 'true')).toHaveLength(1);
   });
 });

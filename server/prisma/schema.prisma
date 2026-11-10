@@ -12,12 +12,6 @@ enum WorldType {
   interactive
 }
 
-enum Experience {
-  learning
-  cleared
-  can_carry
-}
-
 enum SyncStatus {
   ok
   stale
@@ -85,7 +79,6 @@ model BossDifficulty {
   difficulty String
   partyCap   Int             @default(6)
   sortOrder  Int             @default(0)
-  characters CharacterBoss[]
   posts      PostBoss[]
 
   @@unique([bossId, difficulty])
@@ -107,28 +100,15 @@ model Character {
   guildId                String
   guild                  Guild           @relation(fields: [guildId], references: [id])
   screenshotKey          String?
-  note                   String          @default("")
-  playTimes              Int[]           @default([])
   lastSyncedAt           DateTime
   syncStatus             SyncStatus      @default(ok)
   lastRefreshRequestedAt DateTime?
   createdAt              DateTime        @default(now())
-  bosses                 CharacterBoss[]
   posted                 Post[]          @relation("PostPoster")
   memberships            PostMember[]
   requests               Request[]
 
   @@unique([ignLower, worldId])
-}
-
-model CharacterBoss {
-  characterId      String
-  character        Character      @relation(fields: [characterId], references: [id], onDelete: Cascade)
-  bossDifficultyId Int
-  bossDifficulty   BossDifficulty @relation(fields: [bossDifficultyId], references: [id])
-  experience       Experience
-
-  @@id([characterId, bossDifficultyId])
 }
 
 model RarityTier {

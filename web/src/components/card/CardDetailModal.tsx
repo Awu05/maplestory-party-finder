@@ -1,8 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { MouseEvent, SyntheticEvent } from 'react';
-import { EXPERIENCE_LABELS } from '@pf/shared';
 import type { CharacterDTO, RarityTierDTO } from '@pf/shared';
-import { PlayTimeGrid } from '../PlayTimeGrid';
 import { CharacterCard } from './CharacterCard';
 import { cpUpdatedLabel } from './format';
 import './card.css';
@@ -12,12 +10,6 @@ interface Props {
   tiers: RarityTierDTO[];
   onClose: () => void;
   onEdit?: () => void;
-}
-
-function groupBosses(bosses: CharacterDTO['bosses']) {
-  const groups = new Map<string, CharacterDTO['bosses']>();
-  for (const b of bosses) groups.set(b.bossName, [...(groups.get(b.bossName) ?? []), b]);
-  return [...groups.entries()];
 }
 
 export function CardDetailModal({ character: c, tiers, onClose, onEdit }: Props) {
@@ -101,42 +93,6 @@ export function CardDetailModal({ character: c, tiers, onClose, onEdit }: Props)
               </button>
             </div>
           </section>
-
-          <section>
-            <h3>Bosses</h3>
-            {c.bosses.length === 0 ? (
-              <p className="card-modal__muted">No bosses listed</p>
-            ) : (
-              <ul className="card-modal__bosses">
-                {groupBosses(c.bosses).map(([bossName, entries]) => (
-                  <li key={bossName}>
-                    <strong>{bossName}</strong>
-                    <ul>
-                      {entries.map((b) => (
-                        <li key={b.bossDifficultyId}>{`${b.difficulty}: ${EXPERIENCE_LABELS[b.experience]}`}</li>
-                      ))}
-                    </ul>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-
-          <section>
-            <h3>Play times (your time)</h3>
-            {c.playTimes.length === 0 ? (
-              <p className="card-modal__muted">No play times listed</p>
-            ) : (
-              <PlayTimeGrid value={c.playTimes} readOnly />
-            )}
-          </section>
-
-          {c.note && (
-            <section>
-              <h3>Note</h3>
-              <p className="card-modal__note">{c.note}</p>
-            </section>
-          )}
 
           {c.isOwner && onEdit && (
             <div className="card-modal__actions">

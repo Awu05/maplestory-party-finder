@@ -11,9 +11,6 @@ export interface CreateCharacterInput {
   nexonWorldId: number;
   combatPower: number;
   guildId: string;
-  bosses: { bossDifficultyId: number; experience: 'learning' | 'cleared' | 'can_carry' }[];
-  playTimes: number[];
-  note: string;
 }
 
 async function findOnNexon(nexon: NexonClient, ign: string): Promise<NexonCharacter[]> {
@@ -41,14 +38,6 @@ async function requireActiveGuild(prisma: PrismaClient, guildId: string) {
   return guild;
 }
 
-async function validateBosses(prisma: PrismaClient, bosses: CreateCharacterInput['bosses']): Promise<void> {
-  const ids = bosses.map((b) => b.bossDifficultyId);
-  if (new Set(ids).size !== ids.length) throw new AppError(400, 'VALIDATION', 'Duplicate bossDifficultyId');
-  if ((await prisma.bossDifficulty.count({ where: { id: { in: ids } } })) !== ids.length) {
-    throw new AppError(400, 'VALIDATION', 'Unknown bossDifficultyId');
-  }
-}
-
 export async function createCharacter(
   deps: { prisma: PrismaClient; nexon: NexonClient },
   ownerId: string,
@@ -57,7 +46,6 @@ export async function createCharacter(
   const { prisma } = deps;
 
   const guild = await requireActiveGuild(prisma, input.guildId);
-  await validateBosses(prisma, input.bosses);
 
   const match = (await findOnNexon(deps.nexon, input.ign)).find((c) => c.nexonWorldId === input.nexonWorldId);
   if (!match) throw new AppError(404, 'CHARACTER_NOT_FOUND', 'Character not found on that world');
@@ -82,9 +70,6 @@ export async function createCharacter(
           cpUpdatedAt: now,
           lastSyncedAt: now,
           guildId: guild.id,
-          note: input.note,
-          playTimes: [...input.playTimes].sort((a, b) => a - b),
-          bosses: { create: input.bosses },
         },
         include: characterInclude,
       }),
@@ -142,24 +127,17 @@ export async function updateCharacter(
   input: UpdateCharacterInput,
 ): Promise<CharacterRow> {
   if (input.guildId !== undefined && input.guildId !== row.guildId) await requireActiveGuild(prisma, input.guildId);
-  if (input.bosses) await validateBosses(prisma, input.bosses);
 
   // The edit form always sends combatPower; only a real change counts as a CP update.
   const cpChanged = input.combatPower !== undefined && BigInt(input.combatPower) !== row.combatPower;
 
-  return prisma.$transaction(async (tx) => {
-    if (input.bosses) await tx.characterBoss.deleteMany({ where: { characterId: row.id } });
-    return tx.character.update({
-      where: { id: row.id },
-      data: {
-        ...(cpChanged ? { combatPower: BigInt(input.combatPower!), cpUpdatedAt: new Date() } : {}),
-        ...(input.guildId !== undefined ? { guildId: input.guildId } : {}),
-        ...(input.note !== undefined ? { note: input.note } : {}),
-        ...(input.playTimes ? { playTimes: [...input.playTimes].sort((a, b) => a - b) } : {}),
-        ...(input.bosses ? { bosses: { create: input.bosses } } : {}),
-      },
-      include: characterInclude,
-    });
+  return prisma.character.update({
+    where: { id: row.id },
+    data: {
+      ...(cpChanged ? { combatPower: BigInt(input.combatPower!), cpUpdatedAt: new Date() } : {}),
+      ...(input.guildId !== undefined ? { guildId: input.guildId } : {}),
+    },
+    include: characterInclude,
   });
 }
 

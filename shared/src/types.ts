@@ -1,11 +1,3 @@
-export type ExperienceLevel = 'learning' | 'cleared' | 'can_carry';
-
-export const EXPERIENCE_LABELS: Record<ExperienceLevel, string> = {
-  learning: 'Learning',
-  cleared: 'Cleared before',
-  can_carry: 'Can teach/carry',
-};
-
 export interface CharacterDTO {
   id: string;
   ign: string;
@@ -17,9 +9,6 @@ export interface CharacterDTO {
   cpUpdatedAt: string;
   guild: { id: string; name: string; iconUrl: string | null };
   screenshotUrl: string | null;
-  note: string;
-  playTimes: number[];
-  bosses: { bossDifficultyId: number; bossName: string; difficulty: string; experience: ExperienceLevel }[];
   owner: { discordUsername: string };
   isOwner: boolean;
   syncStatus: 'ok' | 'stale';

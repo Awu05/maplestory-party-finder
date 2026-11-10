@@ -1,22 +1,16 @@
 import type { KeyboardEvent } from 'react';
-import { EXPERIENCE_LABELS, classToArchetype, rarityFor } from '@pf/shared';
+import { classToArchetype, rarityFor } from '@pf/shared';
 import type { CharacterDTO, RarityTierDTO } from '@pf/shared';
 import { formatCp } from './format';
 import './card.css';
 
-export interface BossContextEntry {
-  bossDifficultyId: number;
-  label: string;
-}
-
 interface Props {
   character: CharacterDTO;
   tiers: RarityTierDTO[];
-  bossContext?: BossContextEntry[];
   onOpen?: () => void;
 }
 
-export function CharacterCard({ character: c, tiers, bossContext, onOpen }: Props) {
+export function CharacterCard({ character: c, tiers, onOpen }: Props) {
   const archetype = classToArchetype(c.jobName);
   const rarity = rarityFor(c.combatPower, tiers);
   const classes = ['card', `card--${archetype}`];
@@ -47,19 +41,6 @@ export function CharacterCard({ character: c, tiers, bossContext, onOpen }: Prop
           <img className="card__sprite" src={c.imageUrl} alt={c.ign} loading="lazy" />
           {rarity && <span className="card__rarity">{rarity.tier.name}</span>}
         </div>
-
-        {bossContext && bossContext.length > 0 && (
-          <ul className="card__context">
-            {bossContext.map((b) => {
-              const exp = c.bosses.find((x) => x.bossDifficultyId === b.bossDifficultyId)?.experience;
-              return (
-                <li key={b.bossDifficultyId} className={exp ? `card__badge card__badge--${exp}` : 'card__badge'}>
-                  {`${b.label}: ${exp ? EXPERIENCE_LABELS[exp] : 'not listed'}`}
-                </li>
-              );
-            })}
-          </ul>
-        )}
 
         <dl className="card__stats">
           <div className="card__attack">

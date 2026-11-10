@@ -11,7 +11,7 @@ const user = (id: string, name: string, over: Record<string, unknown> = {}) => (
 const char = {
   id: 'c1', ign: 'Mapler', level: 250, jobName: 'Bishop', combatPower: 1_000_000, imageUrl: '',
   world: { id: 1, name: 'Scania' }, guild: { id: 'g', name: 'Alpha', iconUrl: null }, cpUpdatedAt: '2026-01-01T00:00:00Z',
-  screenshotUrl: null, bosses: [], playTimes: [], note: '', owner: { discordUsername: 'bob' },
+  screenshotUrl: null, owner: { discordUsername: 'bob' },
 };
 
 const usersRoutes = (extra: Record<string, unknown> = {}) => ({

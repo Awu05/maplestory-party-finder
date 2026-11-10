@@ -218,10 +218,6 @@ export function RequestList({
   tiers: RarityTierDTO[];
   actions: (r: RequestDTO) => React.ReactNode;
 }) {
-  const bossContext = post.bosses.map((b) => ({
-    bossDifficultyId: b.bossDifficultyId,
-    label: bossLabel(b),
-  }));
   return (
     <section aria-label={title}>
       <h2>{title}</h2>
@@ -231,11 +227,7 @@ export function RequestList({
         <ul className="lineup">
           {requests.map((r) => (
             <li key={r.id} className="lineup__item">
-              <CharacterCard
-                character={r.character}
-                tiers={tiers}
-                bossContext={bossContext}
-              />
+              <CharacterCard character={r.character} tiers={tiers} />
               {post.minCp !== null && r.character.combatPower < post.minCp && (
                 <span className="post-warn">Below min CP</span>
               )}

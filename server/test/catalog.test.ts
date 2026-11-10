@@ -212,24 +212,6 @@ describe('catalog', () => {
     ]);
   });
 
-  it('deleting a boss difficulty referenced by a CharacterBoss -> 409 IN_USE', async () => {
-    const bd = await makeBossDifficulty({ difficulty: 'Hard', bossName: 'Zakum' });
-    const c = await makeCharacter();
-    await prisma.characterBoss.create({ data: { characterId: c.id, bossDifficultyId: bd.id, experience: 'cleared' } });
-    const patch = await app.inject({
-      method: 'PATCH',
-      url: `/api/admin/bosses/${bd.bossId}`,
-      headers: { cookie: admin },
-      payload: { difficulties: [{ difficulty: 'Normal' }] },
-    });
-    expect(patch.statusCode).toBe(409);
-    expect(patch.json().error.code).toBe('IN_USE');
-    expect(await prisma.bossDifficulty.count({ where: { bossId: bd.bossId } })).toBe(1);
-    const del = await app.inject({ method: 'DELETE', url: `/api/admin/bosses/${bd.bossId}`, headers: { cookie: admin } });
-    expect(del.statusCode).toBe(409);
-    expect(del.json().error.code).toBe('IN_USE');
-  });
-
   it('deletes an unreferenced boss', async () => {
     const bd = await makeBossDifficulty();
     const del = await app.inject({ method: 'DELETE', url: `/api/admin/bosses/${bd.bossId}`, headers: { cookie: admin } });

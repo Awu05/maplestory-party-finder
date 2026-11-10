@@ -15,16 +15,9 @@ const createBody = z.object({
   nexonWorldId: z.number().int(),
   combatPower: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
   guildId: z.string().min(1),
-  bosses: z.array(
-    z.object({ bossDifficultyId: z.number().int(), experience: z.enum(['learning', 'cleared', 'can_carry']) }),
-  ),
-  playTimes: z
-    .array(z.number().int().min(0).max(167))
-    .refine((p) => new Set(p).size === p.length, 'Duplicate playTimes'),
-  note: z.string().max(300),
 });
 
-const updateBody = createBody.pick({ combatPower: true, guildId: true, bosses: true, playTimes: true, note: true }).partial();
+const updateBody = createBody.pick({ combatPower: true, guildId: true }).partial();
 
 const listQuery = z.object({
   guildId: z.string().min(1).optional(),
