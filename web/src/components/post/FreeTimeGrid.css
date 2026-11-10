@@ -53,3 +53,9 @@ button.ftg__cell:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
+/* Phone tap targets: at least 24px tall. */
+@media (max-width: 640px) {
+  .ftg__cell {
+    height: 1.5rem;
+  }
+}

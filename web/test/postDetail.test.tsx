@@ -238,6 +238,15 @@ describe('PostDetailPage when section', () => {
     expect(await screen.findByText(/Final time: /)).toBeInTheDocument();
   });
 
+  it('shows the time once: the header carries world and guild, not the time', async () => {
+    renderPage({ '/api/posts/p1': post({ scheduledAt: '2026-12-01T20:00:00Z' }) });
+    await screen.findByText(/Final time: /);
+    const head = document.querySelector('.post-detail__head')!;
+    expect(head).toHaveTextContent(/Kronos · /);
+    expect(head).not.toHaveTextContent(/Dec/);
+    expect(screen.getAllByText(/Dec 1/)).toHaveLength(1);
+  });
+
   it('an LFP post never shows a final time, even with a stale scheduledAt', async () => {
     renderPage({
       '/api/posts/p1': post({ type: 'lfp', partySize: null, minCp: null, scheduledAt: '2026-12-01T20:00:00Z', freeTimes: [30], freeTimesZone: 'UTC' }),

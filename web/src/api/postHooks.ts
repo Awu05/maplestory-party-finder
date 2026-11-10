@@ -2,7 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { DAY_MS, nextOccurrence, SCHEDULED_GRACE_MS, type MyRequestsDTO, type PostDetailDTO, type PostSummaryDTO, type PostType, type RequestDTO } from '@pf/shared';
 import { api } from './client';
 import { useMe } from './hooks';
-import { browserTimeZone } from '../components/post/time';
+import { browserTimeZone } from '../lib/timeZone';
 
 export interface PostFilters {
   type?: PostType;
@@ -29,18 +29,26 @@ export function boardQueryString(f: PostFilters, now: Date = new Date()): string
   } else if (f.when === 'flexible') {
     p.set('flexible', '1');
   }
-  if (f.freeAt !== undefined) {
-    // The last minute of the viewer's hour: the grid rounds a poster hour down into the viewer cell holding
-    // its start, so in half-hour zones the cell's end, not its start, falls in the poster hour shown there.
-    const start = nextOccurrence(f.freeAt, browserTimeZone(), now);
-    p.set('freeAt', new Date(start.getTime() + 59 * 60_000).toISOString());
-  }
+  if (f.freeAt !== undefined) p.set('freeAt', freeAtInstant(f.freeAt, now));
   return p.toString();
 }
 
+/**
+ * The instant sent as `freeAt` for a viewer-local hour-of-week: the last minute of its next occurrence.
+ * The grid rounds a poster hour down into the viewer cell holding its start, so in half-hour zones the
+ * cell's end, not its start, falls in the poster hour shown there.
+ */
+export function freeAtInstant(hourOfWeek: number, now: Date = new Date()): string {
+  const start = nextOccurrence(hourOfWeek, browserTimeZone(), now);
+  return new Date(start.getTime() + 59 * 60_000).toISOString();
+}
+
 export function usePosts(filters: PostFilters, opts: { enabled?: boolean } = {}) {
+  // The key holds the freeAt instant, not just the hour-of-week, so a cached result never answers for
+  // an occurrence that has passed.
+  const freeAt = filters.freeAt !== undefined ? freeAtInstant(filters.freeAt) : undefined;
   return useQuery({
-    queryKey: ['posts', 'board', filters],
+    queryKey: ['posts', 'board', filters, freeAt],
     queryFn: () => {
       const qs = boardQueryString(filters);
       return api<PostSummaryDTO[]>(qs ? `/api/posts?${qs}` : '/api/posts');

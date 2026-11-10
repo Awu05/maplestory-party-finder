@@ -6,10 +6,7 @@ import { PostDetailPage } from '../src/pages/PostDetailPage';
 import { localInputToUtcIso, utcIsoToLocalInput, whenLabel } from '../src/components/post/time';
 import { mockApi, renderWithProviders } from './setup';
 
-vi.mock('../src/components/post/time', async (orig) => ({
-  ...(await orig<typeof import('../src/components/post/time')>()),
-  browserTimeZone: () => 'America/New_York',
-}));
+vi.mock('../src/lib/timeZone', () => ({ browserTimeZone: () => 'America/New_York' }));
 
 const poster = {
   id: 'm1',

@@ -153,3 +153,20 @@ describe('action group spacing', () => {
     expect(ruleBody(postCss, '.actions + .viewer-actions')).toMatch(/margin-top:\s*var\(--space-3\)/);
   });
 });
+
+describe('free-time grid tap targets', () => {
+  it('cells are at least 24px (1.5rem) tall on phones', () => {
+    const css = read('components/post/FreeTimeGrid.css');
+    const phone = /@media \(max-width: 640px\)\s*\{([\s\S]*?)\n\}/.exec(css)?.[1] ?? '';
+    expect(ruleBody(phone, '.ftg__cell')).toMatch(/height:\s*1\.5rem/);
+  });
+});
+
+describe('finalize dialog styles', () => {
+  it('uses its own classes from post.css, not the move-world dialog ones', () => {
+    const dialog = read('components/post/FinalizeTimeDialog.tsx');
+    expect(dialog).not.toContain('move-dialog');
+    expect(dialog).not.toContain('character.css');
+    for (const sel of ['.finalize-dialog', '.finalize-dialog__content', '.finalize-dialog__field']) expect(selectors(postCss)).toContain(sel);
+  });
+});

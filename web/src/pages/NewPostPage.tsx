@@ -9,7 +9,7 @@ import type { UpdatePostInput } from '../api/postHooks';
 import { friendlyError } from '../api/errors';
 import { BossMultiPicker } from '../components/post/BossMultiPicker';
 import { FreeTimeGrid } from '../components/post/FreeTimeGrid';
-import { browserTimeZone } from '../components/post/time';
+import { browserTimeZone } from '../lib/timeZone';
 import './characters.css';
 
 const NOTE_MAX = 300;

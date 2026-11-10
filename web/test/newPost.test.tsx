@@ -3,10 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CharacterDTO, PartyMemberDTO, PostDetailDTO } from '@pf/shared';
 import { App } from '../src/App';
 import { localInputToUtcIso } from '../src/components/post/time';
-vi.mock('../src/components/post/time', async (orig) => ({
-  ...(await orig<typeof import('../src/components/post/time')>()),
-  browserTimeZone: () => 'America/New_York',
-}));
+vi.mock('../src/lib/timeZone', () => ({ browserTimeZone: () => 'America/New_York' }));
 
 import { mockApi, renderWithProviders } from './setup';
 

@@ -4,13 +4,10 @@ import type { CharacterDTO, PartyMemberDTO, PostSummaryDTO } from '@pf/shared';
 import { SCHEDULED_GRACE_MS } from '@pf/shared';
 import { App } from '../src/App';
 import { boardQueryString } from '../src/api/postHooks';
-import { mockApi, renderWithProviders } from './setup';
+import { mockApi, renderWithProviders, testQueryClient } from './setup';
 
 const tz = vi.hoisted(() => ({ zone: 'America/New_York' }));
-vi.mock('../src/components/post/time', async (orig) => ({
-  ...(await orig<typeof import('../src/components/post/time')>()),
-  browserTimeZone: () => tz.zone,
-}));
+vi.mock('../src/lib/timeZone', () => ({ browserTimeZone: () => tz.zone }));
 
 const user = { id: 'u1', discordUsername: 'maple_fan', avatarUrl: null, isAdmin: false };
 
@@ -170,6 +167,19 @@ describe('BoardPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Hour/ }));
     fireEvent.click(await screen.findByRole('option', { name: '8p' }));
     expect(screen.getByRole('button', { name: /^Free at/ })).not.toHaveTextContent('pick an hour');
+  });
+
+  it('the board query key holds the freeAt instant, so a passed occurrence is never served from cache', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-10T15:00:00Z'));
+    const client = testQueryClient();
+    mockApi({ ...base, '/api/auth/me': null, '/api/posts': [], [FREE_AT]: [post] });
+    renderWithProviders(<App />, { client });
+    await screen.findByText('No open posts match. Be the first to post!');
+    await pickTue8p();
+    await screen.findByText('2 / 4');
+    const keys = client.getQueryCache().findAll({ queryKey: ['posts', 'board'] }).map((q) => q.queryKey);
+    expect(keys).toContainEqual(['posts', 'board', expect.objectContaining({ freeAt: 68 }), '2026-11-11T01:59:00.000Z']);
   });
 
   it('Any time clears freeAt', async () => {

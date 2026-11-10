@@ -238,6 +238,28 @@ describe('Board list refetch indicator', () => {
 });
 
 describe('Board preview free times', () => {
+  it('an old post with no zone and no free times shows "Flexible" and no grid', async () => {
+    const p = { ...p2, scheduledAt: null, freeTimes: [], freeTimesZone: null };
+    mockApi({ ...base, '/api/posts': [p1, p], '/api/posts/p2': detail(p) });
+    renderBoard();
+    const pane = await preview();
+    const when = await within(pane).findByRole('region', { name: 'When' });
+    expect(within(when).getByText('Flexible')).toBeInTheDocument();
+    expect(within(pane).queryByRole('grid')).toBeNull();
+  });
+
+  it('the collapsed grid takes its name from the summary instead of repeating it', async () => {
+    const p = { ...p2, freeTimes: [30, 31], freeTimesZone: 'UTC' };
+    mockApi({ ...base, '/api/posts': [p1, p], '/api/posts/p2': detail(p) });
+    renderBoard();
+    const pane = await preview();
+    const summary = await within(pane).findByText('Free times', { selector: 'summary' });
+    const grid = within(pane).getByRole('grid', { hidden: true });
+    expect(grid).not.toHaveAttribute('aria-label');
+    expect(grid).toHaveAttribute('aria-labelledby', summary.id);
+    expect(grid).toHaveAccessibleName('Free times');
+  });
+
   it('shows "Free times" in the meta and the read-only grid with a zone caption', async () => {
     const p = { ...p2, freeTimes: [30, 31], freeTimesZone: 'UTC' };
     mockApi({ ...base, '/api/posts': [p1, p], '/api/posts/p2': detail(p) });

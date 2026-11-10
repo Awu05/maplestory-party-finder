@@ -4,7 +4,7 @@ import { MAX_SCHEDULE_AHEAD_MS, type PostDetailDTO } from '@pf/shared';
 import { friendlyError } from '../../api/errors';
 import { useFinalizeTime } from '../../api/postHooks';
 import { localInputToUtcIso, utcIsoToLocalInput } from './time';
-import '../character/character.css';
+import './post.css';
 
 interface Props {
   post: PostDetailDTO;
@@ -53,15 +53,15 @@ export function FinalizeTimeDialog({ post, onClose }: Props) {
   return (
     <dialog
       ref={ref}
-      className="move-dialog"
+      className="finalize-dialog"
       aria-modal="true"
       aria-labelledby={headingId}
       onCancel={onCancel}
       onClick={onDialogClick}
     >
-      <div className="move-dialog__content">
+      <div className="finalize-dialog__content">
         <h2 id={headingId}>{post.scheduledAt ? 'Change time' : 'Finalize time'}</h2>
-        <label className="move-dialog__field">
+        <label className="finalize-dialog__field">
           Final time
           <input
             type="datetime-local"

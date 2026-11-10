@@ -12,7 +12,10 @@ export function hourLabel(hour: number): string {
 interface Props {
   /** Selected slots as hour-of-week in the viewer's zone (day * 24 + hour, 0 = Sunday). No conversion happens here. */
   value: number[];
-  label: string;
+  /** The grid's accessible name; ignored when labelledBy is given. */
+  label?: string;
+  /** Id of a visible element naming the grid (e.g. a summary), set as aria-labelledby instead of aria-label. */
+  labelledBy?: string;
   /** Enables editing (click, drag, Enter/Space) when provided and not readOnly. */
   onChange?: (v: number[]) => void;
   readOnly?: boolean;
@@ -23,7 +26,7 @@ interface Props {
 const lastDay = DAY_LABELS.length - 1;
 
 /** 7-day × 24-hour grid shown in the viewer's local time zone. */
-export function FreeTimeGrid({ value, onChange, readOnly, label: gridLabel, describedBy }: Props) {
+export function FreeTimeGrid({ value, onChange, readOnly, label: gridLabel, labelledBy, describedBy }: Props) {
   const selected = new Set(value);
   const hours = Array.from({ length: 24 }, (_, h) => h);
   const editable = !readOnly && !!onChange;
@@ -87,7 +90,8 @@ export function FreeTimeGrid({ value, onChange, readOnly, label: gridLabel, desc
         className="ftg__table"
         role="grid"
         aria-readonly={!editable}
-        aria-label={gridLabel}
+        aria-label={labelledBy ? undefined : gridLabel}
+        aria-labelledby={labelledBy}
         aria-describedby={describedBy}
       >
         <thead>

@@ -19,7 +19,6 @@ import { LineupView } from '../components/post/LineupView';
 import { bossLabel, postLabel } from '../components/post/labels';
 import { RequestList, ViewerActions } from '../components/post/ViewerActions';
 import { StatusPill } from '../components/post/StatusPill';
-import { whenLabel } from '../components/post/time';
 import { WhenSection } from '../components/post/WhenSection';
 import { FinalizeTimeDialog } from '../components/post/FinalizeTimeDialog';
 import { useLastActionError } from '../components/post/useLastActionError';
@@ -96,7 +95,10 @@ export function PostDetailPage() {
           {POST_TYPE_LABELS[p.type]}
         </span>
         <StatusPill status={p.status} deleted={p.deleted} />
-        <span>{whenLabel(p)}</span>
+        {/* The When section below carries the time; the header stays compact. */}
+        <span>
+          {p.world.name} · {p.guild.name}
+        </span>
       </header>
       <ul className="post-card__bosses">
         {p.bosses.map((b) => (
@@ -104,9 +106,6 @@ export function PostDetailPage() {
         ))}
       </ul>
       <WhenSection post={p} />
-      <div className="post-card__meta">
-        {p.world.name} · {p.guild.name}
-      </div>
       {p.type === 'recruiting' && (
         <div className="post-card__slots">
           <span>{`${p.memberCount}/${p.partySize}`}</span>
