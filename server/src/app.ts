@@ -65,6 +65,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     return reply
       .header('Content-Type', found.contentType)
       .header('Cache-Control', 'public, max-age=31536000, immutable')
+      .header('X-Content-Type-Options', 'nosniff')
       .send(found.buf);
   });
 
