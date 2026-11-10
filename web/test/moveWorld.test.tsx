@@ -43,6 +43,17 @@ const result = (outcome: RefreshResultDTO['outcome'], candidates: RefreshResultD
   candidates,
 });
 
+/** Records whether the dialog was still mounted each time the Refresh button is focused. */
+function spyFocus(btn: HTMLElement) {
+  const calls: boolean[] = [];
+  const orig = btn.focus.bind(btn);
+  btn.focus = () => {
+    calls.push(document.querySelector('dialog') !== null);
+    orig();
+  };
+  return calls;
+}
+
 async function refreshWith(r: RefreshResultDTO, extra: Record<string, unknown> = {}) {
   const fetchMock = mockApi({ ...base, 'POST /api/characters/c1/refresh': r, ...extra });
   renderWithProviders(<MyCharactersPage />);
@@ -130,8 +141,10 @@ describe('MoveWorldDialog', () => {
   it('Not now closes without a request and returns focus to Refresh', async () => {
     const { fetchMock, btn } = await refreshWith(result('found_elsewhere', [kronos]));
     await screen.findByRole('dialog');
+    const focusCalls = spyFocus(btn);
     fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(focusCalls).toEqual([false]);
     expect(fetchMock.mock.calls.some((c) => String(c[0]).endsWith('/move'))).toBe(false);
     expect(btn).toHaveFocus();
   });
@@ -139,8 +152,10 @@ describe('MoveWorldDialog', () => {
   it('Escape closes and returns focus to Refresh', async () => {
     const { fetchMock, btn } = await refreshWith(result('found_elsewhere', [kronos]));
     const dialog = await screen.findByRole('dialog');
+    const focusCalls = spyFocus(btn);
     fireEvent(dialog, new Event('cancel', { cancelable: true }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(focusCalls).toEqual([false]);
     expect(fetchMock.mock.calls.some((c) => String(c[0]).endsWith('/move'))).toBe(false);
     expect(btn).toHaveFocus();
   });

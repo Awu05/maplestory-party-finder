@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { RefreshResultDTO } from '@pf/shared';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useCharacters, useDeleteCharacter, useMe, useRarityTiers, useRefreshCharacter } from '../api/hooks';
@@ -21,9 +21,17 @@ function Actions({ id, onMessage }: { id: string; onMessage: (m: string) => void
   const del = useDeleteCharacter();
   const refreshRef = useRef<HTMLButtonElement>(null);
   const [found, setFound] = useState<RefreshResultDTO | null>(null);
+  const returnFocus = useRef(false);
+  // Focus the trigger only after the modal has unmounted; while it is open the page behind it is inert.
+  useEffect(() => {
+    if (!found && returnFocus.current) {
+      returnFocus.current = false;
+      refreshRef.current?.focus();
+    }
+  }, [found]);
   const closeDialog = () => {
+    returnFocus.current = true;
     setFound(null);
-    refreshRef.current?.focus();
   };
   return (
     <div className="actions my-card__actions">
