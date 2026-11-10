@@ -52,6 +52,19 @@ describe('PUT /api/posts/:id/final-time', () => {
     expect(events.events.filter((e) => e.type === 'post.finalized')).toHaveLength(2);
   });
 
+  it.each([
+    ['an empty body', {}],
+    ['a null scheduledAt', { scheduledAt: null }],
+    ['a non-ISO scheduledAt', { scheduledAt: 'tomorrow' }],
+  ])('%s -> 400 VALIDATION, nothing changes', async (_n, payload) => {
+    const p = await open();
+    const res = await app.inject({ method: 'PUT', url: `/api/posts/${p.id}/final-time`, payload, headers: { cookie } });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('VALIDATION');
+    expect((await prisma.post.findUniqueOrThrow({ where: { id: p.id } })).scheduledAt).toBeNull();
+    expect(events.events).toEqual([]);
+  });
+
   it('non-poster -> 403 NOT_OWNER', async () => {
     const p = await open();
     const other = await loginAs(app, 'other', 'other');

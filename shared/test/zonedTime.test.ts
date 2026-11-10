@@ -85,3 +85,36 @@ describe('nextOccurrence', () => {
     expect(nextOccurrence(1, NY, new Date('2026-11-01T06:30:00Z')).toISOString()).toBe('2026-11-01T06:00:00.000Z');
   });
 });
+
+describe('edge zones', () => {
+  const SANTIAGO = 'America/Santiago';
+  it('Santiago midnight spring-forward gap (2026-09-06 00:00 -> 01:00) gives the next valid hour', () => {
+    expect(zonedToInstant({ year: 2026, month: 9, day: 6, hour: 0 }, SANTIAGO).toISOString()).toBe('2026-09-06T04:00:00.000Z');
+    expect(instantToZoned(new Date('2026-09-06T04:00:00Z'), SANTIAGO)).toMatchObject({ day: 6, hour: 1 });
+  });
+
+  it('Santiago fall-back overlap (2026-04-04 23:00 twice) gives the first occurrence', () => {
+    expect(zonedToInstant({ year: 2026, month: 4, day: 4, hour: 23 }, SANTIAGO).toISOString()).toBe('2026-04-05T02:00:00.000Z');
+  });
+
+  it("St John's (UTC-3:30) converts whole wall hours to half-hour instants and back", () => {
+    expect(zonedToInstant({ year: 2026, month: 11, day: 10, hour: 20 }, 'America/St_Johns').toISOString()).toBe('2026-11-10T23:30:00.000Z');
+    expect(instantToZoned(new Date('2026-11-11T01:00:00Z'), 'America/St_Johns')).toMatchObject({ dayOfWeek: 2, hour: 21 });
+  });
+
+  it('Lord Howe 30-minute DST gap (02:00 -> 02:30) lands on 02:30', () => {
+    const t = zonedToInstant({ year: 2026, month: 10, day: 4, hour: 2 }, 'Australia/Lord_Howe');
+    expect(t.toISOString()).toBe('2026-10-03T15:30:00.000Z');
+    expect(instantToZoned(t, 'Australia/Lord_Howe')).toMatchObject({ day: 4, hour: 2 });
+  });
+
+  it('wraps Saturday to Sunday between zones (NY Sat 23 -> Kiritimati Sun 18, and back)', () => {
+    const now = new Date('2026-11-10T15:00:00Z');
+    expect(freeSlotsForViewer([6 * 24 + 23], NY, 'Pacific/Kiritimati', now)).toEqual([18]);
+    expect(freeSlotsForViewer([0], 'Pacific/Kiritimati', NY, now)).toEqual([6 * 24 + 5]);
+  });
+
+  it('nextOccurrence skips the NY spring gap (Sun 2am on 2027-03-14) to the next week', () => {
+    expect(nextOccurrence(2, NY, new Date('2027-03-13T12:00:00Z')).toISOString()).toBe('2027-03-21T06:00:00.000Z');
+  });
+});
