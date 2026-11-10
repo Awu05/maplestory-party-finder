@@ -1,16 +1,15 @@
-import { Prisma } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 
 /**
- * Declines every pending request matching `where`; returns the ids it actually declined (a request
- * decided concurrently is skipped) so callers can emit request.declined{auto:true} after commit.
+ * Declines every pending request matching `where` in one UPDATE ... RETURNING; returns the ids it
+ * actually declined (a request decided concurrently no longer matches status = 'pending' and is skipped)
+ * so callers can emit request.declined{auto:true} after commit.
  */
 export async function autoDeclinePending(tx: Prisma.TransactionClient, where: Prisma.RequestWhereInput): Promise<string[]> {
-  const pendingWhere: Prisma.RequestWhereInput = { AND: [where, { status: 'pending' }] };
-  const rows = await tx.request.findMany({ where: pendingWhere, select: { id: true } });
-  if (rows.length === 0) return [];
-  const updated = await tx.$queryRaw<{ id: string }[]>`
-    UPDATE "Request" SET status = 'declined', "decidedAt" = ${new Date()}
-    WHERE id IN (${Prisma.join(rows.map((r) => r.id))}) AND status = 'pending'
-    RETURNING id`;
-  return updated.map((r) => r.id);
+  const rows = await tx.request.updateManyAndReturn({
+    where: { AND: [where, { status: 'pending' }] },
+    data: { status: 'declined', decidedAt: new Date() },
+    select: { id: true },
+  });
+  return rows.map((r) => r.id);
 }
