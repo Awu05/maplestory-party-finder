@@ -4,12 +4,14 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useMe } from '../api/hooks';
 import { api } from '../api/client';
 import { NotificationBell } from './NotificationBell';
+import { ProfileDialog } from './ProfileDialog';
 
 export function Layout() {
   // A failed /me (server error, network down) counts as logged out once it settles.
   const { data: me, isPending: mePending } = useMe();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const close = () => setOpen(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const loginFailed = searchParams.get('login') === 'failed';
@@ -85,16 +87,32 @@ export function Layout() {
           {me && <NotificationBell />}
           {me ? (
             <>
-              <Link to="/me/profile" className="user" aria-label={`Profile: ${me.displayName ?? me.discordUsername}`} onClick={close}>
+              <button
+                type="button"
+                className="user"
+                aria-haspopup="dialog"
+                aria-label={`Profile: ${me.displayName ?? me.discordUsername}`}
+                onClick={() => {
+                  close();
+                  setProfileOpen(true);
+                }}
+              >
                 {me.avatarUrl ? <img className="avatar" src={me.avatarUrl} alt="" /> : (
                   <span className="avatar avatar--placeholder" aria-hidden="true">{(me.displayName ?? me.discordUsername).slice(0, 1).toUpperCase()}</span>
                 )}
                 {/* Visually hidden on phones by the @media rule in global.css. */}
                 <span className="user-name">{me.displayName ?? me.discordUsername}</span>
-              </Link>
-              <button type="button" className="btn btn--secondary logout" onClick={logout}>
-                Log out
               </button>
+              {profileOpen && (
+                <ProfileDialog
+                  me={me}
+                  onClose={() => setProfileOpen(false)}
+                  onLogout={() => {
+                    setProfileOpen(false);
+                    void logout();
+                  }}
+                />
+              )}
             </>
           ) : (
             !mePending && (

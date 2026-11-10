@@ -214,9 +214,13 @@ input[type='radio'] {
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
-  /* A link to Profile, but styled like the rest of the header text. */
+  /* Opens the Profile popup; styled like the rest of the header text. */
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
   color: inherit;
-  text-decoration: none;
+  cursor: pointer;
 }
 .user:hover .user-name {
   text-decoration: underline;
@@ -279,10 +283,6 @@ input[type='radio'] {
     overflow: hidden;
     clip-path: inset(50%);
     white-space: nowrap;
-  }
-  .logout {
-    padding: var(--space-1) var(--space-2);
-    font-size: 0.85rem;
   }
   .nav {
     display: none;

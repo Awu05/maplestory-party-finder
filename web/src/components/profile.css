@@ -1,0 +1,43 @@
+.profile-dialog {
+  width: min(24rem, calc(100vw - 16px));
+  max-height: calc(100dvh - 16px);
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+}
+.profile-dialog::backdrop {
+  background: rgb(0 0 0 / 0.6);
+}
+.profile-dialog__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+.profile-dialog__content h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+.profile-dialog__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.profile-dialog__muted {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.profile-dialog__rule {
+  width: 100%;
+  margin: var(--space-1) 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+.profile-dialog__logout {
+  align-self: flex-start;
+}

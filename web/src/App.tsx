@@ -1,6 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { Layout } from './components/Layout';
-import { ProfilePage } from './pages/ProfilePage';
 import { CharactersPage } from './pages/CharactersPage';
 import { BoardPage } from './pages/BoardPage';
 import { NewPostPage } from './pages/NewPostPage';
@@ -28,7 +27,6 @@ export function App() {
         <Route path="posts/:id" element={<PostDetailPage />} />
         <Route path="posts/:id/edit" element={<NewPostPage />} />
         <Route path="me/parties" element={<MyPartiesPage />} />
-        <Route path="me/profile" element={<ProfilePage />} />
         <Route path="me/characters" element={<MyCharactersPage />} />
         <Route path="me/characters/new" element={<CharacterFormPage />} />
         <Route path="me/characters/:id/edit" element={<CharacterFormPage />} />

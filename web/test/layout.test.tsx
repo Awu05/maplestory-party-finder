@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { App } from '../src/App';
 import { mockApi, renderWithProviders, setViewport, testQueryClient } from './setup';
 
@@ -54,7 +54,9 @@ describe('Layout', () => {
     renderWithProviders(<App />);
     expect(await screen.findByText('maple_fan')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'My characters' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Log out' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Log out' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Profile: maple_fan' }));
+    expect(within(screen.getByRole('dialog', { name: 'Profile' })).getByRole('button', { name: 'Log out' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Admin' })).not.toBeInTheDocument();
   });
 
@@ -87,7 +89,8 @@ describe('Layout', () => {
       },
     });
     renderWithProviders(<App />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Log out' }));
+    fireEvent.click(await screen.findByRole('button', { name: /^Profile:/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Log out' }));
     expect(await screen.findByRole('link', { name: 'Log in with Discord' })).toBeInTheDocument();
     await waitFor(() =>
       expect(fetchMock.mock.calls.some(([u, i]) => String(u) === '/api/auth/logout' && i?.method === 'POST')).toBe(true),
@@ -102,7 +105,8 @@ describe('Layout', () => {
     client.setQueryData(['posts', 'detail', 'p1'], { id: 'p1', isPoster: true });
     client.setQueryData(['posts', 'mine', 'requests'], { incomingInvites: [], outgoingRequests: [] });
     renderWithProviders(<App />, { client });
-    fireEvent.click(await screen.findByRole('button', { name: 'Log out' }));
+    fireEvent.click(await screen.findByRole('button', { name: /^Profile:/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Log out' }));
     await screen.findByRole('link', { name: 'Log in with Discord' });
     await waitFor(() => expect(client.getQueryCache().findAll({ queryKey: ['posts', 'detail'] })).toHaveLength(0));
     expect(client.getQueryData(['posts', 'mine', 'requests'])).toBeUndefined();
@@ -116,18 +120,15 @@ describe('Layout', () => {
     expect(screen.queryByRole('link', { name: 'My parties' })).not.toBeInTheDocument();
   });
 
-  it('bell, username and Log out share .header-right in that order', async () => {
+  it('bell then the Profile button share .header-right, in that order', async () => {
     mockApi({ '/api/auth/me': user, '/api/notifications?limit=30': { items: [], unreadCount: 0 } });
     renderWithProviders(<App />);
-    const name = await screen.findByText('maple_fan');
+    const profile = await screen.findByRole('button', { name: 'Profile: maple_fan' });
     const bell = await screen.findByRole('button', { name: /notifications/i });
-    const logout = screen.getByRole('button', { name: 'Log out' });
     const group = bell.closest('.header-right');
     expect(group).not.toBeNull();
-    expect(group).toContainElement(name);
-    expect(group).toContainElement(logout);
-    expect(bell.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(name.compareDocumentPosition(logout) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(group).toContainElement(profile);
+    expect(bell.compareDocumentPosition(profile) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('with the menu open, Tab moves from Menu straight to the Board link', async () => {
