@@ -16,3 +16,8 @@ Minor findings from Plan 3's reviews that were deliberately deferred.
 - Task 12: minor (deferred): stopped mid-run sync still advances lastRunAt (remaining chars wait up to 24h); README "every character" omits banned skip
 - Task 12: minor (deferred): if app.close() throws, drain is skipped (rare)
 - Final fix wave: re-review all 8 ADDRESSED, no new breakage (commits 1000d02..9c20e9b). Parked: null-guild poster char ping falls back to post guild; no explicit http:// thumbnail test.
+
+## From the deep review fix branch (fix/deep-review)
+- PATCH with `scheduledAt: null` on an already-flexible post still resets expiresAt (acts like Renew via API; web never sends it). Compare against row.scheduledAt to make it a no-op.
+- Leaving a party reopens the member's matched LFP post even if that character has since joined another live party.
+- web/src/components/card/format.ts still defines its own DAY_MS; use the shared one.
