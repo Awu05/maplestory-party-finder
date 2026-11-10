@@ -123,10 +123,13 @@ export function BoardPage() {
           ]}
           />
         </div>
+        {/* A day alone sends no freeAt; its label says the filter still needs an hour. */}
         <MenuChip
           label="Free at"
           allLabel="Any time"
-          valueLabel={freeDay !== '' ? DAY_LABELS[Number(freeDay)] : null}
+          valueLabel={
+            freeDay === '' ? null : freeHour === '' ? `${DAY_LABELS[Number(freeDay)]} · pick an hour` : DAY_LABELS[Number(freeDay)]
+          }
           value={freeDay}
           onChange={(v) => {
             setFreeDay(v);

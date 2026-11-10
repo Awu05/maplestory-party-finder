@@ -46,3 +46,24 @@ it('Cancel and Escape close the popup without saving', async () => {
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(fetch.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === 'PATCH')).toBe(false);
 });
+
+it.each([
+  ['Cancel', () => fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))],
+  ['Escape', () => fireEvent(screen.getByRole('dialog'), new Event('cancel', { cancelable: true }))],
+])('%s returns focus to the Profile button only after the popup unmounts', async (_n, closeIt) => {
+  mockApi({ ...NOTIF, '/api/auth/me': { id: 'u1', discordUsername: 'maple_fan', displayName: null, avatarUrl: null, isAdmin: false } });
+  renderWithProviders(<App />);
+  const btn = await screen.findByRole('button', { name: 'Profile: maple_fan' });
+  fireEvent.click(btn);
+  await screen.findByRole('dialog');
+  const calls: boolean[] = [];
+  const orig = btn.focus.bind(btn);
+  btn.focus = () => {
+    calls.push(document.querySelector('dialog') !== null);
+    orig();
+  };
+  closeIt();
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(calls).toEqual([false]);
+  expect(btn).toHaveFocus();
+});

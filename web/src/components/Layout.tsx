@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useMe } from '../api/hooks';
@@ -12,6 +12,19 @@ export function Layout() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const profileRef = useRef<HTMLButtonElement>(null);
+  const returnFocus = useRef(false);
+  // Focus the Profile button only after the popup has unmounted; while it is open the page behind it is inert.
+  useEffect(() => {
+    if (!profileOpen && returnFocus.current) {
+      returnFocus.current = false;
+      profileRef.current?.focus();
+    }
+  }, [profileOpen]);
+  const closeProfile = () => {
+    returnFocus.current = true;
+    setProfileOpen(false);
+  };
   const close = () => setOpen(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const loginFailed = searchParams.get('login') === 'failed';
@@ -88,6 +101,7 @@ export function Layout() {
           {me ? (
             <>
               <button
+                ref={profileRef}
                 type="button"
                 className="user"
                 aria-haspopup="dialog"
@@ -106,8 +120,9 @@ export function Layout() {
               {profileOpen && (
                 <ProfileDialog
                   me={me}
-                  onClose={() => setProfileOpen(false)}
+                  onClose={closeProfile}
                   onLogout={() => {
+                    // The Profile button goes away on log out: nothing to refocus.
                     setProfileOpen(false);
                     void logout();
                   }}

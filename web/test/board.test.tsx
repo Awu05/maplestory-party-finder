@@ -159,6 +159,19 @@ describe('BoardPage', () => {
     expect(boardQueryString({ freeAt: 78 })).toBe('freeAt=2026-11-11T01%3A29%3A00.000Z');
   });
 
+  it('a day without an hour reads "<Day> · pick an hour" and sends no freeAt', async () => {
+    const fetchMock = mockApi({ ...base, '/api/auth/me': null, '/api/posts': [] });
+    renderWithProviders(<App />);
+    await screen.findByText('No open posts match. Be the first to post!');
+    fireEvent.click(screen.getByRole('button', { name: /^Free at/ }));
+    fireEvent.click(await screen.findByRole('option', { name: 'Tue' }));
+    expect(screen.getByRole('button', { name: /^Free at/ })).toHaveTextContent('Free at: Tue · pick an hour');
+    expect(postsCalls(fetchMock).every((u) => !u.includes('freeAt'))).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: /^Hour/ }));
+    fireEvent.click(await screen.findByRole('option', { name: '8p' }));
+    expect(screen.getByRole('button', { name: /^Free at/ })).not.toHaveTextContent('pick an hour');
+  });
+
   it('Any time clears freeAt', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-11-10T15:00:00Z'));

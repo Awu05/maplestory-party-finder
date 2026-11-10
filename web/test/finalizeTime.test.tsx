@@ -96,6 +96,20 @@ describe('Finalize dialog', () => {
     return { fetchMock, btn };
   };
 
+  it('limits the input to now through 30 days ahead, in local time at minute precision', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-10T15:00:30Z'));
+    try {
+      await open();
+      const input = await screen.findByLabelText('Final time');
+      expect(input).toHaveAttribute('min', utcIsoToLocalInput('2026-11-10T15:00:30Z'));
+      expect(input).toHaveAttribute('max', utcIsoToLocalInput('2026-12-10T15:00:30Z'));
+      expect(input.getAttribute('min')).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('prefills from scheduledAt', async () => {
     await open({ scheduledAt: '2026-12-01T20:00:00Z' });
     expect(await screen.findByLabelText('Final time')).toHaveValue(utcIsoToLocalInput('2026-12-01T20:00:00Z'));

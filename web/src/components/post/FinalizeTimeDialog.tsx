@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { MouseEvent, SyntheticEvent } from 'react';
-import type { PostDetailDTO } from '@pf/shared';
+import { MAX_SCHEDULE_AHEAD_MS, type PostDetailDTO } from '@pf/shared';
 import { friendlyError } from '../../api/errors';
 import { useFinalizeTime } from '../../api/postHooks';
 import { localInputToUtcIso, utcIsoToLocalInput } from './time';
@@ -17,6 +17,14 @@ export function FinalizeTimeDialog({ post, onClose }: Props) {
   const finalize = useFinalizeTime(post.id);
   const [value, setValue] = useState(post.scheduledAt ? utcIsoToLocalInput(post.scheduledAt) : '');
   const [error, setError] = useState('');
+  // The server takes now (less a small tolerance) through 30 days ahead.
+  const [limits] = useState(() => {
+    const now = Date.now();
+    return {
+      min: utcIsoToLocalInput(new Date(now).toISOString()),
+      max: utcIsoToLocalInput(new Date(now + MAX_SCHEDULE_AHEAD_MS).toISOString()),
+    };
+  });
 
   useEffect(() => {
     const d = ref.current;
@@ -55,7 +63,13 @@ export function FinalizeTimeDialog({ post, onClose }: Props) {
         <h2 id={headingId}>{post.scheduledAt ? 'Change time' : 'Finalize time'}</h2>
         <label className="move-dialog__field">
           Final time
-          <input type="datetime-local" value={value} onChange={(e) => setValue(e.target.value)} />
+          <input
+            type="datetime-local"
+            value={value}
+            min={limits.min}
+            max={limits.max}
+            onChange={(e) => setValue(e.target.value)}
+          />
         </label>
         {error && <p role="alert">{error}</p>}
         <div className="actions">
