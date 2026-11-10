@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { MyRequestsDTO, PostDetailDTO, PostSummaryDTO, PostType, RequestDTO } from '@pf/shared';
+import { SCHEDULED_GRACE_MS, type MyRequestsDTO, type PostDetailDTO, type PostSummaryDTO, type PostType, type RequestDTO } from '@pf/shared';
 import { api } from './client';
 import { useMe } from './hooks';
 
@@ -22,7 +22,8 @@ export function boardQueryString(f: PostFilters, now: Date = new Date()): string
   if (f.guildId) p.set('guildId', f.guildId);
   if (f.worldIds && f.worldIds.length > 0) p.set('worldIds', f.worldIds.join(','));
   if (f.when === '24h' || f.when === '7d') {
-    p.set('from', now.toISOString());
+    // A run stays on the board for the grace period after its start, so include runs that just started.
+    p.set('from', new Date(now.getTime() - SCHEDULED_GRACE_MS).toISOString());
     p.set('to', new Date(now.getTime() + (f.when === '24h' ? DAY_MS : 7 * DAY_MS)).toISOString());
   } else if (f.when === 'flexible') {
     p.set('flexible', '1');
