@@ -173,12 +173,43 @@ describe('Board list', () => {
     expect(loc()).toBe('/?post=p1');
   });
 
-  it('a stale ?post=missing selects p1 and rewrites the URL', async () => {
-    mockApi({ ...base, '/api/posts': [p1, p2] });
+  it('a stale ?post=missing (detail 404) selects p1 and rewrites the URL', async () => {
+    // No '/api/posts/missing' route: mockApi answers the detail fetch with a 404.
+    const fetchMock = mockApi({ ...base, '/api/posts': [p1, p2] });
     renderBoard('/?post=missing');
-    const rows = await within(await screen.findByRole('listbox', { name: 'Posts' })).findAllByRole('option');
-    expect(rows[0]).toHaveAttribute('aria-selected', 'true');
+    const list = await screen.findByRole('listbox', { name: 'Posts' });
     await waitFor(() => expect(loc()).toBe('/?post=p1'));
+    expect(fetchMock.mock.calls.map(([u]) => String(u))).toContain('/api/posts/missing');
+    expect(within(list).getAllByRole('option')[0]).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByText(/isn't in your current filters/)).not.toBeInTheDocument();
+  });
+
+  it('a deep-linked post outside the current filters stays selected and shows a note', async () => {
+    const p9: PostSummaryDTO = { ...p1, id: 'p9', bosses: [{ bossDifficultyId: 9, bossName: 'Kalos', difficulty: 'Chaos' }] };
+    mockApi({ ...base, '/api/posts': [p1, p2], '/api/posts/p9': { ...detailExtras, ...p9, members: [poster] } });
+    renderBoard('/?post=p9');
+    const pane = await screen.findByRole('region', { name: 'Post preview' });
+    expect(await within(pane).findByRole('heading', { name: 'Chaos Kalos' })).toBeInTheDocument();
+    expect(within(pane).getByText("This post isn't in your current filters.")).toBeInTheDocument();
+    const rows = within(screen.getByRole('listbox', { name: 'Posts' })).getAllByRole('option');
+    expect(rows.every((r) => r.getAttribute('aria-selected') === 'false')).toBe(true);
+    expect(loc()).toBe('/?post=p9');
+  });
+
+  it('scrolls the selected row into view', async () => {
+    const p3: PostSummaryDTO = { ...p1, id: 'p3', bosses: [{ bossDifficultyId: 10, bossName: 'Seren', difficulty: 'Hard' }] };
+    const scroll = vi.fn();
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scroll;
+    try {
+      mockApi({ ...base, '/api/posts': [p1, p2, p3], '/api/posts/p3': { ...detailExtras, ...p3, members: [poster] } });
+      renderBoard('/?post=p3');
+      const rows = await within(await screen.findByRole('listbox', { name: 'Posts' })).findAllByRole('option');
+      await waitFor(() => expect(scroll.mock.contexts).toContain(rows[2]));
+      expect(scroll).toHaveBeenCalledWith({ block: 'nearest' });
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
   });
 
   it('a stale id is rewritten without dropping other params', async () => {
@@ -284,11 +315,19 @@ describe('Board list', () => {
     expect(await screen.findByRole('region', { name: 'Post preview' })).toBeInTheDocument();
   });
 
-  it('shows the empty state and the quiet preview placeholder', async () => {
+  it('shows the empty state and no preview placeholder', async () => {
     mockApi({ ...base, '/api/posts': [] });
     renderBoard();
     expect(await screen.findByText('No open posts match. Be the first to post!')).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'Post preview' })).toHaveTextContent('Pick a post to see its party');
+    expect(screen.queryByText('Pick a post to see its party')).not.toBeInTheDocument();
+  });
+
+  it('the preview shows its skeleton while the board first loads', async () => {
+    holdRequest(mockApi({ ...base, '/api/posts': [p1] }), '/api/posts');
+    renderBoard();
+    const pane = await screen.findByRole('region', { name: 'Post preview' });
+    expect(within(pane).getByRole('status')).toHaveTextContent('Loading post…');
+    expect(pane).not.toHaveTextContent('Pick a post to see its party');
   });
 
   it('shows skeleton rows while loading', async () => {

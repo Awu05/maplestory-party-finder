@@ -350,6 +350,11 @@ a.post-card:hover {
   color: var(--muted);
   font-size: 0.85rem;
 }
+.post-preview__filter-note {
+  margin: 0 0 var(--space-3);
+  color: var(--muted);
+  font-size: 0.85rem;
+}
 .post-preview__note {
   margin: var(--space-3) 0 0;
 }

@@ -210,10 +210,11 @@ describe('Board preview', () => {
     expect(await within(pane).findByRole('alert')).toBeInTheDocument();
   });
 
-  it('shows the placeholder when there are no posts', async () => {
+  it('shows no placeholder when there are no posts', async () => {
     mockApi({ ...base, '/api/posts': [] });
     renderBoard('/');
-    expect(await preview()).toHaveTextContent('Pick a post to see its party');
+    expect(await screen.findByText('No open posts match. Be the first to post!')).toBeInTheDocument();
+    expect(screen.queryByText('Pick a post to see its party')).not.toBeInTheDocument();
   });
 });
 

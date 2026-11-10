@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { usePost } from '../../api/postHooks';
 import { friendlyError } from '../../api/errors';
@@ -9,32 +10,65 @@ import { bossLabel } from './labels';
 import { formatWhen } from './time';
 import './post.css';
 
-export function PostPreview({ postId }: { postId: string | null }) {
+interface PostPreviewProps {
+  postId: string | null;
+  /** The board list is still loading: show the skeleton, not a prompt. */
+  loading?: boolean;
+  /** The post was deep-linked but is not in the current list. */
+  outsideFilters?: boolean;
+  /** Called with the id when an outside-filters post cannot be loaded (deleted, 404, other error). */
+  onUnavailable?: (id: string) => void;
+}
+
+export function PostPreview({ postId, loading = false, outsideFilters = false, onUnavailable }: PostPreviewProps) {
+  let body;
+  if (postId !== null) {
+    body = <PreviewBody key={postId} postId={postId} outsideFilters={outsideFilters} onUnavailable={onUnavailable} />;
+  } else if (loading) {
+    body = <Skeleton />;
+  } else {
+    body = <p className="board__placeholder">Pick a post to see its party</p>;
+  }
   return (
     <section className="board__preview panel" aria-label="Post preview">
-      {postId === null ? <p className="board__placeholder">Pick a post to see its party</p> : <PreviewBody key={postId} postId={postId} />}
+      {body}
     </section>
   );
 }
 
+const Skeleton = () => (
+  <div className="post-preview__skeleton" role="status">
+    <span className="visually-hidden">Loading post…</span>
+  </div>
+);
+
 // Separate component so no (disabled) detail query is registered while nothing is selected;
 // keyed by post id so action state (errors, open pickers) resets on selection change.
-function PreviewBody({ postId }: { postId: string }) {
+function PreviewBody({
+  postId,
+  outsideFilters,
+  onUnavailable,
+}: {
+  postId: string;
+  outsideFilters: boolean;
+  onUnavailable?: (id: string) => void;
+}) {
   const post = usePost(postId);
+  const failed = post.isError;
+  useEffect(() => {
+    if (failed && outsideFilters) onUnavailable?.(postId);
+  }, [failed, outsideFilters, postId]); // onUnavailable is the board's state setter (stable)
 
   let body;
   if (post.isError) {
     body = <p role="alert">{friendlyError(post.error)}</p>;
   } else if (!post.data) {
-    body = (
-      <div className="post-preview__skeleton" role="status">
-        <span className="visually-hidden">Loading post…</span>
-      </div>
-    );
+    body = <Skeleton />;
   } else {
     const p = post.data;
     body = (
       <>
+        {outsideFilters && <p className="post-preview__filter-note">This post isn't in your current filters.</p>}
         <div className="post-preview__head">
           <h2 className="post-preview__title">{p.bosses.map(bossLabel).join(', ')}</h2>
           <StatusPill status={p.status} deleted={p.deleted} />

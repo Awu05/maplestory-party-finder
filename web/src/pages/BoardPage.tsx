@@ -44,7 +44,12 @@ export function BoardPage() {
 
   const [params, setParams] = useSearchParams();
   const wanted = params.get('post');
-  const selectedId = posts.data?.some((p) => p.id === wanted) ? wanted : (posts.data?.[0]?.id ?? null);
+  // A deep link the detail fetch could not load; only then does the selection fall back to the first row.
+  const [unavailable, setUnavailable] = useState<string | null>(null);
+  const inList = !!wanted && !!posts.data?.some((p) => p.id === wanted);
+  // A ?post= outside the current filters stays selected; the preview fetches it and says so.
+  const keepWanted = !!wanted && (inList || wanted !== unavailable);
+  const selectedId = !posts.data ? null : keepWanted ? wanted : (posts.data[0]?.id ?? null);
   // Only ?post= changes; other params are kept. Replace, not push, so Back leaves the board.
   const select = (id: string) =>
     setParams(
@@ -155,7 +160,15 @@ export function BoardPage() {
           wanted={wanted}
           select={select}
         />
-        {!isPhone && !posts.isError && <PostPreview postId={selectedId} />}
+        {/* With an empty list and nothing deep-linked, the list's empty message says it all. */}
+        {!isPhone && !posts.isError && (posts.isPending || selectedId !== null) && (
+          <PostPreview
+            postId={selectedId}
+            loading={posts.isPending}
+            outsideFilters={selectedId !== null && !inList && selectedId === wanted}
+            onUnavailable={setUnavailable}
+          />
+        )}
       </div>
     </section>
   );
@@ -183,6 +196,14 @@ function PostList({ posts, loading, refetching, isPhone, selectedId, wanted, sel
   useEffect(() => {
     if (needsRewrite && selectedId) select(selectedId);
   }, [needsRewrite, selectedId]); // select is recreated each render; these two decide whether it runs
+
+  // Keep the selection visible in the scrolling list, whatever moved it (URL, default, keyboard).
+  const rowsShown = !loading && !isPhone && !!posts && posts.length > 0;
+  useEffect(() => {
+    if (!rowsShown || selectedId === null) return;
+    const row = rowRefs.current.get(selectedId);
+    if (typeof row?.scrollIntoView === 'function') row.scrollIntoView({ block: 'nearest' });
+  }, [selectedId, rowsShown]);
 
   const skeletons = [0, 1, 2].map((i) => <div key={i} className="post-row post-row--skeleton" aria-hidden="true" />);
   // Outside the listbox (a listbox may only own options). Desktop branches share this
