@@ -371,14 +371,16 @@ describe('post.finalized', () => {
     const post = await recruiting();
     await addMember(post.id, bob.id); // G5, webhook
     await addMember(post.id, carol.id); // G2, no webhook
-    const loner = await makeCharacter({ ownerId: (await makeUser({ discordId: 'u-9', username: 'nine' })).id, worldId: (await prisma.world.findFirstOrThrow()).id, guildId: null, ign: 'Loner' });
+    // A member with no guild: notified in-app, never pinged.
+    const lonerUser = await makeUser({ discordId: 'u-9', username: 'nine' });
+    const loner = await makeCharacter({ ownerId: lonerUser.id, worldId: kronosId, guildId: null, ign: 'Loner' });
     await addMember(post.id, loner.id);
     const at = new Date(Date.now() + 2 * 86_400_000).toISOString();
     expect((await call('PUT', `/api/posts/${post.id}/final-time`, u1, { scheduledAt: at })).statusCode).toBe(200);
     await events.drain();
     const ns = await notes();
     expect(ns.map((n) => n.kind)).toEqual(['time_set', 'time_set', 'time_set']);
-    expect(ns.map((n) => n.userId).sort()).toEqual([u2Id, u3Id, (await prisma.user.findUniqueOrThrow({ where: { discordId: 'u-9' } })).id].sort());
+    expect(ns.map((n) => n.userId).sort()).toEqual([u2Id, u3Id, lonerUser.id].sort());
     expect(ns.every((n) => n.link === `/posts/${post.id}` && n.text === 'Alice set the time for Hard Lucid')).toBe(true);
     const ds = await deliveries();
     expect(ds).toHaveLength(1);
@@ -386,5 +388,33 @@ describe('post.finalized', () => {
     expect(content(ds[0]!)).toContain('<@u-2>');
     expect(content(ds[0]!)).toContain('<t:');
     expect((ds[0]!.payload as { allowed_mentions: unknown }).allowed_mentions).toEqual({ parse: [], users: ['u-2'] });
+  });
+
+  it("one member's failing ping is logged and the other members are still notified and pinged", async () => {
+    const post = await recruiting();
+    await addMember(post.id, bob.id); // G5: its guild lookup fails below
+    const erinUser = await makeUser({ discordId: 'u-8', username: 'eight' });
+    const erin = await makeCharacter({ ownerId: erinUser.id, worldId: kronosId, guildId: g1.id, ign: 'Erin' });
+    await addMember(post.id, erin.id);
+    const errorLogs: LogEntry[] = [];
+    const guild = {
+      findUnique: (args: { where: { id: string } }) =>
+        args.where.id === g5.id ? Promise.reject(new TypeError('guild lookup failed')) : prisma.guild.findUnique(args as never),
+    };
+    const flaky = new Proxy(prisma, { get: (t, k, r) => (k === 'guild' ? guild : Reflect.get(t, k, r)) });
+    const dispatcher = new EventDispatcher({
+      prisma: flaky, storage, webOrigin: 'http://localhost:5173',
+      log: { error: (obj, msg) => errorLogs.push({ obj, msg }) },
+    });
+    dispatcher.emit({ type: 'post.finalized', postId: post.id, actorUserId: u1Id });
+    await dispatcher.drain();
+    expect((await notes()).map((n) => n.userId).sort()).toEqual([u2Id, erinUser.id].sort());
+    const ds = await deliveries();
+    expect(ds).toHaveLength(1);
+    expect(ds[0]).toMatchObject({ guildId: g1.id, eventType: 'post.finalized' });
+    expect(content(ds[0]!)).toContain('<@u-8>');
+    expect(errorLogs).toEqual([
+      { obj: { event: 'post.finalized', postId: post.id, errName: 'TypeError' }, msg: 'member notification failed' },
+    ]);
   });
 });

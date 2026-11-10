@@ -185,10 +185,19 @@ export class EventDispatcher implements DomainEvents {
       orderBy: { joinedAt: 'asc' },
     });
     for (const m of members) {
-      await this.notify(m.userId, actorUserId, 'time_set', `${posterIgn} set the time for ${bossesLabel(post)}`, postId);
-      await this.ping(m.character?.guildId ?? null, m.userId, actorUserId, 'post.finalized', (recipientDiscordId) =>
-        buildTimeSetPing({ recipientDiscordId, posterIgn, post, scheduledAt, webOrigin: this.webOrigin }),
-      );
+      // One member's failure (a bad guild row, a lost connection) must not stop the rest.
+      try {
+        await this.notify(m.userId, actorUserId, 'time_set', `${posterIgn} set the time for ${bossesLabel(post)}`, postId);
+        await this.ping(m.character?.guildId ?? null, m.userId, actorUserId, 'post.finalized', (recipientDiscordId) =>
+          buildTimeSetPing({ recipientDiscordId, posterIgn, post, scheduledAt, webOrigin: this.webOrigin }),
+        );
+      } catch (err) {
+        try {
+          this.log.error({ event: 'post.finalized', postId, errName: errName(err), ...errCode(err) }, 'member notification failed');
+        } catch {
+          // A failing logger must not stop the loop either.
+        }
+      }
     }
   }
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PostSummaryDTO } from '@pf/shared';
 import {
-  bossLabel, buildAcceptPing, buildNewPostMessage, buildRequestPing, buildTestMessage, discordTime, neutralize,
+  bossLabel, buildAcceptPing, buildNewPostMessage, buildRequestPing, buildTestMessage, buildTimeSetPing, discordTime, neutralize,
 } from '../src/discord/messages';
 
 const ZW = '​';
@@ -151,5 +151,14 @@ describe('pings', () => {
     const p = buildTestMessage('@everyone Guild');
     expect(p.content).toBe(`✅ Party Finder is connected to @${ZW}everyone Guild.`);
     expect(p.allowed_mentions).toEqual({ parse: [] });
+  });
+});
+
+describe('buildTimeSetPing', () => {
+  it('neutralizes an @everyone poster IGN and boss name, and only pings the recipient', () => {
+    const post = makePost({ bosses: [{ bossDifficultyId: 1, bossName: '@everyone', difficulty: 'Hard' }] });
+    const p = buildTimeSetPing({ recipientDiscordId: '42', posterIgn: '@here Alice', post, scheduledAt: '2025-11-10T20:00:00Z', webOrigin: ORIGIN });
+    expect(p.content).toBe(`<@42> @${ZW}here Alice set the time for Hard @${ZW}everyone: <t:1762804800:F> → ${ORIGIN}/posts/p1`);
+    expect(p.allowed_mentions).toEqual({ parse: [], users: ['42'] });
   });
 });
