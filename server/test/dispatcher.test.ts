@@ -125,6 +125,16 @@ describe('request.created', () => {
     expect(ds[0]).toMatchObject({ guildId: g5.id, eventType: 'request.created' });
   });
 
+  it('invite to a guildless character -> notification only, no ping, no throw', async () => {
+    const post = await recruiting();
+    const lfp = await makePost({ type: 'lfp', partySize: null, posterCharacterId: bob.id, bossDifficultyIds: [lucid] });
+    await prisma.character.update({ where: { id: bob.id }, data: { guildId: null } });
+    await invite(lfp.id, post.id, u1);
+    await events.drain();
+    expect(await notes()).toHaveLength(1);
+    expect(await deliveries()).toEqual([]);
+  });
+
   it('invite -> invitee notified; ping to invitee guild mentioning invitee', async () => {
     const post = await recruiting();
     const lfp = await makePost({ type: 'lfp', partySize: null, posterCharacterId: bob.id, bossDifficultyIds: [lucid] });

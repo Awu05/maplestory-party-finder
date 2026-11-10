@@ -13,7 +13,7 @@ const character = (id: string, ign: string): CharacterDTO => ({
   imageUrl: `http://img/${ign}.png`,
   combatPower: 1_500_000_000,
   cpUpdatedAt: '2026-11-01T00:00:00Z',
-  guild: { id: 'g1', name: 'Maple Guild', iconUrl: null },
+  guild: { id: 'g1', name: 'Maple Guild', iconUrl: null }, manual: false,
   screenshotUrl: null,
   owner: { discordUsername: `${ign}#1` },
   isOwner: false,

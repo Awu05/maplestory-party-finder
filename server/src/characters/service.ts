@@ -85,6 +85,63 @@ export async function createCharacter(
   }
 }
 
+export interface ManualCharacterInput {
+  ign: string;
+  worldId: number;
+  jobName: string;
+  level: number;
+  combatPower: number;
+  guildId: string;
+}
+
+export const DEFAULT_CHARACTER_IMAGE = '/default-character.svg';
+
+async function requireJobClass(prisma: PrismaClient, jobName: string) {
+  const jobClass = await prisma.jobClass.findUnique({ where: { nameLower: jobName.trim().toLowerCase() } });
+  if (!jobClass) throw new AppError(400, 'UNKNOWN_CLASS', 'Pick a class from the list');
+  return jobClass;
+}
+
+export async function createManualCharacter(
+  prisma: PrismaClient,
+  ownerId: string,
+  input: ManualCharacterInput,
+): Promise<CharacterRow> {
+  const guild = await requireActiveGuild(prisma, input.guildId);
+  const world = await prisma.world.findUnique({ where: { id: input.worldId } });
+  if (!world) throw new AppError(400, 'UNKNOWN_WORLD', `World ${input.worldId} isn't set up yet — ask the admin`);
+  if (!world.active) throw new AppError(400, 'WORLD_INACTIVE', 'That world is not active');
+  const jobClass = await requireJobClass(prisma, input.jobName);
+
+  const ign = input.ign.trim();
+  const now = new Date();
+  try {
+    return await prisma.character.create({
+      data: {
+        ownerId,
+        ign,
+        ignLower: ign.toLowerCase(),
+        worldId: world.id,
+        jobName: jobClass.name,
+        archetype: jobClass.archetype,
+        level: input.level,
+        imageUrl: DEFAULT_CHARACTER_IMAGE,
+        combatPower: BigInt(input.combatPower),
+        cpUpdatedAt: now,
+        lastSyncedAt: now,
+        guildId: guild.id,
+        source: 'manual',
+      },
+      include: characterInclude,
+    });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      throw new AppError(409, 'ALREADY_CLAIMED', 'That character is already claimed');
+    }
+    throw err;
+  }
+}
+
 export const REFRESH_COOLDOWN_MS = 600_000;
 
 export interface ListCharactersFilter {
@@ -99,7 +156,9 @@ export interface ListCharactersFilter {
 export async function listCharacters(prisma: PrismaClient, filter: ListCharactersFilter): Promise<CharacterRow[]> {
   return prisma.character.findMany({
     where: {
-      ...(filter.ownerId ? { ownerId: filter.ownerId } : { guild: { active: true }, owner: { banned: false } }),
+      ...(filter.ownerId
+        ? { ownerId: filter.ownerId }
+        : { OR: [{ guildId: null }, { guild: { active: true } }], owner: { banned: false } }),
       ...(filter.guildId ? { guildId: filter.guildId } : {}),
       ...(filter.worldId !== undefined ? { worldId: filter.worldId } : {}),
       ...(filter.archetype ? { archetype: filter.archetype } : {}),
@@ -122,7 +181,10 @@ export async function getOwnedCharacter(prisma: PrismaClient | Prisma.Transactio
   return row;
 }
 
-export type UpdateCharacterInput = Partial<Omit<CreateCharacterInput, 'ign' | 'nexonWorldId'>>;
+export type UpdateCharacterInput = Partial<Pick<CreateCharacterInput, 'combatPower' | 'guildId'>> & {
+  jobName?: string;
+  level?: number;
+};
 
 export async function updateCharacter(
   prisma: PrismaClient,
@@ -130,6 +192,18 @@ export async function updateCharacter(
   input: UpdateCharacterInput,
 ): Promise<CharacterRow> {
   if (input.guildId !== undefined && input.guildId !== row.guildId) await requireActiveGuild(prisma, input.guildId);
+
+  let classData: { jobName: string; archetype: Archetype } | null = null;
+  if (input.jobName !== undefined || input.level !== undefined) {
+    if (row.source !== 'manual') {
+      throw new AppError(400, 'NOT_MANUAL', 'Only manually added characters can change class or level');
+    }
+    // An unchanged class is kept as-is, even if the admin has since removed it from the list.
+    if (input.jobName !== undefined && input.jobName.trim().toLowerCase() !== row.jobName.toLowerCase()) {
+      const jobClass = await requireJobClass(prisma, input.jobName);
+      classData = { jobName: jobClass.name, archetype: jobClass.archetype };
+    }
+  }
 
   // The edit form always sends combatPower; only a real change counts as a CP update.
   const cpChanged = input.combatPower !== undefined && BigInt(input.combatPower) !== row.combatPower;
@@ -139,6 +213,8 @@ export async function updateCharacter(
     data: {
       ...(cpChanged ? { combatPower: BigInt(input.combatPower!), cpUpdatedAt: new Date() } : {}),
       ...(input.guildId !== undefined ? { guildId: input.guildId } : {}),
+      ...(classData ?? {}),
+      ...(input.level !== undefined ? { level: input.level } : {}),
     },
     include: characterInclude,
   });

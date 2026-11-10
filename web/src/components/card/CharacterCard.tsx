@@ -55,7 +55,7 @@ export function CharacterCard({ character: c, tiers, onOpen }: Props) {
           </div>
           <div className="card__meta">
             <dt>Guild</dt>
-            <dd>{c.guild.name}</dd>
+            <dd>{c.guild?.name ?? 'No guild'}</dd>
           </div>
           <div className="card__meta">
             <dt>World</dt>

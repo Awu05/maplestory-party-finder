@@ -19,7 +19,7 @@ export function memberSnapshot(row: CharacterRow): MemberSnapshot {
     level: row.level,
     imageUrl: row.imageUrl,
     worldName: row.world.name,
-    guildName: row.guild.name,
+    guildName: row.guild?.name ?? 'No guild',
   };
 }
 

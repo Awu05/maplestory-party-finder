@@ -16,7 +16,7 @@ const lily: CharacterDTO = {
   imageUrl: 'http://img/lily.png',
   combatPower: 1_500_000_000,
   cpUpdatedAt: '2026-11-01T00:00:00Z',
-  guild: { id: 'g1', name: 'Maple Guild', iconUrl: null },
+  guild: { id: 'g1', name: 'Maple Guild', iconUrl: null }, manual: false,
   screenshotUrl: null,
   owner: { discordUsername: 'lily#1' },
   isOwner: true,

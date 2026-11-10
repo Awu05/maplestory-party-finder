@@ -28,6 +28,13 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
+it('guildless character -> 400 NO_GUILD', async () => {
+  await prisma.character.update({ where: { id: lilyId }, data: { guildId: null } });
+  const res = await app.inject({ method: 'POST', url: '/api/posts', headers: { cookie }, payload: body() as any });
+  expect(res.statusCode).toBe(400);
+  expect(res.json().error.code).toBe('NO_GUILD');
+});
+
 const post = (payload: unknown, c: string | null = cookie) =>
   app.inject({ method: 'POST', url: '/api/posts', headers: c ? { cookie: c } : {}, payload: payload as any });
 const body = (over: Record<string, unknown> = {}) => ({

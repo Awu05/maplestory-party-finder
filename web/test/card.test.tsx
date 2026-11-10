@@ -21,7 +21,7 @@ function makeCharacter(overrides: Partial<CharacterDTO> = {}): CharacterDTO {
     imageUrl: 'https://example.com/lily.png',
     combatPower: 1_500_000_000,
     cpUpdatedAt: new Date(Date.now() - 3 * 86_400_000).toISOString(),
-    guild: { id: 'g1', name: 'Mapleholics', iconUrl: null },
+    guild: { id: 'g1', name: 'Mapleholics', iconUrl: null }, manual: false,
     screenshotUrl: '/uploads/lily.png',
     owner: { discordUsername: 'maple_fan' },
     isOwner: false,

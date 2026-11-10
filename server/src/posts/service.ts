@@ -58,10 +58,11 @@ function validateRecruitingFields(
 /** The caller's own character, which must belong to an active guild in an active world. */
 async function getPostingCharacter(db: Db, characterId: string, userId: string) {
   const character = await getOwnedCharacter(db, characterId, userId);
+  if (character.guildId === null) throw new AppError(400, 'NO_GUILD', 'Pick a guild for this character first');
   const guild = await db.guild.findUnique({ where: { id: character.guildId } });
   if (!guild || !guild.active) throw new AppError(400, 'GUILD_INACTIVE', 'That guild is not accepting posts');
   if (!character.world.active) throw new AppError(400, 'WORLD_INACTIVE', 'That world is not active');
-  return character;
+  return character as typeof character & { guildId: string };
 }
 
 export async function createPost(prisma: PrismaClient, userId: string, input: CreatePostInput): Promise<PostRow> {

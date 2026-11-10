@@ -105,6 +105,19 @@ describe('DailySyncJob', () => {
   });
 });
 
+describe('DailySyncJob with manual characters', () => {
+  it('never syncs manual characters', async () => {
+    await makeWorld();
+    const lastSyncedAt = new Date('2026-05-01T00:00:00Z');
+    const m = await makeCharacter({ ign: 'Manual', source: 'manual', lastSyncedAt });
+    nexon.set([nx('Manual', 299)]);
+    expect(await job().runIfDue()).toEqual({ synced: 0, stale: 0 });
+    expect(nexon.calls).toEqual([]);
+    const row = await prisma.character.findUniqueOrThrow({ where: { id: m.id } });
+    expect(row).toMatchObject({ level: 275, syncStatus: 'ok', lastSyncedAt });
+  });
+});
+
 describe('DailySyncJob.stop()', () => {
   it('stops an in-flight run after at most one more character and records a partial result', async () => {
     await makeWorld();

@@ -173,13 +173,13 @@ export class EventDispatcher implements DomainEvents {
 
   /** Enqueues a ping to `guildId` mentioning the recipient, unless the guild can't receive it or the recipient is the actor. */
   private async ping(
-    guildId: string,
+    guildId: string | null,
     recipientUserId: string,
     actorUserId: string,
     eventType: string,
     build: (recipientDiscordId: string) => WebhookPayload,
   ): Promise<void> {
-    if (recipientUserId === actorUserId) return;
+    if (guildId === null || recipientUserId === actorUserId) return;
     const guild = await this.prisma.guild.findUnique({ where: { id: guildId }, select: { active: true, webhookUrl: true } });
     if (!guild?.active || !guild.webhookUrl) return;
     const user = await this.prisma.user.findUnique({ where: { id: recipientUserId }, select: { discordId: true } });

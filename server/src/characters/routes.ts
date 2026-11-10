@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { getViewer, requireUser } from '../auth/guards.js';
 import { readImageUpload } from '../storage/imageType.js';
 import {
-  claimRefresh, createCharacter, deleteCharacter, getCharacter, getOwnedCharacter, listCharacters, lookupCharacters,
+  claimRefresh, createCharacter, createManualCharacter, deleteCharacter, getCharacter, getOwnedCharacter, listCharacters, lookupCharacters,
   syncCharacterFromNexon, updateCharacter,
 } from './service.js';
 import { characterInclude, toCharacterDTO } from './serialize.js';
@@ -17,7 +17,19 @@ const createBody = z.object({
   guildId: z.string().min(1),
 });
 
-const updateBody = createBody.pick({ combatPower: true, guildId: true }).partial();
+const manualBody = z.object({
+  ign: z.string().trim().min(1).max(32),
+  worldId: z.number().int(),
+  jobName: z.string().trim().min(1),
+  level: z.number().int().min(1).max(300),
+  combatPower: createBody.shape.combatPower,
+  guildId: z.string().min(1),
+});
+
+const updateBody = createBody
+  .pick({ combatPower: true, guildId: true })
+  .extend({ jobName: z.string().trim().min(1), level: z.number().int().min(1).max(300) })
+  .partial();
 
 const listQuery = z.object({
   guildId: z.string().min(1).optional(),
@@ -40,6 +52,13 @@ export async function characterRoutes(app: FastifyInstance): Promise<void> {
     const viewer = await requireUser(req);
     const input = createBody.parse(req.body);
     const row = await createCharacter({ prisma, nexon }, viewer.user.id, input);
+    return reply.status(201).send(toCharacterDTO(row, viewer.user.id, storage));
+  });
+
+  app.post('/characters/manual', async (req, reply) => {
+    const viewer = await requireUser(req);
+    const input = manualBody.parse(req.body);
+    const row = await createManualCharacter(prisma, viewer.user.id, input);
     return reply.status(201).send(toCharacterDTO(row, viewer.user.id, storage));
   });
 

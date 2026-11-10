@@ -108,8 +108,9 @@ model Character {
   imageUrl               String
   combatPower            BigInt
   cpUpdatedAt            DateTime
-  guildId                String
-  guild                  Guild           @relation(fields: [guildId], references: [id])
+  guildId                String?
+  guild                  Guild?          @relation(fields: [guildId], references: [id])
+  source                 CharacterSource @default(nexon)
   screenshotKey          String?
   lastSyncedAt           DateTime
   syncStatus             SyncStatus      @default(ok)
@@ -120,6 +121,11 @@ model Character {
   requests               Request[]
 
   @@unique([ignLower, worldId])
+}
+
+enum CharacterSource {
+  nexon
+  manual
 }
 
 model RarityTier {

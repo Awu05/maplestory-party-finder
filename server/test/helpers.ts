@@ -145,7 +145,7 @@ export async function makePost(
       posterUserId: rest.posterUserId ?? poster.ownerId,
       posterCharacterId: poster.id,
       worldId: rest.worldId ?? poster.worldId,
-      guildId: rest.guildId ?? poster.guildId,
+      guildId: rest.guildId ?? poster.guildId!,
       bosses: { create: bossDifficultyIds.map((bossDifficultyId) => ({ bossDifficultyId })) },
     },
   });
@@ -162,7 +162,7 @@ export async function makePost(
         level: poster.level,
         imageUrl: poster.imageUrl,
         worldName: poster.world.name,
-        guildName: poster.guild.name,
+        guildName: poster.guild?.name ?? 'No guild',
       },
     },
   });
@@ -184,7 +184,7 @@ export async function addMember(postId: string, characterId: string): Promise<Po
         level: c.level,
         imageUrl: c.imageUrl,
         worldName: c.world.name,
-        guildName: c.guild.name,
+        guildName: c.guild?.name ?? 'No guild',
       },
     },
   });

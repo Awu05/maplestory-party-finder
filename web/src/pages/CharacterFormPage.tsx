@@ -29,7 +29,7 @@ interface FormProps {
 function DetailsForm({ initial, guilds, onSubmit }: FormProps) {
   const navigate = useNavigate();
   const [cp, setCp] = useState(initial ? String(initial.combatPower) : '');
-  const [guildId, setGuildId] = useState(initial?.guild.id ?? '');
+  const [guildId, setGuildId] = useState(initial?.guild?.id ?? '');
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -60,7 +60,7 @@ function DetailsForm({ initial, guilds, onSubmit }: FormProps) {
         <select value={guildId} onChange={(e) => setGuildId(e.target.value)}>
           <option value="">Select a guild</option>
           {guilds
-            .filter((g) => g.active || g.id === initial?.guild.id)
+            .filter((g) => g.active || g.id === initial?.guild?.id)
             .map((g) => (
               <option key={g.id} value={g.id}>
                 {g.name}

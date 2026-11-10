@@ -9,7 +9,8 @@ export interface CharacterDTO {
   imageUrl: string;
   combatPower: number;
   cpUpdatedAt: string;
-  guild: { id: string; name: string; iconUrl: string | null };
+  guild: { id: string; name: string; iconUrl: string | null } | null;
+  manual: boolean;
   screenshotUrl: string | null;
   owner: { discordUsername: string };
   isOwner: boolean;
