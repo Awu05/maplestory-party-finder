@@ -4,7 +4,7 @@ import type { Storage } from '../src/storage/storage.js';
 import type { Character, Guild, PrismaClient } from '@prisma/client';
 import { EventDispatcher } from '../src/notifications/dispatcher.js';
 import {
-  addMember, buildTestApp, loginAs, makeBossDifficulty, makeCharacter, makeGuild, makePost, makeWorld, prisma, resetDb,
+  addMember, buildTestApp, loginAs, makeBossDifficulty, makeCharacter, makeGuild, makePost, makeUser, makeWorld, prisma, resetDb,
   type LogEntry,
 } from './helpers.js';
 
@@ -53,7 +53,7 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
-const call = (method: 'POST' | 'PATCH' | 'DELETE', url: string, cookie: string, body?: unknown) =>
+const call = (method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', url: string, cookie: string, body?: unknown) =>
   app.inject({ method, url, headers: { cookie }, ...(body === undefined ? {} : { payload: body as object }) });
 const recruiting = (partySize = 4) => makePost({ posterCharacterId: alice.id, partySize, bossDifficultyIds: [lucid] });
 const join = async (postId: string, characterId: string, cookie: string): Promise<string> => {
@@ -363,5 +363,28 @@ describe('errors', () => {
     ]);
     expect(JSON.stringify(errorLogs)).not.toContain('discord.test');
     expect(await deliveries()).toEqual([]);
+  });
+});
+
+describe('post.finalized', () => {
+  it('notifies members (not the poster) and pings those in a webhook guild', async () => {
+    const post = await recruiting();
+    await addMember(post.id, bob.id); // G5, webhook
+    await addMember(post.id, carol.id); // G2, no webhook
+    const loner = await makeCharacter({ ownerId: (await makeUser({ discordId: 'u-9', username: 'nine' })).id, worldId: (await prisma.world.findFirstOrThrow()).id, guildId: null, ign: 'Loner' });
+    await addMember(post.id, loner.id);
+    const at = new Date(Date.now() + 2 * 86_400_000).toISOString();
+    expect((await call('PUT', `/api/posts/${post.id}/final-time`, u1, { scheduledAt: at })).statusCode).toBe(200);
+    await events.drain();
+    const ns = await notes();
+    expect(ns.map((n) => n.kind)).toEqual(['time_set', 'time_set', 'time_set']);
+    expect(ns.map((n) => n.userId).sort()).toEqual([u2Id, u3Id, (await prisma.user.findUniqueOrThrow({ where: { discordId: 'u-9' } })).id].sort());
+    expect(ns.every((n) => n.link === `/posts/${post.id}` && n.text === 'Alice set the time for Hard Lucid')).toBe(true);
+    const ds = await deliveries();
+    expect(ds).toHaveLength(1);
+    expect(ds[0]).toMatchObject({ guildId: g5.id, eventType: 'post.finalized' });
+    expect(content(ds[0]!)).toContain('<@u-2>');
+    expect(content(ds[0]!)).toContain('<t:');
+    expect((ds[0]!.payload as { allowed_mentions: unknown }).allowed_mentions).toEqual({ parse: [], users: ['u-2'] });
   });
 });

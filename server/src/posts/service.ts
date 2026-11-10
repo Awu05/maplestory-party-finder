@@ -258,6 +258,18 @@ export async function renewPost(prisma: PrismaClient, viewer: Viewer, id: string
   });
 }
 
+/** Poster sets (or changes) a recruiting post's final time. Status is unchanged; expiry follows the new time. */
+export async function finalizePostTime(prisma: PrismaClient, viewer: Viewer, id: string, scheduledAt: Date, now: Date): Promise<PostRow> {
+  return prisma.$transaction(async (tx) => {
+    const row = await loadPostForUpdate(tx, id);
+    assertPoster(row, viewer);
+    if (row.type !== 'recruiting') throw new AppError(409, 'WRONG_POST_TYPE', 'Only recruiting posts have a final time');
+    if (effectivePostStatus(row, now) === 'closed') throw new AppError(409, 'POST_CLOSED', 'Post is closed');
+    assertScheduleWindow(scheduledAt, now);
+    return tx.post.update({ where: { id }, data: { scheduledAt, expiresAt: postExpiresAt(scheduledAt, now) }, include: postInclude });
+  });
+}
+
 /** Admin hard delete. Requests on the post cascade; invites referencing it as LFP post are declined first. */
 export async function adminDeletePost(prisma: PrismaClient, id: string): Promise<string[]> {
   return prisma.$transaction(async (tx) => {

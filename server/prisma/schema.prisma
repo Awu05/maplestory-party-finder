@@ -256,7 +256,7 @@ model Notification {
   id        String    @id @default(cuid())
   userId    String
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  /// join_request | invite | accepted | declined | auto_declined | removed | member_left
+  /// join_request | invite | accepted | declined | auto_declined | removed | member_left | time_set
   kind      String
   text      String
   /// app-relative path, e.g. /posts/abc

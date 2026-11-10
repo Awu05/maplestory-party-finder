@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { isValidTimeZone, MAX_POST_BOSSES } from '@pf/shared';
 import { getViewer, requireAdmin, requireUser } from '../auth/guards.js';
-import { adminDeletePost, closePost, createPost, deletePost, editPost, getVisiblePost, listBoard, listMyParties, listMyPosts, removeMember, renewPost } from './service.js';
+import { adminDeletePost, closePost, createPost, deletePost, editPost, finalizePostTime, getVisiblePost, listBoard, listMyParties, listMyPosts, removeMember, renewPost } from './service.js';
 import { toPostDetailDTO, toPostSummaryDTO } from './serialize.js';
 
 // Field schemas are exported so the edit route can reuse them.
@@ -137,6 +137,16 @@ export async function postRoutes(app: FastifyInstance): Promise<void> {
     const now = new Date();
     const row = await renewPost(prisma, viewer, id, now);
     events.emit({ type: 'post.updated', postId: id });
+    return toPostDetailDTO(row, viewer, storage, now);
+  });
+
+  app.put('/posts/:id/final-time', async (req) => {
+    const viewer = await requireUser(req);
+    const { id } = req.params as { id: string };
+    const { scheduledAt } = z.object({ scheduledAt: z.string().datetime().transform((s) => new Date(s)) }).parse(req.body);
+    const now = new Date();
+    const row = await finalizePostTime(prisma, viewer, id, scheduledAt, now);
+    events.emit({ type: 'post.finalized', postId: id, actorUserId: viewer.user.id });
     return toPostDetailDTO(row, viewer, storage, now);
   });
 

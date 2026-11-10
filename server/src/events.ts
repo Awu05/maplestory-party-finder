@@ -5,6 +5,8 @@ export type DomainEvent =
   | { type: 'post.updated'; postId: string }
   | { type: 'post.closed'; postId: string; reason: PostClosedReason }
   | { type: 'post.reopened'; postId: string }
+  /** The poster set or changed a recruiting post's final time; the party's members are told. */
+  | { type: 'post.finalized'; postId: string; actorUserId: string }
   | { type: 'request.created'; requestId: string }
   | { type: 'request.accepted'; requestId: string }
   /** actorUserId: the user whose action caused the decline (never notified about it); null if no acting user. */

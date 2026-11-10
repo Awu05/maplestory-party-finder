@@ -99,6 +99,21 @@ export function buildAcceptPing(args: {
   };
 }
 
+export function buildTimeSetPing(args: {
+  recipientDiscordId: string;
+  posterIgn: string;
+  post: PostSummaryDTO;
+  scheduledAt: string;
+  webOrigin: string;
+}): WebhookPayload {
+  const { recipientDiscordId: id, post } = args;
+  const unix = Math.floor(Date.parse(args.scheduledAt) / 1000);
+  return {
+    content: `<@${id}> ${neutralize(args.posterIgn)} set the time for ${neutralize(bossesLabel(post))}: <t:${unix}:F> → ${postLink(post, args.webOrigin)}`,
+    allowed_mentions: { parse: [], users: [id] },
+  };
+}
+
 export function buildTestMessage(guildName: string): WebhookPayload {
   return { content: `✅ Party Finder is connected to ${neutralize(guildName)}.`, allowed_mentions: { parse: [] } };
 }
