@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { App } from '../src/App';
 import { mockApi, renderWithProviders, testQueryClient } from './setup';
@@ -80,12 +81,30 @@ describe('Layout', () => {
     expect(screen.queryByRole('link', { name: 'My parties' })).not.toBeInTheDocument();
   });
 
-  it('bell button precedes the Discord username in document order', async () => {
+  it('bell, username and Log out share .header-right in that order', async () => {
     mockApi({ '/api/auth/me': user, '/api/notifications?limit=30': { items: [], unreadCount: 0 } });
     renderWithProviders(<App />);
     const name = await screen.findByText('maple_fan');
     const bell = await screen.findByRole('button', { name: /notifications/i });
+    const logout = screen.getByRole('button', { name: 'Log out' });
+    const group = bell.closest('.header-right');
+    expect(group).not.toBeNull();
+    expect(group).toContainElement(name);
+    expect(group).toContainElement(logout);
     expect(bell.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(name.compareDocumentPosition(logout) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('header CSS does not reorder the right group visually', () => {
+    for (const f of ['src/components/bell.css', 'src/styles/global.css']) {
+      const css = readFileSync(f, 'utf8');
+      for (const [, sel, body] of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+        if (/\.(bell|user|logout|header-right)/.test(sel) && !/\.header-right\s*$/.test(sel.trim())) {
+          expect(body, `${f}: ${sel.trim()}`).not.toMatch(/order\s*:|row-reverse/);
+        }
+        if (/\.header-right\s*$/.test(sel.trim())) expect(body).not.toMatch(/row-reverse/);
+      }
+    }
   });
 
   it('brand renders Party and Finder', async () => {

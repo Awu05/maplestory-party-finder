@@ -218,6 +218,13 @@ input[type='radio'] {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  min-width: 0;
+}
+.user-name {
+  max-width: 16ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .avatar {
   width: 28px;
@@ -243,14 +250,28 @@ input[type='radio'] {
   margin: 0 auto;
   padding: 1rem;
 }
-@media (max-width: 639px) {
+@media (max-width: 640px) {
   .menu-button {
     display: inline-block;
     order: 2;
   }
   .header-right {
     margin-left: auto;
+    min-width: 0;
     order: 1;
+    gap: var(--space-2);
+  }
+  .user-name {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .logout {
+    padding: var(--space-1) var(--space-2);
+    font-size: 0.85rem;
   }
   .nav {
     display: none;

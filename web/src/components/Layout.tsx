@@ -47,15 +47,6 @@ export function Layout() {
         <Link to="/" className="brand" onClick={close}>
           Party<span>Finder</span>
         </Link>
-        <button
-          type="button"
-          className="menu-button"
-          aria-expanded={open}
-          aria-controls="main-nav"
-          onClick={() => setOpen((o) => !o)}
-        >
-          Menu
-        </button>
         <nav id="main-nav" className={open ? 'nav open' : 'nav'} aria-label="Main">
           <NavLink to="/" end onClick={close}>
             Board
@@ -85,9 +76,9 @@ export function Layout() {
             <>
               <span className="user">
                 {me.avatarUrl && <img className="avatar" src={me.avatarUrl} alt="" />}
-                <span>{me.discordUsername}</span>
+                <span className="user-name">{me.discordUsername}</span>
               </span>
-              <button type="button" className="btn btn--secondary" onClick={logout}>
+              <button type="button" className="btn btn--secondary logout" onClick={logout}>
                 Log out
               </button>
             </>
@@ -99,6 +90,15 @@ export function Layout() {
             )
           )}
         </div>
+        <button
+          type="button"
+          className="menu-button"
+          aria-expanded={open}
+          aria-controls="main-nav"
+          onClick={() => setOpen((o) => !o)}
+        >
+          Menu
+        </button>
       </header>
       {loginFailed && (
         <div className="banner" role="alert">
