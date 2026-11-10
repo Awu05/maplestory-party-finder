@@ -8,7 +8,7 @@ import { friendlyError } from '../api/errors';
 import { ChipGroup, MenuChip, ToggleChip } from '../components/ui/Chips';
 import { PostRow } from '../components/post/PostRow';
 import { PostPreview } from '../components/post/PostPreview';
-import { useMediaQuery } from '../hooks/useMediaQuery';
+import { usePhone } from '../hooks/useMediaQuery';
 
 export function BoardPage() {
   const me = useMe();
@@ -16,7 +16,7 @@ export function BoardPage() {
   const guilds = useGuilds();
   const worlds = useWorlds();
   const bosses = useBosses();
-  const isPhone = useMediaQuery('(max-width: 640px)');
+  const isPhone = usePhone();
 
   const [type, setType] = useState<PostType | ''>('');
   const [bossId, setBossId] = useState('');

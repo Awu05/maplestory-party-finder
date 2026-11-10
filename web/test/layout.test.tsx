@@ -132,15 +132,21 @@ describe('Layout', () => {
     expect(orderOf('.menu-button')).toBeLessThan(orderOf('.nav'));
   });
 
-  it('the username is visually hidden on phones only, via .visually-hidden', async () => {
+  it('the username is visually hidden on phones only, by CSS', async () => {
     mockApi({ '/api/auth/me': user, '/api/notifications?limit=30': { items: [], unreadCount: 0 } });
     setViewport(375);
     const phone = renderWithProviders(<App />);
-    expect(await screen.findByText('maple_fan')).toHaveClass('user-name', 'visually-hidden');
+    // Same markup at every width: the phone media rule hides it, not a JS-toggled class.
+    expect(await screen.findByText('maple_fan')).toHaveAttribute('class', 'user-name');
     phone.unmount();
     setViewport(1280);
     renderWithProviders(<App />);
-    expect(await screen.findByText('maple_fan')).not.toHaveClass('visually-hidden');
+    expect(await screen.findByText('maple_fan')).toHaveAttribute('class', 'user-name');
+    const css = readFileSync('src/styles/global.css', 'utf8');
+    const phoneCss = css.slice(css.indexOf('@media (max-width: 640px)'));
+    const body = /\.user-name\s*\{([^}]*)\}/.exec(phoneCss)?.[1] ?? '';
+    expect(body).toMatch(/clip-path:\s*inset\(50%\)/);
+    expect(body).toMatch(/position:\s*absolute/);
   });
 
   it('findOrderViolations flags visual reordering only', () => {

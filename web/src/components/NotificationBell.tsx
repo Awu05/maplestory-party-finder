@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useMarkRead, useNotifications } from '../api/notifyHooks';
-import { useMediaQuery } from '../hooks/useMediaQuery';
+import { usePhone } from '../hooks/useMediaQuery';
 import { relativeTime } from './post/time';
 import './bell.css';
 
@@ -42,7 +42,7 @@ export function NotificationBell() {
 
   // Phones pin the panel under the header, which may wrap to several rows: measure it on open,
   // and again whenever scrolling or resizing moves the header.
-  const isPhone = useMediaQuery('(max-width: 640px)');
+  const isPhone = usePhone();
   const measureTop = () => setTop(wrapRef.current?.closest('.app-header')?.getBoundingClientRect().bottom ?? 0);
   useEffect(() => {
     if (!open || !isPhone) return;

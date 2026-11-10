@@ -187,12 +187,6 @@ a.post-card:hover {
 .board--split {
   grid-template-columns: minmax(0, 42fr) minmax(0, 58fr);
 }
-@media (max-width: 640px) {
-  /* Safety net if the media-query hook and CSS disagree (e.g. during resize). */
-  .board--split {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
 .post-list {
   display: flex;
   flex-direction: column;

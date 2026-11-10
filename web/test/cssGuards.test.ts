@@ -108,11 +108,19 @@ describe('dead CSS and stray values', () => {
     expect(widths.filter((w) => w !== '640')).toEqual([]);
   });
 
-  it('.visually-hidden lives in global.css and is not re-implemented', () => {
-    expect(ruleBody(globalCss, '.visually-hidden')).toMatch(/clip-path:\s*inset\(50%\)/);
+  it('.visually-hidden lives in global.css; the phone .user-name rule mirrors it exactly', () => {
+    const decls = (body: string) =>
+      body
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .split(';')
+        .map((d) => d.trim().replace(/\s+/g, ' '))
+        .filter(Boolean)
+        .sort();
+    const hidden = decls(ruleBody(globalCss, '.visually-hidden'));
+    expect(hidden).toContain('clip-path: inset(50%)');
     expect(selectors(postCss)).not.toContain('.visually-hidden');
     const phone = globalCss.slice(globalCss.indexOf('@media (max-width: 640px)'));
-    expect(ruleBody(phone, '.user-name')).not.toMatch(/clip-path/);
+    expect(decls(ruleBody(phone, '.user-name'))).toEqual(hidden);
   });
 });
 

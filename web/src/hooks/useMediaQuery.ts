@@ -18,3 +18,9 @@ export function useMediaQuery(query: string): boolean {
 
   return matches;
 }
+
+/** The app's single phone breakpoint; CSS files use the same `@media (max-width: 640px)`. */
+export const PHONE_QUERY = '(max-width: 640px)';
+
+/** True on phone-width viewports. */
+export const usePhone = (): boolean => useMediaQuery(PHONE_QUERY);

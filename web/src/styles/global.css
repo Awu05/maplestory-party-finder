@@ -277,6 +277,16 @@ input[type='radio'] {
     order: 1;
     gap: var(--space-2);
   }
+  /* Same declarations as .visually-hidden (cssGuards keeps them in sync): the avatar
+     stands in for the name on screen, screen readers still get it. */
+  .user-name {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
   .logout {
     padding: var(--space-1) var(--space-2);
     font-size: 0.85rem;
