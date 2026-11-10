@@ -20,3 +20,9 @@
 - MenuChip: when options change while open, the active option snaps back to the selected value (loses arrow-key position).
 - Selection scroll math ignores the list's 4px padding (no visible effect).
 - Gap fix 1 (reopen guard) reads the other party's membership without locking it; a simultaneous join could still let the LFP post reopen (rare, benign).
+
+## From the free-times build (feat/post-free-times)
+- Grid touch drag-select on phones not built: `touch-action: none` would block scrolling the grid sideways. Needs a design call (long-press or a paint mode). Taps toggle cells; phone cells are 24px tall.
+- Moving a character to another world can still race a join that validated the character before the move's lock. Closing it needs `FOR SHARE` on the character in the join, invite and accept paths.
+- The Docker image wasn't rebuilt after the Prisma seed config moved to `server/prisma.config.ts`. Checked by reading only; build and start it once before deploying.
+- The `time_set` bell text has no clock time (the bell shows server-written text); the post page and Discord ping show the localized time.
