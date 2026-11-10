@@ -57,3 +57,24 @@ export function renderWithProviders(
     </QueryClientProvider>,
   );
 }
+
+/** Stubs window.matchMedia so `(max-width: Npx)` / `(min-width: Npx)` queries evaluate against `width`. */
+export function setViewport(width: number) {
+  const matches = (query: string) =>
+    [...query.matchAll(/\((max|min)-width:\s*(\d+)px\)/g)].every(([, kind, px]) =>
+      kind === 'max' ? width <= Number(px) : width >= Number(px),
+    );
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn((query: string) => ({
+      matches: matches(query),
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  );
+}

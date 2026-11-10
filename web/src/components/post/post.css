@@ -66,11 +66,19 @@
   gap: var(--space-2);
   margin-bottom: var(--space-4);
 }
+.board-filters__group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
 .board-filters__label {
   color: var(--muted);
   font-size: 0.8rem;
+  white-space: nowrap;
 }
 .board-filters__worlds {
+  min-width: 0;
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
@@ -133,4 +141,147 @@
   border-radius: 4px;
   background: #fdd;
   font-size: 0.8rem;
+}
+
+/* Board: list (about 42%) + preview (about 58%) above 640px; list only on phones. */
+.board {
+  display: grid;
+  gap: var(--space-4);
+  align-items: start;
+}
+.board--split {
+  grid-template-columns: minmax(0, 42fr) minmax(0, 58fr);
+}
+@media (max-width: 640px) {
+  /* Safety net if the media-query hook and CSS disagree (e.g. during resize). */
+  .board--split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.post-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.board--split .post-list {
+  max-height: calc(100vh - 220px);
+  min-height: 12rem;
+  overflow-y: auto;
+  padding: var(--space-1);
+}
+.post-list--empty {
+  color: var(--muted);
+}
+.post-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+}
+.post-row:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+}
+.post-row[aria-selected='true'] {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface));
+}
+.post-row__sprite {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  object-fit: contain;
+}
+.post-row__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  flex: 1;
+  min-width: 0;
+}
+.post-row__top,
+.post-row__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.post-row__bosses,
+.post-row__who {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.post-row__bosses {
+  font-weight: 600;
+}
+.post-row__meta {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.post-row__when {
+  flex: none;
+}
+.post-row .post-badge {
+  flex: none;
+  background: var(--surface-2);
+  color: var(--accent-2);
+  border: 1px solid var(--border-strong);
+}
+.post-row .post-badge--recruiting {
+  color: var(--accent);
+}
+.post-row__slots {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-1);
+  flex: none;
+  font-size: 0.8rem;
+}
+.post-row__bar {
+  display: block;
+  width: 48px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--border-strong);
+  overflow: hidden;
+}
+.post-row__bar > span {
+  display: block;
+  height: 100%;
+  background: var(--accent-2);
+}
+.post-row--skeleton {
+  height: 58px;
+  background: linear-gradient(90deg, var(--surface) 25%, var(--surface-2) 50%, var(--surface) 75%);
+  background-size: 200% 100%;
+  animation: post-row-shimmer 1.2s linear infinite;
+}
+@keyframes post-row-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .post-row--skeleton {
+    animation: none;
+  }
+}
+.board__preview {
+  min-height: 12rem;
+}
+.board__placeholder {
+  margin: 0;
+  color: var(--muted);
 }

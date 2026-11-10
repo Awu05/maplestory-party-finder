@@ -1,11 +1,13 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import type { PostType } from '@pf/shared';
-import { useBosses, useCharacters, useGuilds, useMe, useRarityTiers, useWorlds } from '../api/hooks';
+import { useEffect, useRef, useState } from 'react';
+import type { KeyboardEvent } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import type { PostSummaryDTO, PostType } from '@pf/shared';
+import { useBosses, useCharacters, useGuilds, useMe, useWorlds } from '../api/hooks';
 import { usePosts, type PostFilters } from '../api/postHooks';
 import { friendlyError } from '../api/errors';
 import { ChipGroup, MenuChip, ToggleChip } from '../components/ui/Chips';
-import { PostCard } from '../components/post/PostCard';
+import { PostRow } from '../components/post/PostRow';
+import { useMediaQuery } from '../hooks/useMediaQuery';
 
 export function BoardPage() {
   const me = useMe();
@@ -13,7 +15,7 @@ export function BoardPage() {
   const guilds = useGuilds();
   const worlds = useWorlds();
   const bosses = useBosses();
-  const tiers = useRarityTiers();
+  const isPhone = useMediaQuery('(max-width: 640px)');
 
   const [type, setType] = useState<PostType | ''>('');
   const [bossId, setBossId] = useState('');
@@ -55,10 +57,11 @@ export function BoardPage() {
         )}
       </div>
       <div className="board-filters">
-        <span className="board-filters__label" aria-hidden="true">
-          Type
-        </span>
-        <ChipGroup<PostType | ''>
+        <div className="board-filters__group">
+          <span className="board-filters__label" aria-hidden="true">
+            Type
+          </span>
+          <ChipGroup<PostType | ''>
           label="Type"
           value={type}
           onChange={setType}
@@ -67,11 +70,13 @@ export function BoardPage() {
             { value: 'recruiting', label: 'Recruiting' },
             { value: 'lfp', label: 'LFP' },
           ]}
-        />
-        <span className="board-filters__label" aria-hidden="true">
-          When
-        </span>
-        <ChipGroup<NonNullable<PostFilters['when']>>
+          />
+        </div>
+        <div className="board-filters__group">
+          <span className="board-filters__label" aria-hidden="true">
+            When
+          </span>
+          <ChipGroup<NonNullable<PostFilters['when']>>
           label="When"
           value={when}
           onChange={setWhen}
@@ -81,7 +86,8 @@ export function BoardPage() {
             { value: '7d', label: 'This week' },
             { value: 'flexible', label: 'Flexible' },
           ]}
-        />
+          />
+        </div>
         <MenuChip
           label="Boss"
           allLabel="All bosses"
@@ -110,24 +116,115 @@ export function BoardPage() {
           onChange={setGuildId}
           options={(guilds.data ?? []).map((g) => ({ value: g.id, label: g.name }))}
         />
-        <span className="board-filters__label" aria-hidden="true">
-          Worlds
-        </span>
-        <div role="group" aria-label="Worlds" className="board-filters__worlds">
-          {worlds.data?.map((w) => (
-            <ToggleChip key={w.id} pressed={worldIds.includes(w.id)} onToggle={() => toggleWorld(w.id)}>
-              {w.name}
-            </ToggleChip>
-          ))}
+        <div className="board-filters__group">
+          <span className="board-filters__label" aria-hidden="true">
+            Worlds
+          </span>
+          <div role="group" aria-label="Worlds" className="board-filters__worlds">
+            {worlds.data?.map((w) => (
+              <ToggleChip key={w.id} pressed={worldIds.includes(w.id)} onToggle={() => toggleWorld(w.id)}>
+                {w.name}
+              </ToggleChip>
+            ))}
+          </div>
         </div>
       </div>
       {posts.isError && <p role="alert">{friendlyError(posts.error)}</p>}
-      {posts.data && posts.data.length === 0 && <p>No open posts match. Be the first to post!</p>}
-      <div className="post-grid">
-        {posts.data?.map((p) => (
-          <PostCard key={p.id} post={p} tiers={tiers.data ?? []} />
-        ))}
+      <div className={isPhone ? 'board' : 'board board--split'}>
+        <PostList posts={posts.data} loading={posts.isPending} isPhone={isPhone} />
+        {!isPhone && (
+          <section className="board__preview panel" aria-label="Post preview">
+            <p className="board__placeholder">Pick a post to see its party</p>
+          </section>
+        )}
       </div>
     </section>
+  );
+}
+
+const EMPTY = 'No open posts match. Be the first to post!';
+
+function PostList({ posts, loading, isPhone }: { posts?: PostSummaryDTO[]; loading: boolean; isPhone: boolean }) {
+  const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
+  const rowRefs = useRef(new Map<string, HTMLAnchorElement>());
+  const wanted = params.get('post');
+  const selectedId = posts?.some((p) => p.id === wanted) ? wanted : (posts?.[0]?.id ?? null);
+
+  // Only ?post= changes; other params are kept. Replace, not push, so Back leaves the board.
+  const select = (id: string) =>
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set('post', id);
+        return next;
+      },
+      { replace: true },
+    );
+
+  // Default to the first post, and replace a stale id (filtered out, closed, deleted) with it.
+  const needsRewrite = !isPhone && selectedId !== null && wanted !== selectedId;
+  useEffect(() => {
+    if (needsRewrite && selectedId) select(selectedId);
+  }, [needsRewrite, selectedId]); // select is recreated each render; these two decide whether it runs
+
+  if (loading) {
+    return (
+      <div className="post-list" role={isPhone ? undefined : 'listbox'} aria-label="Posts" aria-busy="true">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="post-row post-row--skeleton" aria-hidden="true" />
+        ))}
+      </div>
+    );
+  }
+  if (!posts) return null;
+  if (posts.length === 0) return <p className="post-list post-list--empty">{EMPTY}</p>;
+
+  if (isPhone) {
+    return (
+      <ul className="post-list" aria-label="Posts">
+        {posts.map((p) => (
+          <li key={p.id}>
+            <PostRow post={p} selected={false} onSelect={() => {}} asLink />
+          </li>
+        ))}
+      </ul>
+    );
+  }
+
+  const onKeyDown = (e: KeyboardEvent<HTMLAnchorElement>, i: number) => {
+    let next: number;
+    if (e.key === 'ArrowDown') next = Math.min(i + 1, posts.length - 1);
+    else if (e.key === 'ArrowUp') next = Math.max(i - 1, 0);
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = posts.length - 1;
+    else if (e.key === 'Enter') {
+      e.preventDefault();
+      navigate(`/posts/${posts[i].id}`);
+      return;
+    } else return;
+    e.preventDefault();
+    const id = posts[next].id;
+    select(id);
+    rowRefs.current.get(id)?.focus();
+  };
+
+  return (
+    <div className="post-list" role="listbox" aria-label="Posts">
+      {posts.map((p, i) => (
+        <PostRow
+          key={p.id}
+          ref={(el) => {
+            if (el) rowRefs.current.set(p.id, el);
+            else rowRefs.current.delete(p.id);
+          }}
+          post={p}
+          selected={p.id === selectedId}
+          onSelect={() => select(p.id)}
+          onKeyDown={(e) => onKeyDown(e, i)}
+          asLink={false}
+        />
+      ))}
+    </div>
   );
 }

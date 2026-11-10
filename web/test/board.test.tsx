@@ -69,14 +69,13 @@ const postsCalls = (fetchMock: ReturnType<typeof mockApi>) =>
   fetchMock.mock.calls.map(([u]) => String(u)).filter((u) => u.startsWith('/api/posts'));
 
 describe('BoardPage', () => {
-  it('renders posts as cards with type badge, bosses, slots 2/4', async () => {
+  it('renders posts as rows with type badge, bosses, time, slots 2 / 4', async () => {
     mockApi({ ...base, '/api/auth/me': null, '/api/posts': [post] });
     renderWithProviders(<App />);
     expect(await screen.findByText('Recruiting', { selector: '.post-badge' })).toBeInTheDocument();
     expect(screen.getByText('Hard Lucid')).toBeInTheDocument();
-    expect(screen.getByText('2/4')).toBeInTheDocument();
-    expect(screen.getByText(/Min CP 300M/)).toBeInTheDocument();
-    expect(screen.getByText('Flexible', { selector: '.post-card__when' })).toBeInTheDocument();
+    expect(screen.getByText('2 / 4')).toBeInTheDocument();
+    expect(screen.getByText('Flexible', { selector: '.post-row__when' })).toBeInTheDocument();
   });
 
   it('logged-in user with a Kronos character sends worldIds on the first request', async () => {
@@ -87,21 +86,21 @@ describe('BoardPage', () => {
       '/api/posts?worldIds=5': [post],
     });
     renderWithProviders(<App />);
-    expect(await screen.findByText('2/4')).toBeInTheDocument();
+    expect(await screen.findByText('2 / 4')).toBeInTheDocument();
     expect(postsCalls(fetchMock)).toEqual(['/api/posts?worldIds=5']);
   });
 
   it('logged-out users never request their own characters', async () => {
     const fetchMock = mockApi({ ...base, '/api/auth/me': null, '/api/posts': [post] });
     renderWithProviders(<App />);
-    await screen.findByText('2/4');
+    await screen.findByText('2 / 4');
     expect(fetchMock.mock.calls.map(([u]) => String(u)).some((u) => u.includes('mine=1'))).toBe(false);
   });
 
   it('still loads the board (all worlds) when /api/auth/me fails', async () => {
     const fetchMock = mockApi({ ...base, '/api/posts': [post] });
     renderWithProviders(<App />);
-    expect(await screen.findByText('2/4')).toBeInTheDocument();
+    expect(await screen.findByText('2 / 4')).toBeInTheDocument();
     expect(postsCalls(fetchMock)).toEqual(['/api/posts']);
   });
 
@@ -110,7 +109,7 @@ describe('BoardPage', () => {
     renderWithProviders(<App />);
     await screen.findByText('No open posts match. Be the first to post!');
     fireEvent.click(screen.getByRole('radio', { name: 'Recruiting' }));
-    expect(await screen.findByText('2/4')).toBeInTheDocument();
+    expect(await screen.findByText('2 / 4')).toBeInTheDocument();
     expect(postsCalls(fetchMock)).toContain('/api/posts?type=recruiting');
   });
 
@@ -143,7 +142,7 @@ describe('BoardPage', () => {
     });
     renderWithProviders(<App />);
     const kronos = await screen.findByRole('button', { name: 'Kronos' });
-    await screen.findByText('2/4');
+    await screen.findByText('2 / 4');
     expect(kronos).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(kronos);
     expect(kronos).toHaveAttribute('aria-pressed', 'false');
@@ -158,18 +157,23 @@ describe('BoardPage', () => {
     expect(await screen.findByText('No open posts match. Be the first to post!')).toBeInTheDocument();
   });
 
-  it('card links to /posts/:id', async () => {
+  it('row links to /posts/:id', async () => {
     mockApi({ ...base, '/api/auth/me': null, '/api/posts': [post] });
     renderWithProviders(<App />);
-    const card = (await screen.findByText('2/4')).closest('a');
-    expect(card).toHaveAttribute('href', '/posts/p1');
+    const row = (await screen.findByText('2 / 4')).closest('a');
+    expect(row).toHaveAttribute('href', '/posts/p1');
   });
 
   it('falls back to the snapshot when the poster character is deleted', async () => {
-    const gone = { ...post, poster: { ...poster, character: null, characterId: null } };
+    const gone = {
+      ...post,
+      poster: { ...poster, character: null, characterId: null, snapshot: { ...poster.snapshot, imageUrl: 'http://img/snap.png' } },
+    };
     mockApi({ ...base, '/api/auth/me': null, '/api/posts': [gone] });
     renderWithProviders(<App />);
-    expect(await screen.findByText(/Lily · Lv\. 280 Bishop/)).toBeInTheDocument();
+    const row = await screen.findByRole('option', { name: /Hard Lucid/ });
+    expect(row).toHaveTextContent('Lily · Maple Guild');
+    expect(row.querySelector('img')).toHaveAttribute('src', 'http://img/snap.png');
   });
 
   it('shows New post only when logged in', async () => {
