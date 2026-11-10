@@ -1,9 +1,18 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 
 const read = (p: string) => readFileSync(resolve(__dirname, '../src', p), 'utf8');
 const globalCss = read('styles/global.css');
 const chipsCss = read('components/ui/chips.css');
+
+function walk(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const p = join(dir, name);
+    return statSync(p).isDirectory() ? walk(p) : [p];
+  });
+}
+const srcFiles = walk(resolve(__dirname, '../src'));
+const tsx = srcFiles.filter((f) => f.endsWith('.tsx'));
 
 /** Selector lists of every rule (comments stripped, at-rule preludes skipped). */
 function selectors(css: string): string[] {
@@ -52,5 +61,29 @@ describe('MenuChip keyboard position', () => {
     const body = ruleBody(chipsCss, '.menu-chip-list:focus-visible');
     expect(body).not.toMatch(/outline:\s*none/);
     expect(body).toMatch(/outline:\s*2px solid/);
+  });
+});
+
+describe('button API', () => {
+  it('no legacy .button class in markup', () => {
+    expect(tsx.filter((f) => /className="button"/.test(readFileSync(f, 'utf8')))).toEqual([]);
+  });
+
+  it('no .button alias rules in global.css', () => {
+    const offenders = selectors(globalCss)
+      .flatMap((list) => list.split(','))
+      .filter((s) => /\.button\b/.test(s));
+    expect(offenders).toEqual([]);
+  });
+
+  it('page buttons name their variant explicitly', () => {
+    const offenders = tsx
+      .filter((f) => f.includes(`${join('src', 'pages')}`))
+      .flatMap((f) =>
+        [...readFileSync(f, 'utf8').matchAll(/<button\b((?:=>|[^>])*)>/g)]
+          .filter((m) => !/className=/.test(m[1]))
+          .map((m) => `${f}: ${m[0].replace(/\s+/g, ' ').slice(0, 80)}`),
+      );
+    expect(offenders).toEqual([]);
   });
 });

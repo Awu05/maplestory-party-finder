@@ -18,7 +18,7 @@ export function WebhooksAdmin() {
     <div>
       <h2>Webhooks</h2>
       {health.isError && <p role="alert" className="admin__error">{friendlyError(health.error)}</p>}
-      <button type="button" disabled={health.isFetching} onClick={() => void health.refetch()}>Refresh</button>
+      <button type="button" className="btn btn--secondary" disabled={health.isFetching} onClick={() => void health.refetch()}>Refresh</button>
       <table className="admin__table">
         <thead>
           <tr><th>Guild</th><th>Status</th><th>Webhook</th><th>Active</th><th>Last sent</th><th>Pending</th><th>Failed 24h</th><th /></tr>
@@ -40,6 +40,7 @@ export function WebhooksAdmin() {
                   <td>
                     <button
                       type="button"
+                      className="btn btn--secondary"
                       aria-expanded={expanded}
                       aria-label={`${expanded ? 'Hide' : 'Show'} failures ${h.guildName}`}
                       onClick={() => setOpen(expanded ? null : h.guildId)}

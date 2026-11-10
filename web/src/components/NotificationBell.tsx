@@ -86,7 +86,7 @@ export function NotificationBell() {
           <div className="bell-head">
             <strong>Notifications</strong>
             {unread > 0 && (
-              <button type="button" onClick={() => markRead.mutate({ all: true })}>
+              <button type="button" className="btn btn--secondary btn--compact" onClick={() => markRead.mutate({ all: true })}>
                 Mark all read
               </button>
             )}

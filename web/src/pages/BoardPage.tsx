@@ -66,7 +66,7 @@ export function BoardPage() {
       <div className="page__head">
         <h1>Board</h1>
         {me.data && (
-          <Link className="button" to="/posts/new">
+          <Link className="btn btn--primary" to="/posts/new">
             New post
           </Link>
         )}

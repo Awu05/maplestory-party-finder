@@ -39,10 +39,9 @@ a {
   outline-offset: 2px;
 }
 
-/* Buttons: bare <button> is secondary, a.button is primary. Bare-button selectors sit in
+/* Buttons: use .btn with a variant; bare <button> falls back to secondary. Bare-button selectors sit in
    :where() (zero specificity) so component state styles (chips, grid cells, bell items) win. */
 :where(button),
-.button,
 .btn {
   font: inherit;
   cursor: pointer;
@@ -68,14 +67,12 @@ a {
   opacity: 0.5;
   cursor: not-allowed;
 }
-a.button,
 .btn--primary {
   background: var(--gradient);
   color: var(--accent-text);
   border-color: transparent;
   font-weight: 600;
 }
-a.button:hover,
 .btn--primary:hover:not(:disabled) {
   background: var(--gradient);
   border-color: transparent;

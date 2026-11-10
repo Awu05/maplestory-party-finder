@@ -52,14 +52,14 @@ function BossEditor({ boss }: { boss?: BossDTO }) {
             Party cap
             <input type="number" min={1} required value={r.partyCap} onChange={(e) => setRow(i, { partyCap: e.target.value })} />
           </label>
-          <button type="button" aria-label={`Remove difficulty ${r.difficulty || i + 1}`} onClick={() => setRows(rows.filter((_, j) => j !== i))}>
+          <button type="button" className="btn btn--secondary" aria-label={`Remove difficulty ${r.difficulty || i + 1}`} onClick={() => setRows(rows.filter((_, j) => j !== i))}>
             Remove
           </button>
         </div>
       ))}
       {error && <p role="alert" className="admin__error">{friendlyError(error)}</p>}
       <div className="admin__row">
-        <button type="button" onClick={() => setRows([...rows, { difficulty: '', partyCap: '6' }])}>Add difficulty</button>
+        <button type="button" className="btn btn--secondary" onClick={() => setRows([...rows, { difficulty: '', partyCap: '6' }])}>Add difficulty</button>
         <button type="submit" className="btn btn--primary">{boss ? 'Save boss' : 'Create boss'}</button>
         {boss && (
           <button type="button" className="btn btn--danger" onClick={() => { if (window.confirm(`Delete ${boss.name}?`)) remove.mutate(boss.id); }}>

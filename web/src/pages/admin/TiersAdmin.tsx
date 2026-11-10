@@ -69,7 +69,7 @@ export function TiersAdmin() {
               Order
               <input type="number" required value={r.sortOrder} onChange={(e) => setRow(i, { sortOrder: e.target.value })} />
             </label>
-            <button type="button" aria-label={`Remove tier ${r.name || i + 1}`} onClick={() => setRows(rows.filter((_, j) => j !== i))}>
+            <button type="button" className="btn btn--secondary" aria-label={`Remove tier ${r.name || i + 1}`} onClick={() => setRows(rows.filter((_, j) => j !== i))}>
               Remove
             </button>
           </div>
@@ -77,7 +77,7 @@ export function TiersAdmin() {
         {save.isError && <p role="alert" className="admin__error">{friendlyError(save.error)}</p>}
         {save.isSuccess && <p role="status">Saved.</p>}
         <div className="admin__row">
-          <button type="button" onClick={() => setRows([...rows, { name: '', minCp: '0', sortOrder: String(rows.length) }])}>
+          <button type="button" className="btn btn--secondary" onClick={() => setRows([...rows, { name: '', minCp: '0', sortOrder: String(rows.length) }])}>
             Add tier
           </button>
           <button type="submit" className="btn btn--primary" disabled={save.isPending}>Save tiers</button>

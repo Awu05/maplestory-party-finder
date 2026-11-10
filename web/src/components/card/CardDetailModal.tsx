@@ -96,7 +96,7 @@ export function CardDetailModal({ character: c, tiers, onClose, onEdit }: Props)
             <h3>Discord</h3>
             <div className="card-modal__discord">
               <span>{c.owner.discordUsername}</span>
-              <button type="button" onClick={copyUsername} aria-label="Copy Discord username">
+              <button type="button" className="btn btn--secondary btn--compact" onClick={copyUsername} aria-label="Copy Discord username">
                 {copied ? 'Copied' : 'Copy'}
               </button>
             </div>
@@ -140,7 +140,7 @@ export function CardDetailModal({ character: c, tiers, onClose, onEdit }: Props)
 
           {c.isOwner && onEdit && (
             <div className="card-modal__actions">
-              <button type="button" onClick={onEdit}>
+              <button type="button" className="btn btn--secondary" onClick={onEdit}>
                 Edit
               </button>
             </div>

@@ -61,7 +61,7 @@ export function MyCharactersPage() {
           <h1>My characters</h1>
         </div>
         <p>Log in with Discord to manage your characters.</p>
-        <a className="button" href="/api/auth/discord">
+        <a className="btn btn--primary" href="/api/auth/discord">
           Log in with Discord
         </a>
       </section>

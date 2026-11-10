@@ -16,7 +16,7 @@ function TestWebhookButton({ guild }: { guild: AdminGuildDTO }) {
   const data = test.data;
   return (
     <>
-      <button type="button" aria-label={`Send test message ${guild.name}`} disabled={test.isPending} onClick={() => test.mutate(guild.id)}>
+      <button type="button" className="btn btn--secondary" aria-label={`Send test message ${guild.name}`} disabled={test.isPending} onClick={() => test.mutate(guild.id)}>
         Send test message
       </button>
       {data?.ok === true && <span role="status"> Sent ✓</span>}
@@ -65,7 +65,7 @@ export function GuildsAdmin() {
     <div>
       <h2>Guilds</h2>
       {guilds.isError && <p role="alert" className="admin__error">{friendlyError(guilds.error)}</p>}
-      <button type="button" onClick={() => open(blank)}>Add guild</button>
+      <button type="button" className="btn btn--secondary" onClick={() => open(blank)}>Add guild</button>
       <table className="admin__table">
         <thead>
           <tr><th>Name</th><th>Worlds</th><th>Webhook</th><th>Active</th><th /></tr>
@@ -84,7 +84,7 @@ export function GuildsAdmin() {
                   onChange={(e) => update.mutate({ id: g.id, active: e.target.checked })}
                 />
               </td>
-              <td><button type="button" aria-label={`Edit ${g.name}`} onClick={() => edit(g)}>Edit</button>
+              <td><button type="button" className="btn btn--secondary" aria-label={`Edit ${g.name}`} onClick={() => edit(g)}>Edit</button>
                 {g.webhookUrl && <TestWebhookButton guild={g} />}
               </td>
             </tr>
@@ -113,7 +113,7 @@ export function GuildsAdmin() {
                 onChange={(e) => setDraft({ ...draft, webhookUrl: e.target.value })}
               />
             </label>
-            <button type="button" onClick={() => setShowHook((s) => !s)}>{showHook ? 'Hide' : 'Show'}</button>
+            <button type="button" className="btn btn--secondary" onClick={() => setShowHook((s) => !s)}>{showHook ? 'Hide' : 'Show'}</button>
           </div>
           <fieldset className="admin__checks">
             <legend>Worlds</legend>
@@ -136,7 +136,7 @@ export function GuildsAdmin() {
           {mutation.isError && <p role="alert" className="admin__error">{friendlyError(mutation.error)}</p>}
           <div className="admin__row">
             <button type="submit" className="btn btn--primary" disabled={mutation.isPending}>{draft.id ? 'Save guild' : 'Create guild'}</button>
-            <button type="button" onClick={() => setDraft(null)}>Cancel</button>
+            <button type="button" className="btn btn--secondary" onClick={() => setDraft(null)}>Cancel</button>
           </div>
         </form>
       )}

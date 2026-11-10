@@ -195,7 +195,7 @@ export function MyPartiesPage() {
       <section>
         <h1>My parties</h1>
         <p>Log in with Discord to see your parties.</p>
-        <a className="button" href="/api/auth/discord">
+        <a className="btn btn--primary" href="/api/auth/discord">
           Log in with Discord
         </a>
       </section>

@@ -104,7 +104,7 @@ export function Layout() {
       {loginFailed && (
         <div className="banner" role="alert">
           <span>Login with Discord failed — try again</span>
-          <button type="button" aria-label="Dismiss" onClick={dismissLoginFailed}>
+          <button type="button" className="btn btn--secondary btn--compact" aria-label="Dismiss" onClick={dismissLoginFailed}>
             ×
           </button>
         </div>
@@ -112,7 +112,7 @@ export function Layout() {
       {loginBanned && (
         <div className="banner" role="alert">
           <span>Your account has been banned.</span>
-          <button type="button" aria-label="Dismiss" onClick={dismissLoginFailed}>
+          <button type="button" className="btn btn--secondary btn--compact" aria-label="Dismiss" onClick={dismissLoginFailed}>
             ×
           </button>
         </div>

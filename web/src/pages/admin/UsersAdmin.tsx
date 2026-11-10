@@ -33,12 +33,12 @@ function ReassignPanel({ character, ownerId, onDone }: { character: CharacterDTO
         onChange={(e) => setQ(e.target.value)}
       />
       {choices.map((u) => (
-        <button key={u.id} type="button" aria-label={`Choose ${u.discordUsername}`} disabled={reassign.isPending} onClick={() => choose(u)}>
+        <button key={u.id} type="button" className="btn btn--secondary" aria-label={`Choose ${u.discordUsername}`} disabled={reassign.isPending} onClick={() => choose(u)}>
           {u.discordUsername}
         </button>
       ))}
       {reassign.isError && <p role="alert" className="admin__error">{friendlyError(reassign.error)}</p>}
-      <button type="button" onClick={onDone}>Cancel</button>
+      <button type="button" className="btn btn--secondary" onClick={onDone}>Cancel</button>
     </div>
   );
 }
@@ -59,7 +59,7 @@ function UserCharacters({ user }: { user: AdminUserDTO }) {
           <div key={c.id} className="admin__char">
             <CharacterCard character={c} tiers={tiers.data ?? []} />
             <div className="admin__row">
-              <button type="button" aria-label={`Reassign ${c.ign}`} onClick={() => setReassigning(reassigning === c.id ? null : c.id)}>
+              <button type="button" className="btn btn--secondary" aria-label={`Reassign ${c.ign}`} onClick={() => setReassigning(reassigning === c.id ? null : c.id)}>
                 Reassign…
               </button>
               <button
@@ -109,7 +109,7 @@ export function UsersAdmin() {
               {!u.isAdmin && (
                 <button
                   type="button"
-                  className={u.banned ? undefined : 'btn btn--danger'}
+                  className={u.banned ? 'btn btn--secondary' : 'btn btn--danger'}
                   aria-label={`${u.banned ? 'Unban' : 'Ban'} ${u.discordUsername}`}
                   disabled={setBanned.isPending}
                   onClick={() => {
@@ -122,6 +122,7 @@ export function UsersAdmin() {
               )}
               <button
                 type="button"
+                className="btn btn--secondary"
                 aria-expanded={expanded}
                 aria-label={`${expanded ? 'Hide' : 'Show'} characters ${u.discordUsername}`}
                 onClick={() => setOpen(expanded ? null : u.id)}

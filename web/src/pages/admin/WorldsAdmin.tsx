@@ -37,7 +37,7 @@ export function WorldsAdmin() {
     <div>
       <h2>Worlds</h2>
       {worlds.isError && <p role="alert" className="admin__error">{friendlyError(worlds.error)}</p>}
-      <button type="button" onClick={() => open(blank)}>Add world</button>
+      <button type="button" className="btn btn--secondary" onClick={() => open(blank)}>Add world</button>
       <table className="admin__table">
         <thead>
           <tr><th>Nexon ID</th><th>Name</th><th>Type</th><th>Active</th><th /></tr>
@@ -59,6 +59,7 @@ export function WorldsAdmin() {
               <td>
                 <button
                   type="button"
+                  className="btn btn--secondary"
                   aria-label={`Edit ${w.name}`}
                   onClick={() => open({ id: w.id, nexonWorldId: String(w.nexonWorldId), name: w.name, worldType: w.worldType })}
                 >
@@ -97,7 +98,7 @@ export function WorldsAdmin() {
           {mutation.isError && <p role="alert" className="admin__error">{friendlyError(mutation.error)}</p>}
           <div className="admin__row">
             <button type="submit" className="btn btn--primary" disabled={mutation.isPending}>{draft.id != null ? 'Save world' : 'Create world'}</button>
-            <button type="button" onClick={() => setDraft(null)}>Cancel</button>
+            <button type="button" className="btn btn--secondary" onClick={() => setDraft(null)}>Cancel</button>
           </div>
         </form>
       )}

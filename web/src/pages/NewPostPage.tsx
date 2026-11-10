@@ -249,7 +249,7 @@ export function NewPostPage() {
       <section>
         {heading}
         <p>Log in with Discord to post.</p>
-        <a className="button" href="/api/auth/discord">
+        <a className="btn btn--primary" href="/api/auth/discord">
           Log in with Discord
         </a>
       </section>
