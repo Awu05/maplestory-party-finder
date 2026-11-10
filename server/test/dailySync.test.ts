@@ -77,18 +77,20 @@ describe('DailySyncJob', () => {
     expect(await prisma.jobRun.findUniqueOrThrow({ where: { name: 'daily-sync' } })).toMatchObject({ lastResult: { synced: 1, stale: 1 } });
   });
 
-  it('prunes 61-day-old notifications, keeps 59-day-old; prunes only old sent deliveries', async () => {
+  it('prunes 61-day-old notifications, keeps 59-day-old; prunes only old sent and failed deliveries', async () => {
     const user = await makeUser();
     const mk = (days: number) =>
       prisma.notification.create({ data: { userId: user.id, kind: 'invite', text: 't', link: '/x', createdAt: new Date(T0.getTime() - days * DAY) } });
     const old = await mk(61);
     const recent = await mk(59);
     const guild = await prisma.guild.create({ data: { name: 'G' } });
-    const dl = (status: 'sent' | 'pending', days: number) =>
+    const dl = (status: 'sent' | 'pending' | 'failed', days: number) =>
       prisma.webhookDelivery.create({ data: { guildId: guild.id, eventType: 'test', payload: {}, status, createdAt: new Date(T0.getTime() - days * DAY) } });
     const oldSent = await dl('sent', 31);
     const recentSent = await dl('sent', 29);
     const oldPending = await dl('pending', 31);
+    const oldFailed = await dl('failed', 31);
+    const recentFailed = await dl('failed', 29);
 
     await job().runIfDue();
     const nIds = (await prisma.notification.findMany()).map((n) => n.id);
@@ -98,6 +100,8 @@ describe('DailySyncJob', () => {
     expect(dIds).not.toContain(oldSent.id);
     expect(dIds).toContain(recentSent.id);
     expect(dIds).toContain(oldPending.id);
+    expect(dIds).not.toContain(oldFailed.id);
+    expect(dIds).toContain(recentFailed.id);
   });
 });
 

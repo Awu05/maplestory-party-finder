@@ -111,7 +111,11 @@ export class EventDispatcher implements DomainEvents {
     if (row.kind === 'join_request') {
       const recipient = row.post.posterUserId;
       await this.notify(recipient, actor, 'join_request', `${ch.ign} wants to join your ${bossesLabel(post)} run`, row.postId);
-      await this.ping(row.post.guildId, recipient, actor, 'request.created', build('join_request'));
+      // The poster's character may have moved guilds since posting; fall back to the post's guild if it is gone.
+      const poster = row.post.posterCharacterId
+        ? await this.prisma.character.findUnique({ where: { id: row.post.posterCharacterId }, select: { guildId: true } })
+        : null;
+      await this.ping(poster?.guildId ?? row.post.guildId, recipient, actor, 'request.created', build('join_request'));
     } else {
       const recipient = ch.ownerId;
       await this.notify(recipient, actor, 'invite', `${post.poster.snapshot.ign} invited ${ch.ign} to ${bossesLabel(post)}`, row.postId);
@@ -141,7 +145,7 @@ export class EventDispatcher implements DomainEvents {
     if (auto) {
       // Only the applicant or invitee hears about an auto-decline, and never when they caused it
       // (e.g. accepting one invite auto-declines their other invites).
-      await this.notify(ch.ownerId, actorUserId, 'auto_declined', `The ${bossesLabel(post)} party filled or the post closed`, row.postId);
+      await this.notify(ch.ownerId, actorUserId, 'auto_declined', `The ${bossesLabel(post)} party filled or the post closed`, row.postId, '/me/parties?tab=requests');
     } else if (row.kind === 'join_request') {
       await this.notify(ch.ownerId, actorUserId, 'declined', `${ch.ign}'s request to join the ${bossesLabel(post)} run was declined`, row.postId);
     } else {
@@ -160,9 +164,9 @@ export class EventDispatcher implements DomainEvents {
     }
   }
 
-  private async notify(userId: string, actorUserId: string | null, kind: NotificationKind, text: string, postId: string): Promise<void> {
+  private async notify(userId: string, actorUserId: string | null, kind: NotificationKind, text: string, postId: string, link = postPath(postId)): Promise<void> {
     if (userId === actorUserId) return;
-    await this.prisma.notification.create({ data: { userId, kind, text, link: postPath(postId) } });
+    await this.prisma.notification.create({ data: { userId, kind, text, link } });
   }
 
   /** Enqueues a ping to `guildId` mentioning the recipient, unless the guild can't receive it or the recipient is the actor. */

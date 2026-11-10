@@ -102,6 +102,16 @@ describe('request.created', () => {
     expect(ds[0]!.payload).toMatchObject({ allowed_mentions: { parse: [], users: ['u-1'] } });
   });
 
+  it("join request ping goes to the poster character's current guild, not the post's snapshot guild", async () => {
+    const post = await recruiting();
+    await prisma.character.update({ where: { id: alice.id }, data: { guildId: g5.id } });
+    await join(post.id, bob.id, u2);
+    await events.drain();
+    const ds = await deliveries();
+    expect(ds).toHaveLength(1);
+    expect(ds[0]).toMatchObject({ guildId: g5.id, eventType: 'request.created' });
+  });
+
   it('invite -> invitee notified; ping to invitee guild mentioning invitee', async () => {
     const post = await recruiting();
     const lfp = await makePost({ type: 'lfp', partySize: null, posterCharacterId: bob.id, bossDifficultyIds: [lucid] });
@@ -194,7 +204,7 @@ describe('request.declined', () => {
     await events.drain();
     const auto = (await notes()).filter((n) => n.kind === 'auto_declined');
     expect(auto).toHaveLength(1);
-    expect(auto[0]).toMatchObject({ userId: u3Id, text: 'The Hard Lucid party filled or the post closed', link: `/posts/${post.id}` });
+    expect(auto[0]).toMatchObject({ userId: u3Id, text: 'The Hard Lucid party filled or the post closed', link: '/me/parties?tab=requests' });
     expect((await deliveries()).map((d) => d.eventType).sort()).toEqual(['request.accepted', 'request.created', 'request.created']);
   });
 

@@ -86,7 +86,7 @@ export class DailySyncJob {
     if (this.stopping) return { synced, stale };
     await this.prisma.notification.deleteMany({ where: { createdAt: { lt: new Date(now.getTime() - NOTIFICATION_RETENTION_MS) } } });
     await this.prisma.webhookDelivery.deleteMany({
-      where: { status: 'sent', createdAt: { lt: new Date(now.getTime() - DELIVERY_RETENTION_MS) } },
+      where: { status: { in: ['sent', 'failed'] }, createdAt: { lt: new Date(now.getTime() - DELIVERY_RETENTION_MS) } },
     });
     return { synced, stale };
   }

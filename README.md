@@ -33,12 +33,15 @@ Guilds can post new parties and pings to a Discord channel through a webhook.
 1. In Discord, go to Server Settings -> Integrations -> Webhooks -> New Webhook, pick the channel, and copy the webhook URL.
 2. In the app, open Admin -> Guilds, paste the URL into the guild, then click Send test message.
 3. Members must be in that Discord server for @mentions to work.
+4. A guild only receives new-post messages if it is **active** and its **world list includes the post's world**. A guild with no worlds never gets new-post broadcasts (pings for requests and accepts still go to it).
+5. Links in Discord messages are built from `WEB_ORIGIN`, so set it to the public URL of the web app.
+6. Admin -> Webhooks is the delivery health page (recent deliveries and failures); the Send test message button on Admin -> Guilds verifies a guild's webhook.
 
 ## Notifications & jobs
 
-- The in-app bell polls the server periodically for new notifications (join requests, invites, accepts); there is no push connection.
+- The in-app bell polls the server periodically for new notifications (join requests, invites, accepts, declines, removals from a party and members leaving); there is no push connection.
 - A background worker delivers queued webhook messages every 5 seconds. Failed deliveries are retried with increasing delays (30 s, 2 min, 10 min, 1 h) and given up on after 5 attempts; Discord rate limits are respected.
-- A daily sync refreshes every character from Nexon (skipping banned users' characters), oldest first, throttled. It checks hourly and runs when the last run was 24 hours ago or more, so the time of day drifts with the last run. It also prunes notifications older than 60 days and sent deliveries older than 30 days.
+- A daily sync refreshes every character from Nexon (skipping banned users' characters), oldest first, throttled. It checks hourly and runs when the last run was 24 hours ago or more, so the time of day drifts with the last run. It also prunes notifications older than 60 days and sent or failed deliveries older than 30 days.
 - Set `JOBS_ENABLED=false` to disable both jobs in a given instance.
 
 ## Development
