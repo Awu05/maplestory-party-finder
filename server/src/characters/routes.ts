@@ -4,8 +4,9 @@ import { getViewer, requireUser } from '../auth/guards.js';
 import { readImageUpload } from '../storage/imageType.js';
 import {
   claimRefresh, createCharacter, createManualCharacter, deleteCharacter, getCharacter, getOwnedCharacter, listCharacters, lookupCharacters,
-  syncCharacterFromNexon, updateCharacter,
+  moveCharacterWorld, refreshCharacter, updateCharacter,
 } from './service.js';
+import type { RefreshResultDTO } from '@pf/shared';
 import { characterInclude, toCharacterDTO } from './serialize.js';
 
 const lookupBody = z.object({ ign: z.string().trim().min(1) });
@@ -30,6 +31,8 @@ const updateBody = createBody
   .pick({ combatPower: true, guildId: true })
   .extend({ jobName: z.string().trim().min(1), level: z.number().int().min(1).max(300) })
   .partial();
+
+const moveBody = z.object({ worldId: z.number().int(), guildId: z.string().min(1).nullable() });
 
 const listQuery = z.object({
   guildId: z.string().min(1).optional(),
@@ -111,12 +114,19 @@ export async function characterRoutes(app: FastifyInstance): Promise<void> {
     return toCharacterDTO(updated, viewer.user.id, storage);
   });
 
-  app.post('/characters/:id/refresh', async (req) => {
+  app.post('/characters/:id/refresh', async (req): Promise<RefreshResultDTO> => {
     const viewer = await requireUser(req);
     const { id } = req.params as { id: string };
     await getOwnedCharacter(prisma, id, viewer.user.id);
     await claimRefresh(prisma, id);
-    await syncCharacterFromNexon(prisma, nexon, id);
-    return toCharacterDTO(await getCharacter(prisma, id), viewer.user.id, storage);
+    const { outcome, candidates } = await refreshCharacter(prisma, nexon, id);
+    return { outcome, candidates, character: toCharacterDTO(await getCharacter(prisma, id), viewer.user.id, storage) };
+  });
+
+  app.post('/characters/:id/move', async (req) => {
+    const viewer = await requireUser(req);
+    const { id } = req.params as { id: string };
+    const input = moveBody.parse(req.body);
+    return toCharacterDTO(await moveCharacterWorld(prisma, nexon, viewer.user.id, id, input), viewer.user.id, storage);
   });
 }

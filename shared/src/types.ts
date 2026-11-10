@@ -18,6 +18,12 @@ export interface CharacterDTO {
   lastSyncedAt: string;
 }
 
+export type RefreshOutcome = 'synced' | 'stale' | 'not_found' | 'unavailable' | 'found_elsewhere';
+
+export type WorldCandidateDTO = { worldId: number; worldName: string; level: number; jobName: string; imageUrl: string };
+
+export type RefreshResultDTO = { outcome: RefreshOutcome; character: CharacterDTO; candidates: WorldCandidateDTO[] };
+
 export type NexonCharacterPreview = {
   ign: string;
   level: number;

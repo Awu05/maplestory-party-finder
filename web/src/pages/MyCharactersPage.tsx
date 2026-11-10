@@ -21,9 +21,9 @@ function Actions({ id, onMessage }: { id: string; onMessage: (m: string) => void
         onClick={() => {
           onMessage('');
           refresh.mutate(undefined, {
-            onSuccess: (c) =>
+            onSuccess: (r) =>
               onMessage(
-                c.syncStatus === 'stale' ? "Couldn't reach Nexon — showing last known data" : 'Synced from Nexon',
+                r.character.syncStatus === 'stale' ? "Couldn't reach Nexon — showing last known data" : 'Synced from Nexon',
               ),
             onError: (e) => onMessage(friendlyError(e)),
           });

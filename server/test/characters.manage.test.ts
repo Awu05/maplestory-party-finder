@@ -171,7 +171,7 @@ describe('characters refresh', () => {
     const c = await makeCharacter({ ign: 'Lily', ownerId, worldId, guildId, level: 279 });
     const r1 = await refresh(c.id);
     expect(r1.statusCode).toBe(200);
-    expect(r1.json()).toMatchObject({ level: 280, syncStatus: 'ok', imageUrl: 'https://x/new.png', jobName: 'Angelic Buster' });
+    expect(r1.json()).toMatchObject({ outcome: 'synced', character: { level: 280, syncStatus: 'ok', imageUrl: 'https://x/new.png', jobName: 'Angelic Buster' } });
     const r2 = await refresh(c.id);
     expect(r2.statusCode).toBe(429);
     expect(r2.json().error.code).toBe('TOO_SOON');
@@ -182,17 +182,17 @@ describe('characters refresh', () => {
     nexon.failNext();
     const r1 = await refresh(c.id);
     expect(r1.statusCode).toBe(200);
-    expect(r1.json()).toMatchObject({ level: 279, syncStatus: 'stale' });
+    expect(r1.json()).toMatchObject({ outcome: 'stale', character: { level: 279, syncStatus: 'stale' } });
     await prisma.character.update({ where: { id: c.id }, data: { lastRefreshRequestedAt: new Date(Date.now() - 11 * 60_000) } });
     const r2 = await refresh(c.id);
     expect(r2.statusCode).toBe(200);
-    expect(r2.json()).toMatchObject({ level: 280, syncStatus: 'ok' });
+    expect(r2.json()).toMatchObject({ outcome: 'synced', character: { level: 280, syncStatus: 'ok' } });
   });
 
   it('no match on Nexon -> stale, data unchanged; non-owner 403', async () => {
     const c = await makeCharacter({ ign: 'Ghosty', ownerId, worldId, guildId, level: 279 });
     const r = await refresh(c.id);
-    expect(r.json()).toMatchObject({ level: 279, syncStatus: 'stale' });
+    expect(r.json()).toMatchObject({ outcome: 'stale', character: { level: 279, syncStatus: 'stale' } });
     const other = await loginAs(app, 'u-2', 'other');
     const r2 = await app.inject({ method: 'POST', url: `/api/characters/${c.id}/refresh`, headers: { cookie: other } });
     expect(r2.statusCode).toBe(403);

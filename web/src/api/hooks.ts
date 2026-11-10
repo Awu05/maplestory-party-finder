@@ -10,6 +10,7 @@ import type {
   GuildDTO,
   MeDTO,
   NexonCharacterPreview,
+  RefreshResultDTO,
   RarityTierDTO,
   WebhookHealthDTO,
   WorldDTO,
@@ -136,7 +137,7 @@ export function useLookupCharacter() {
 export function useRefreshCharacter(id: string) {
   const invalidate = useInvalidateCharactersAndPosts();
   return useMutation({
-    mutationFn: () => api<CharacterDTO>(`/api/characters/${id}/refresh`, { method: 'POST' }),
+    mutationFn: () => api<RefreshResultDTO>(`/api/characters/${id}/refresh`, { method: 'POST' }),
     onSuccess: invalidate,
   });
 }

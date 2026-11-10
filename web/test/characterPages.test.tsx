@@ -111,7 +111,7 @@ describe('MyCharactersPage', () => {
       ...shared,
       '/api/auth/me': { id: 'u1', discordUsername: 'lily#1', avatarUrl: null, isAdmin: false },
       '/api/characters?mine=1': [character],
-      'POST /api/characters/c1/refresh': { ...character, syncStatus },
+      'POST /api/characters/c1/refresh': { outcome: syncStatus === 'ok' ? 'synced' : 'stale', candidates: [], character: { ...character, syncStatus } },
     });
     renderWithProviders(<MyCharactersPage />);
     fireEvent.click(await screen.findByRole('button', { name: 'Refresh from Nexon' }));

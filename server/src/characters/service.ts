@@ -1,5 +1,5 @@
-import { Prisma, type PrismaClient } from '@prisma/client';
-import type { NexonCharacterPreview } from '@pf/shared';
+import { Prisma, type PrismaClient, type World } from '@prisma/client';
+import type { NexonCharacterPreview, RefreshOutcome, WorldCandidateDTO } from '@pf/shared';
 import { AppError } from '../http/errors.js';
 import { NexonUnavailableError, type NexonClient, type NexonCharacter } from '../nexon/client.js';
 import { closeLivePosts } from '../posts/lifecycle.js';
@@ -14,9 +14,9 @@ export interface CreateCharacterInput {
   guildId: string;
 }
 
-async function findOnNexon(nexon: NexonClient, ign: string): Promise<NexonCharacter[]> {
+async function findOnNexon(nexon: NexonClient, ign: string, opts?: { fresh?: boolean }): Promise<NexonCharacter[]> {
   try {
-    return await nexon.findByName(ign);
+    return await nexon.findByName(ign, opts);
   } catch (err) {
     if (err instanceof NexonUnavailableError) throw new AppError(502, 'NEXON_UNAVAILABLE', 'Nexon is unavailable, try again shortly');
     throw err;
@@ -247,6 +247,113 @@ export async function syncCharacterFromNexon(
     data: { level: match.level, jobName: match.jobName, archetype, imageUrl: match.imageUrl, lastSyncedAt: new Date(), syncStatus: 'ok' },
   });
   return 'ok';
+}
+
+/** Worlds a manual character may move to: active, same world type, not its current world. */
+function candidateWorlds(prisma: PrismaClient, current: World): Promise<World[]> {
+  return prisma.world.findMany({ where: { active: true, worldType: current.worldType, id: { not: current.id } } });
+}
+
+async function nexonSyncData(prisma: PrismaClient, match: NexonCharacter) {
+  return {
+    source: 'nexon' as const,
+    level: match.level,
+    jobName: match.jobName,
+    archetype: await resolveArchetype(prisma, match.jobName),
+    imageUrl: match.imageUrl,
+    syncStatus: 'ok' as const,
+    lastSyncedAt: new Date(),
+  };
+}
+
+/**
+ * The owner-triggered refresh (the caller claims the cooldown first). Nexon rows sync as the daily
+ * sync does; manual rows convert when found on their own world, or report candidate worlds without writing.
+ */
+export async function refreshCharacter(
+  prisma: PrismaClient,
+  nexon: NexonClient,
+  id: string,
+): Promise<{ outcome: RefreshOutcome; candidates: WorldCandidateDTO[] }> {
+  const row = await prisma.character.findUnique({ where: { id }, include: { world: true } });
+  if (!row) throw new AppError(404, 'NOT_FOUND', 'Character not found');
+
+  if (row.source === 'nexon') {
+    const result = await syncCharacterFromNexon(prisma, nexon, id, { fresh: true });
+    return { outcome: result === 'ok' ? 'synced' : 'stale', candidates: [] };
+  }
+
+  let found: NexonCharacter[];
+  try {
+    found = await nexon.findByName(row.ign, { fresh: true });
+  } catch (err) {
+    if (err instanceof NexonUnavailableError) return { outcome: 'unavailable', candidates: [] };
+    throw err;
+  }
+
+  const own = found.find((c) => c.nexonWorldId === row.world.nexonWorldId);
+  if (own) {
+    await prisma.character.update({ where: { id }, data: await nexonSyncData(prisma, own) });
+    return { outcome: 'synced', candidates: [] };
+  }
+
+  const worlds = new Map((await candidateWorlds(prisma, row.world)).map((w) => [w.nexonWorldId, w]));
+  const candidates = found
+    .flatMap((c) => {
+      const world = worlds.get(c.nexonWorldId);
+      return world ? [{ worldId: world.id, worldName: world.name, level: c.level, jobName: c.jobName, imageUrl: c.imageUrl }] : [];
+    })
+    .sort((a, b) => a.worldName.localeCompare(b.worldName));
+  return candidates.length > 0 ? { outcome: 'found_elsewhere', candidates } : { outcome: 'not_found', candidates: [] };
+}
+
+export interface MoveCharacterInput {
+  worldId: number;
+  guildId: string | null;
+}
+
+/** Moves a manual character to a candidate world where Nexon lists it, converting it to a synced character. */
+export async function moveCharacterWorld(
+  prisma: PrismaClient,
+  nexon: NexonClient,
+  userId: string,
+  id: string,
+  input: MoveCharacterInput,
+): Promise<CharacterRow> {
+  const row = await getOwnedCharacter(prisma, id, userId);
+  if (row.source !== 'manual') throw new AppError(400, 'NOT_MANUAL', 'Only manually added characters can change world');
+
+  const target = (await candidateWorlds(prisma, row.world)).find((w) => w.id === input.worldId);
+  if (!target) throw new AppError(400, 'WRONG_WORLD', "That world isn't an option for this character");
+  if (input.guildId !== null) await requireActiveGuild(prisma, input.guildId);
+
+  const match = (await findOnNexon(nexon, row.ign, { fresh: true })).find((c) => c.nexonWorldId === target.nexonWorldId);
+  if (!match) throw new AppError(404, 'CHARACTER_NOT_FOUND', 'Character not found on that world');
+  const data = await nexonSyncData(prisma, match);
+
+  const now = new Date();
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const [membership, pending] = await Promise.all([
+        tx.postMember.findFirst({
+          where: { characterId: id, post: { deletedAt: null, status: { in: ['open', 'full'] }, expiresAt: { gt: now } } },
+          select: { id: true },
+        }),
+        tx.request.findFirst({ where: { characterId: id, status: 'pending' }, select: { id: true } }),
+      ]);
+      if (membership || pending) throw new AppError(409, 'IN_PARTY', 'Leave or close your open parties first');
+      return tx.character.update({
+        where: { id },
+        data: { ...data, worldId: target.id, guildId: input.guildId },
+        include: characterInclude,
+      });
+    });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      throw new AppError(409, 'ALREADY_CLAIMED', 'That character is already claimed');
+    }
+    throw err;
+  }
 }
 
 /** Claims the refresh slot atomically; throws 429 TOO_SOON if one was taken within the cooldown. */
