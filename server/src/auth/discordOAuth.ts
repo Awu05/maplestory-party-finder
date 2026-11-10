@@ -12,7 +12,17 @@ export interface DiscordOAuth {
 }
 
 export class HttpDiscordOAuth implements DiscordOAuth {
-  constructor(private readonly config: Pick<Config, 'discordClientId' | 'discordClientSecret' | 'discordRedirectUri'>) {}
+  private readonly fetchFn: typeof fetch;
+  private readonly timeoutMs: number;
+
+  constructor(
+    private readonly config: Pick<Config, 'discordClientId' | 'discordClientSecret' | 'discordRedirectUri'>,
+    /** Each Discord request aborts after `timeoutMs` (default 8s), so a hung Discord fails the login instead of hanging it. */
+    opts: { fetch?: typeof fetch; timeoutMs?: number } = {},
+  ) {
+    this.fetchFn = opts.fetch ?? fetch;
+    this.timeoutMs = opts.timeoutMs ?? 8000;
+  }
 
   authorizeUrl(state: string): string {
     const params = new URLSearchParams({
@@ -26,8 +36,9 @@ export class HttpDiscordOAuth implements DiscordOAuth {
   }
 
   async exchangeCode(code: string): Promise<DiscordProfile> {
-    const tokenRes = await fetch('https://discord.com/api/oauth2/token', {
+    const tokenRes = await this.fetchFn('https://discord.com/api/oauth2/token', {
       method: 'POST',
+      signal: AbortSignal.timeout(this.timeoutMs),
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         client_id: this.config.discordClientId,
@@ -40,7 +51,8 @@ export class HttpDiscordOAuth implements DiscordOAuth {
     if (!tokenRes.ok) throw new Error(`Discord token exchange failed: ${tokenRes.status}`);
     const { access_token } = (await tokenRes.json()) as { access_token: string };
 
-    const meRes = await fetch('https://discord.com/api/users/@me', {
+    const meRes = await this.fetchFn('https://discord.com/api/users/@me', {
+      signal: AbortSignal.timeout(this.timeoutMs),
       headers: { authorization: `Bearer ${access_token}` },
     });
     if (!meRes.ok) throw new Error(`Discord profile fetch failed: ${meRes.status}`);
