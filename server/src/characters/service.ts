@@ -109,7 +109,7 @@ export async function createManualCharacter(
 ): Promise<CharacterRow> {
   const guild = await requireActiveGuild(prisma, input.guildId);
   const world = await prisma.world.findUnique({ where: { id: input.worldId } });
-  if (!world) throw new AppError(400, 'UNKNOWN_WORLD', `World ${input.worldId} isn't set up yet — ask the admin`);
+  if (!world) throw new AppError(400, 'UNKNOWN_WORLD', `World ${input.worldId} isn't set up yet â€” ask the admin`);
   if (!world.active) throw new AppError(400, 'WORLD_INACTIVE', 'That world is not active');
   const jobClass = await requireJobClass(prisma, input.jobName);
 

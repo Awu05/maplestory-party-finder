@@ -94,6 +94,7 @@ export async function createInvite(
       // The poster's character is nulled out when it is deleted.
       const character = characterId === null ? null : await tx.character.findUnique({ where: { id: characterId } });
       if (!character) throw new AppError(409, 'POST_CLOSED', 'That post is no longer available');
+      if (character.guildId === null) throw new AppError(400, 'NO_GUILD', 'Pick a guild for this character first');
       if (isMember(recruiting, character.id)) throw new AppError(409, 'ALREADY_MEMBER', 'That character is already in the party');
       const pending = await tx.request.count({ where: { postId: recruitingPostId, characterId: character.id, status: 'pending' } });
       if (pending > 0) throw new AppError(409, 'ALREADY_PENDING', 'That character already has a pending request');
