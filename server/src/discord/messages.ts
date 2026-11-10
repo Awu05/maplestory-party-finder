@@ -55,7 +55,7 @@ export function buildNewPostMessage(post: PostSummaryDTO, webOrigin: string): We
       title: clip(neutralize(`${POST_TYPE_LABELS[post.type]}: ${bossesLabel(post)}`), TITLE_MAX),
       url: postLink(post, webOrigin),
       color: recruiting ? COLOR_RECRUITING : COLOR_LFP,
-      ...(/^https?:///.test(snap.imageUrl) ? { thumbnail: { url: snap.imageUrl } } : {}),
+      ...(/^https?:\/\//.test(snap.imageUrl) ? { thumbnail: { url: snap.imageUrl } } : {}),
       fields,
     }],
     allowed_mentions: { parse: [] },
