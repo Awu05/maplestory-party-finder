@@ -47,6 +47,14 @@ describe('formatCp', () => {
 });
 
 describe('CharacterCard', () => {
+  it('labels manual characters and shows No guild for guildless ones', () => {
+    const { rerender } = render(<CharacterCard character={makeCharacter()} tiers={tiers} />);
+    expect(screen.queryByText('Added manually')).toBeNull();
+    rerender(<CharacterCard character={makeCharacter({ manual: true, guild: null })} tiers={tiers} />);
+    expect(screen.getByText('Added manually')).toBeInTheDocument();
+    expect(screen.getByText('No guild')).toBeInTheDocument();
+  });
+
   it('card applies archetype and foil classes', () => {
     render(<CharacterCard character={makeCharacter()} tiers={tiers} onOpen={() => {}} />);
     const card = screen.getByRole('button', { name: 'Lily, level 279 Angelic Buster' });

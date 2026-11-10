@@ -418,3 +418,10 @@
     width: min(220px, 70vw);
   }
 }
+
+.card__manual {
+  margin-left: 0.6em;
+  font-style: normal;
+  font-size: 0.9em;
+  opacity: 0.85;
+}

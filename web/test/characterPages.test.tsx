@@ -248,4 +248,112 @@ describe('CharacterFormPage', () => {
     const patch = fetchMock.mock.calls.find((c) => (c[1] as RequestInit)?.method === 'PATCH')!;
     expect(bodyOf(patch)).toEqual({ combatPower: 1600000000, guildId: 'g1' });
   });
+
+  describe('manual characters', () => {
+    const classes = [
+      { id: 3, name: 'bishop', archetype: 'magician' },
+      { id: 1, name: 'Zero', archetype: 'warrior' },
+      { id: 2, name: 'Adele', archetype: 'warrior' },
+    ];
+    const manualShared = { ...shared, '/api/classes': classes };
+    const manualChar: CharacterDTO = { ...character, id: 'm1', manual: true, jobName: 'Retired Class', level: 200 };
+
+    async function lookupEmpty(extra: Record<string, unknown> = {}) {
+      const fetchMock = mockApi({ ...manualShared, 'POST /api/characters/lookup': [], ...extra });
+      renderWithProviders(formRoutes(), { route: '/me/characters/new' });
+      fireEvent.change(await screen.findByLabelText('In-game name'), { target: { value: 'sunofsinz' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Find' }));
+      return fetchMock;
+    }
+
+    it('offers "Add it manually" for an empty lookup and reveals sorted fields with the IGN prefilled', async () => {
+      await lookupEmpty();
+      fireEvent.click(await screen.findByRole('button', { name: 'Add it manually' }));
+      expect(screen.getByLabelText('World')).toBeInTheDocument();
+      expect(screen.getByLabelText('Level')).toBeInTheDocument();
+      expect(screen.getByLabelText('Character name')).toHaveValue('sunofsinz');
+      const options = Array.from((screen.getByLabelText('Class') as HTMLSelectElement).options).map((o) => o.text);
+      expect(options.slice(1)).toEqual(['Adele', 'bishop', 'Zero']);
+    });
+
+    it('saves a manual character via POST /api/characters/manual', async () => {
+      const fetchMock = await lookupEmpty({ 'POST /api/characters/manual': manualChar });
+      fireEvent.click(await screen.findByRole('button', { name: 'Add it manually' }));
+      fireEvent.change(screen.getByLabelText('World'), { target: { value: '1' } });
+      fireEvent.change(screen.getByLabelText('Class'), { target: { value: 'Adele' } });
+      fireEvent.change(screen.getByLabelText('Level'), { target: { value: '250' } });
+      fireEvent.change(screen.getByLabelText('Combat power'), { target: { value: '1,000' } });
+      fireEvent.change(screen.getByLabelText('Guild'), { target: { value: 'g1' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      expect(await screen.findByRole('heading', { name: 'My list' })).toBeInTheDocument();
+      const post = fetchMock.mock.calls.find((c) => String(c[0]) === '/api/characters/manual')!;
+      expect(bodyOf(post)).toEqual({
+        ign: 'sunofsinz', worldId: 1, jobName: 'Adele', level: 250, combatPower: 1000, guildId: 'g1',
+      });
+    });
+
+    it('rejects a level of 0 or empty without posting', async () => {
+      const fetchMock = await lookupEmpty({ 'POST /api/characters/manual': manualChar });
+      fireEvent.click(await screen.findByRole('button', { name: 'Add it manually' }));
+      fireEvent.change(screen.getByLabelText('World'), { target: { value: '1' } });
+      fireEvent.change(screen.getByLabelText('Class'), { target: { value: 'Adele' } });
+      fireEvent.change(screen.getByLabelText('Combat power'), { target: { value: '1000' } });
+      fireEvent.change(screen.getByLabelText('Guild'), { target: { value: 'g1' } });
+      for (const level of ['0', '']) {
+        fireEvent.change(screen.getByLabelText('Level'), { target: { value: level } });
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+        expect(await screen.findByRole('alert')).toHaveTextContent('Enter a level from 1 to 300.');
+      }
+      expect(fetchMock.mock.calls.some((c) => String(c[0]) === '/api/characters/manual')).toBe(false);
+    });
+
+    it('offers "Add it manually" after a lookup error', async () => {
+      const fetchMock = mockApi({ ...manualShared });
+      const base = fetchMock.getMockImplementation()!;
+      fetchMock.mockImplementation(async (input, init) =>
+        String(input) === '/api/characters/lookup'
+          ? new Response(JSON.stringify({ error: { code: 'NEXON_UNAVAILABLE', message: 'x' } }), { status: 502 })
+          : base(input, init),
+      );
+      renderWithProviders(formRoutes(), { route: '/me/characters/new' });
+      fireEvent.change(await screen.findByLabelText('In-game name'), { target: { value: 'x' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Find' }));
+      expect(await screen.findByRole('button', { name: 'Add it manually' })).toBeInTheDocument();
+    });
+
+    it('offers "Not your character? Add it manually" under previews', async () => {
+      mockApi({ ...manualShared, 'POST /api/characters/lookup': [preview] });
+      renderWithProviders(formRoutes(), { route: '/me/characters/new' });
+      fireEvent.change(await screen.findByLabelText('In-game name'), { target: { value: 'Lily' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Find' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Not your character? Add it manually' }));
+      expect(screen.getByLabelText('Class')).toBeInTheDocument();
+    });
+
+    it('edit of a manual character shows class and level and PATCHes them', async () => {
+      const fetchMock = mockApi({
+        ...manualShared,
+        '/api/characters/m1': manualChar,
+        'PATCH /api/characters/m1': manualChar,
+      });
+      renderWithProviders(formRoutes(), { route: '/me/characters/m1/edit' });
+      expect(await screen.findByLabelText('Class')).toHaveValue('Retired Class');
+      expect(screen.getByLabelText('Level')).toHaveValue('200');
+      await screen.findByRole('option', { name: 'Adele' });
+      fireEvent.change(screen.getByLabelText('Class'), { target: { value: 'Adele' } });
+      fireEvent.change(screen.getByLabelText('Level'), { target: { value: '210' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await screen.findByRole('heading', { name: 'My list' });
+      const patch = fetchMock.mock.calls.find((c) => (c[1] as RequestInit)?.method === 'PATCH')!;
+      expect(bodyOf(patch)).toEqual({ combatPower: 1500000000, guildId: 'g1', jobName: 'Adele', level: 210 });
+    });
+
+    it('edit of a nexon character shows no class or level', async () => {
+      mockApi({ ...manualShared, '/api/characters/c1': character });
+      renderWithProviders(formRoutes(), { route: '/me/characters/c1/edit' });
+      await screen.findByLabelText('Combat power');
+      expect(screen.queryByLabelText('Class')).toBeNull();
+      expect(screen.queryByLabelText('Level')).toBeNull();
+    });
+  });
 });

@@ -1,17 +1,20 @@
 import { useState } from 'react';
-import type { FormEvent } from 'react';
+import type { FormEvent, ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import type { CharacterDTO, GuildDTO, NexonCharacterPreview } from '@pf/shared';
+import type { CharacterDTO, GuildDTO, JobClassDTO, NexonCharacterPreview } from '@pf/shared';
 import {
   uploadScreenshot,
   useCharacter,
+  useClasses,
   useCreateCharacter,
+  useCreateManualCharacter,
   useGuilds,
   useWorlds,
   useLookupCharacter,
   useUpdateCharacter,
 } from '../api/hooks';
 import { friendlyError } from '../api/errors';
+import { ManualFields } from '../components/character/ManualFields';
 import './characters.css';
 
 interface Details {
@@ -19,14 +22,41 @@ interface Details {
   guildId: string;
 }
 
+/** Class names sorted case-insensitively; `current` is kept even if the class has since been removed. */
+function classNames(classes: JobClassDTO[] | undefined, current?: string): string[] {
+  const names = (classes ?? []).map((c) => c.name);
+  if (current && !names.includes(current)) names.push(current);
+  return names.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+}
+
+/** Controlled state for the manual fields, with the shared validation and error copy. */
+function useManualState(initial?: { worldId?: string; jobName?: string; level?: number }) {
+  const [worldId, setWorldId] = useState(initial?.worldId ?? '');
+  const [jobName, setJobName] = useState(initial?.jobName ?? '');
+  const [level, setLevel] = useState(initial?.level !== undefined ? String(initial.level) : '');
+  const levelNum = /^\d+$/.test(level.trim()) ? Number(level.trim()) : NaN;
+  /** `needWorld` is true when adding. */
+  const validate = (needWorld: boolean): string | null => {
+    if (needWorld && !worldId) return 'Pick a world.';
+    if (!jobName) return 'Pick a class.';
+    if (!(levelNum >= 1 && levelNum <= 300)) return 'Enter a level from 1 to 300.';
+    return null;
+  };
+  return { worldId, setWorldId, jobName, setJobName, level, setLevel, levelNum, validate };
+}
+
 interface FormProps {
   initial?: CharacterDTO;
+  /** Fields shown above combat power (the manual fields). */
+  lead?: ReactNode;
+  /** Runs before the details checks; a string blocks the save and is shown as the error. */
+  validate?: () => string | null;
   guilds: GuildDTO[];
   /** Resolves when saved; a rejection is shown as the form error. */
   onSubmit: (details: Details, screenshot: File | null) => Promise<void>;
 }
 
-function DetailsForm({ initial, guilds, onSubmit }: FormProps) {
+function DetailsForm({ initial, lead, validate, guilds, onSubmit }: FormProps) {
   const navigate = useNavigate();
   const [cp, setCp] = useState(initial ? String(initial.combatPower) : '');
   const [guildId, setGuildId] = useState(initial?.guild?.id ?? '');
@@ -37,6 +67,8 @@ function DetailsForm({ initial, guilds, onSubmit }: FormProps) {
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError('');
+    const leadError = validate?.() ?? null;
+    if (leadError) return setError(leadError);
     const digits = cp.replace(/,/g, '').trim();
     if (!/^\d+$/.test(digits) || Number(digits) <= 0) return setError('Enter your combat power as a number.');
     if (!guildId) return setError('Pick a guild.');
@@ -51,6 +83,7 @@ function DetailsForm({ initial, guilds, onSubmit }: FormProps) {
 
   return (
     <form className="char-form" onSubmit={submit}>
+      {lead}
       <label>
         Combat power
         <input type="text" inputMode="numeric" value={cp} onChange={(e) => setCp(e.target.value)} />
@@ -104,6 +137,11 @@ function AddCharacter({ guilds }: { guilds: GuildDTO[] }) {
   const navigate = useNavigate();
   const lookup = useLookupCharacter();
   const create = useCreateCharacter();
+  const createManual = useCreateManualCharacter();
+  const classes = useClasses();
+  const manual = useManualState();
+  const [manualMode, setManualMode] = useState(false);
+  const [manualIgn, setManualIgn] = useState('');
   const [ign, setIgn] = useState('');
   const [chosen, setChosen] = useState<NexonCharacterPreview | null>(null);
   const previews = lookup.data;
@@ -116,10 +154,17 @@ function AddCharacter({ guilds }: { guilds: GuildDTO[] }) {
     return null;
   };
 
+  function startManual() {
+    setManualIgn(ign.trim());
+    setChosen(null);
+    setManualMode(true);
+  }
+
   async function find(e: FormEvent) {
     e.preventDefault();
     if (!ign.trim()) return;
     setChosen(null);
+    setManualMode(false);
     const result = await lookup.mutateAsync(ign.trim()).catch(() => null);
     if (result?.length === 1 && unavailableReason(result[0]) === null) setChosen(result[0]);
   }
@@ -137,6 +182,11 @@ function AddCharacter({ guilds }: { guilds: GuildDTO[] }) {
       </form>
       {lookup.isError && <p role="alert">{friendlyError(lookup.error)}</p>}
       {previews?.length === 0 && <p>No character found with that name.</p>}
+      {(lookup.isError || previews?.length === 0) && !manualMode && (
+        <button type="button" className="btn btn--secondary" onClick={() => startManual()}>
+          Add it manually
+        </button>
+      )}
       {previews && previews.length > 0 && (
         <div className="previews">
           {previews.map((p) => {
@@ -159,7 +209,43 @@ function AddCharacter({ guilds }: { guilds: GuildDTO[] }) {
           })}
         </div>
       )}
-      {chosen && (
+      {previews && previews.length > 0 && !manualMode && (
+        <button type="button" className="btn btn--secondary" onClick={startManual}>
+          Not your character? Add it manually
+        </button>
+      )}
+      {manualMode && (
+        <DetailsForm
+          guilds={guilds}
+          lead={
+            <ManualFields
+              ign={manualIgn}
+              onIgn={setManualIgn}
+              worldId={manual.worldId}
+              onWorld={manual.setWorldId}
+              jobName={manual.jobName}
+              onJob={manual.setJobName}
+              level={manual.level}
+              onLevel={manual.setLevel}
+              classOptions={classNames(classes.data)}
+              worlds={worlds.data ?? []}
+            />
+          }
+          validate={() => (manualIgn.trim() ? manual.validate(true) : 'Enter a character name.')}
+          onSubmit={async (details, screenshot) => {
+            const created = await createManual.mutateAsync({
+              ign: manualIgn.trim(),
+              worldId: Number(manual.worldId),
+              jobName: manual.jobName,
+              level: manual.levelNum,
+              ...details,
+            });
+            const state = await uploadThenNotice(created.id, screenshot, 'Character saved');
+            navigate('/me/characters', { state });
+          }}
+        />
+      )}
+      {chosen && !manualMode && (
         <DetailsForm
           guilds={guilds}
           onSubmit={async (details, screenshot) => {
@@ -174,20 +260,41 @@ function AddCharacter({ guilds }: { guilds: GuildDTO[] }) {
 }
 
 function EditCharacter({ id, guilds }: { id: string; guilds: GuildDTO[] }) {
-  const navigate = useNavigate();
   const character = useCharacter(id);
-  const update = useUpdateCharacter(id);
-
   if (character.isPending) return <p>Loading…</p>;
   if (character.isError || !character.data) return <p role="alert">Couldn't load this character.</p>;
+  return <EditForm id={id} guilds={guilds} character={character.data} />;
+}
+
+function EditForm({ id, guilds, character }: { id: string; guilds: GuildDTO[]; character: CharacterDTO }) {
+  const navigate = useNavigate();
+  const update = useUpdateCharacter(id);
+  const classes = useClasses();
+  const manual = useManualState({ jobName: character.jobName, level: character.level });
+  const isManual = character.manual;
   return (
     <>
-      <h2>{character.data.ign}</h2>
+      <h2>{character.ign}</h2>
       <DetailsForm
-        initial={character.data}
+        initial={character}
         guilds={guilds}
+        lead={
+          isManual && (
+            <ManualFields
+              jobName={manual.jobName}
+              onJob={manual.setJobName}
+              level={manual.level}
+              onLevel={manual.setLevel}
+              classOptions={classNames(classes.data, character.jobName)}
+              worldId=""
+              onWorld={() => undefined}
+              worlds={[]}
+            />
+          )
+        }
+        validate={isManual ? () => manual.validate(false) : undefined}
         onSubmit={async (details, screenshot) => {
-          await update.mutateAsync(details);
+          await update.mutateAsync(isManual ? { ...details, jobName: manual.jobName, level: manual.levelNum } : details);
           const state = await uploadThenNotice(id, screenshot, 'Changes saved');
           navigate('/me/characters', { state });
         }}

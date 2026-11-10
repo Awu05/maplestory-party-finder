@@ -75,7 +75,19 @@ export interface CreateCharacterInput {
   combatPower: number;
   guildId: string;
 }
-export type UpdateCharacterInput = Partial<Omit<CreateCharacterInput, 'ign' | 'nexonWorldId'>>;
+export interface ManualCharacterInput {
+  ign: string;
+  worldId: number;
+  jobName: string;
+  level: number;
+  combatPower: number;
+  guildId: string;
+}
+/** jobName and level are accepted for manual characters only. */
+export type UpdateCharacterInput = Partial<Omit<CreateCharacterInput, 'ign' | 'nexonWorldId'>> & {
+  jobName?: string;
+  level?: number;
+};
 
 function useInvalidateCharacters() {
   const qc = useQueryClient();
@@ -92,6 +104,15 @@ export function useCreateCharacter() {
   const invalidate = useInvalidateCharacters();
   return useMutation({
     mutationFn: (input: CreateCharacterInput) => api<CharacterDTO>('/api/characters', { method: 'POST', json: input }),
+    onSuccess: invalidate,
+  });
+}
+
+export function useCreateManualCharacter() {
+  const invalidate = useInvalidateCharacters();
+  return useMutation({
+    mutationFn: (input: ManualCharacterInput) =>
+      api<CharacterDTO>('/api/characters/manual', { method: 'POST', json: input }),
     onSuccess: invalidate,
   });
 }
