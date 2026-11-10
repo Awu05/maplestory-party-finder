@@ -247,11 +247,42 @@ export async function adminDeletePost(prisma: PrismaClient, id: string): Promise
 export interface LeaveResult {
   post: PostRow;
   reopened: boolean;
+  /** The member's own LFP post, reopened because they had left it closed by accepting an invite here. */
+  reopenedLfpPostId: string | null;
   member: { id: string; userId: string; ign: string };
   removedBy: 'self' | 'poster';
 }
 
-/** The member's owner leaves, or the poster removes them, while the party is live. Reopens a full post. */
+/**
+ * Reopens the LFP post that `characterId` closed by accepting an invite to `recruitingPostId`, if it is
+ * still closed as lfp_matched, not deleted and not expired. The caller holds the recruiting post's
+ * lock, so the LFP post is locked second, as everywhere else.
+ */
+async function reopenMatchedLfpPost(
+  tx: Prisma.TransactionClient,
+  recruitingPostId: string,
+  characterId: string,
+  now: Date,
+): Promise<string | null> {
+  const invite = await tx.request.findFirst({
+    where: { kind: 'invite', status: 'accepted', postId: recruitingPostId, characterId, lfpPostId: { not: null } },
+    orderBy: [{ decidedAt: 'desc' }, { id: 'desc' }],
+    select: { lfpPostId: true },
+  });
+  if (!invite?.lfpPostId) return null;
+  await tx.$queryRaw`SELECT id FROM "Post" WHERE id = ${invite.lfpPostId} FOR UPDATE`;
+  // Read after the lock; null if it was hard-deleted meanwhile.
+  const lfp = await tx.post.findUnique({ where: { id: invite.lfpPostId } });
+  if (!lfp || lfp.status !== 'closed' || lfp.closedReason !== 'lfp_matched' || lfp.deletedAt !== null) return null;
+  if (lfp.expiresAt.getTime() <= now.getTime()) return null;
+  await tx.post.update({ where: { id: lfp.id }, data: { status: 'open', closedReason: null } });
+  return lfp.id;
+}
+
+/**
+ * The member's owner leaves, or the poster removes them, while the party is live. Reopens a full post,
+ * and the member's LFP post if joining this party is what closed it.
+ */
 export async function removeMember(prisma: PrismaClient, viewer: Viewer, postId: string, memberId: string, now: Date): Promise<LeaveResult> {
   return prisma.$transaction(async (tx) => {
     const row = await loadPostForUpdate(tx, postId);
@@ -263,6 +294,7 @@ export async function removeMember(prisma: PrismaClient, viewer: Viewer, postId:
     // An ended party (deleted, closed or expired) keeps its lineup as a record.
     if (effectivePostStatus(row, now) === 'closed') throw new AppError(409, 'POST_CLOSED', 'Post is closed');
     await tx.postMember.delete({ where: { id: memberId } });
+    const reopenedLfpPostId = member.characterId === null ? null : await reopenMatchedLfpPost(tx, postId, member.characterId, now);
     const reopened = row.status === 'full';
     const post = await tx.post.update({
       where: { id: postId },
@@ -272,6 +304,7 @@ export async function removeMember(prisma: PrismaClient, viewer: Viewer, postId:
     return {
       post,
       reopened,
+      reopenedLfpPostId,
       member: { id: member.id, userId: member.userId, ign: parseSnapshot(member.snapshot).ign },
       removedBy: self ? 'self' : 'poster',
     };

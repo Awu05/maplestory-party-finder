@@ -92,6 +92,56 @@ describe('leave / remove member', () => {
   });
 });
 
+describe('leaving reopens the LFP post the member was matched from', () => {
+  /** A party whose member joined by accepting an invite to their LFP post (now closed lfp_matched). */
+  async function matchedParty(lfpOver: Record<string, unknown> = {}) {
+    const { post, member, memberCookie } = await partyWithMember();
+    const lfp = await makePost({
+      type: 'lfp', partySize: null, posterCharacterId: member.characterId!, status: 'closed', closedReason: 'lfp_matched', scheduledAt: null, ...lfpOver,
+    });
+    await prisma.request.create({
+      data: {
+        kind: 'invite', status: 'accepted', decidedAt: new Date(), postId: post.id, characterId: member.characterId!, lfpPostId: lfp.id,
+        createdByUserId: posterUserId,
+      },
+    });
+    return { post, member, memberCookie, lfp };
+  }
+
+  it('member leaves -> their LFP post is open again and post.reopened is emitted for it', async () => {
+    const { post, member, memberCookie, lfp } = await matchedParty();
+    expect((await del(`/api/posts/${post.id}/members/${member.id}`, memberCookie)).statusCode).toBe(200);
+    expect(await prisma.post.findUniqueOrThrow({ where: { id: lfp.id } })).toMatchObject({ status: 'open', closedReason: null });
+    expect(events.events.filter((e) => e.type === 'post.reopened')).toEqual([{ type: 'post.reopened', postId: lfp.id }]);
+    const board = await app.inject({ method: 'GET', url: '/api/posts?type=lfp' });
+    expect(board.json().map((p: { id: string }) => p.id)).toContain(lfp.id);
+  });
+
+  it('poster removes the member -> their LFP post is reopened', async () => {
+    const { post, member, lfp } = await matchedParty();
+    expect((await del(`/api/posts/${post.id}/members/${member.id}`, posterCookie)).statusCode).toBe(200);
+    expect(await prisma.post.findUniqueOrThrow({ where: { id: lfp.id } })).toMatchObject({ status: 'open', closedReason: null });
+    expect(events.events).toContainEqual({ type: 'post.reopened', postId: lfp.id });
+  });
+
+  it('an expired, deleted or manually closed LFP post is not reopened', async () => {
+    for (const over of [
+      { createdAt: new Date(Date.now() - 8 * 86_400_000) },
+      { deletedAt: new Date() },
+      { closedReason: 'manual' },
+    ]) {
+      await resetDb();
+      ({ app, events } = await buildTestApp());
+      posterCookie = await loginAs(app, 'poster-1', 'poster');
+      posterUserId = (await prisma.user.findUniqueOrThrow({ where: { discordId: 'poster-1' } })).id;
+      const { post, member, memberCookie, lfp } = await matchedParty(over);
+      expect((await del(`/api/posts/${post.id}/members/${member.id}`, memberCookie)).statusCode).toBe(200);
+      expect((await prisma.post.findUniqueOrThrow({ where: { id: lfp.id } })).status).toBe('closed');
+      expect(events.events.some((e) => e.type === 'post.reopened')).toBe(false);
+    }
+  });
+});
+
 describe('character deletion keeps party records', () => {
   it('Bob deleted: party keeps snapshot, his LFP closes, his requests vanish, events emitted', async () => {
     const u1 = await loginAs(app, 'u-1', 'one');

@@ -124,6 +124,7 @@ export async function postRoutes(app: FastifyInstance): Promise<void> {
     const r = await removeMember(prisma, viewer, id, memberId, now);
     events.emit({ type: 'member.left', postId: id, memberId, userId: r.member.userId, ign: r.member.ign, removedBy: r.removedBy });
     if (r.reopened) events.emit({ type: 'post.reopened', postId: id });
+    if (r.reopenedLfpPostId) events.emit({ type: 'post.reopened', postId: r.reopenedLfpPostId });
     return toPostDetailDTO(r.post, viewer, storage, now);
   });
 
