@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useMarkRead, useNotifications } from '../api/notifyHooks';
@@ -11,6 +11,7 @@ export function NotificationBell() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [top, setTop] = useState(0);
   const wrapRef = useRef<HTMLDivElement>(null);
   const newestSeen = useRef<string | null | undefined>(undefined);
 
@@ -49,7 +50,11 @@ export function NotificationBell() {
         aria-label={`Notifications, ${unread} unread`}
         aria-expanded={open}
         aria-haspopup="true"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          // Phones pin the panel under the header, which may wrap to several rows.
+          if (!open) setTop(wrapRef.current?.closest('.app-header')?.getBoundingClientRect().bottom ?? 0);
+          setOpen((o) => !o);
+        }}
       >
         <svg
           viewBox="0 0 24 24"
@@ -72,7 +77,12 @@ export function NotificationBell() {
         )}
       </button>
       {open && (
-        <div className="bell-panel" role="region" aria-label="Notifications">
+        <div
+          className="bell-panel"
+          role="region"
+          aria-label="Notifications"
+          style={{ '--bell-top': `${top}px` } as CSSProperties}
+        >
           <div className="bell-head">
             <strong>Notifications</strong>
             {unread > 0 && (

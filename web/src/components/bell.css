@@ -87,9 +87,10 @@
     position: fixed;
     left: 0;
     right: 0;
-    top: 3.25rem;
+    /* --bell-top is set inline from the header's rect on open. */
+    top: var(--bell-top);
     width: auto;
-    max-height: calc(100vh - 3.25rem);
+    max-height: calc(100vh - var(--bell-top));
     border-radius: 0;
   }
 }

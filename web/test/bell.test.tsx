@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import type { NotificationDTO } from '@pf/shared';
 import { App } from '../src/App';
@@ -141,5 +142,24 @@ describe('NotificationBell', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Log out' }));
     await screen.findByRole('link', { name: 'Log in with Discord' });
     await waitFor(() => expect(client.getQueryCache().findAll({ queryKey: ['notifications'] })).toHaveLength(0));
+  });
+
+  it('positions the phone panel below the header as it is rendered when opened', async () => {
+    mockApi({ '/api/auth/me': user, [NOTIF]: list([note('n1')]) });
+    renderWithProviders(<App />);
+    const bell = await screen.findByRole('button', { name: /^Notifications/ });
+    const header = bell.closest('.app-header') as HTMLElement;
+    header.getBoundingClientRect = () => ({ bottom: 97 }) as DOMRect;
+    fireEvent.click(bell);
+    const panel = await screen.findByRole('region', { name: 'Notifications' });
+    expect(panel.style.getPropertyValue('--bell-top')).toBe('97px');
+  });
+
+  it('phone panel CSS uses the measured header bottom', () => {
+    const css = readFileSync('src/components/bell.css', 'utf8');
+    const phone = css.slice(css.indexOf('@media (max-width: 640px)'));
+    const panel = /\.bell-panel\s*\{([^}]*)\}/.exec(phone)?.[1] ?? '';
+    expect(panel).toMatch(/top:\s*var\(--bell-top/);
+    expect(panel).not.toMatch(/3\.25rem/);
   });
 });
