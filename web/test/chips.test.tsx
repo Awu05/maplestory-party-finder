@@ -176,6 +176,50 @@ describe('MenuChip', () => {
     expect(onChange).toHaveBeenCalledWith('c');
   });
 
+  it('options shrinking while open clamps the active option; Enter does not throw', () => {
+    const onChange = vi.fn();
+    const el = (options: typeof OPTS) => (
+      <MenuChip label="Boss" valueLabel={null} options={options} value="" onChange={onChange} allLabel="All" />
+    );
+    const { rerender } = render(el(OPTS));
+    fireEvent.click(screen.getByRole('button', { name: /Boss/ }));
+    const list = screen.getByRole('listbox');
+    fireEvent.keyDown(list, { key: 'End' });
+    rerender(el(OPTS.slice(0, 1)));
+    const activeId = screen.getByRole('listbox').getAttribute('aria-activedescendant');
+    expect(document.getElementById(activeId!)).not.toBeNull();
+    expect(() => fireEvent.keyDown(screen.getByRole('listbox'), { key: 'Enter' })).not.toThrow();
+    if (onChange.mock.calls.length > 0) expect(['', 'a']).toContain(onChange.mock.calls[0][0]);
+  });
+
+  it('closes on window scroll and resize', () => {
+    const { button } = setup();
+    fireEvent.click(button);
+    fireEvent.scroll(window);
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    fireEvent.click(button);
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+    fireEvent(window, new Event('resize'));
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+  });
+
+  it('scrolling inside the open list (or focusing it) keeps it open', () => {
+    const { button } = setup();
+    fireEvent.click(button);
+    fireEvent.scroll(screen.getByRole('listbox'));
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+  });
+
+  it('removes its window listeners when closed', () => {
+    const remove = vi.spyOn(window, 'removeEventListener');
+    const { button } = setup();
+    fireEvent.click(button);
+    fireEvent.keyDown(screen.getByRole('listbox'), { key: 'Escape' });
+    const types = remove.mock.calls.map(([t]) => t);
+    expect(types).toEqual(expect.arrayContaining(['scroll', 'resize']));
+    remove.mockRestore();
+  });
+
   it('Tab closes and returns focus to the button', () => {
     const { button } = setup();
     fireEvent.click(button);

@@ -99,6 +99,9 @@ export function MenuChip({
   const listRef = useRef<HTMLUListElement>(null);
   const id = useId();
   const items: Option<string>[] = [{ value: '', label: allLabel }, ...options];
+  // Options can change while the menu is open (e.g. data refetch); keep the active index in range.
+  const current = Math.min(active, items.length - 1);
+  const itemsKey = JSON.stringify(items.map((o) => o.value));
 
   const openMenu = () => {
     if (disabled) return;
@@ -116,7 +119,29 @@ export function MenuChip({
   };
 
   useEffect(() => {
-    if (open) listRef.current?.focus();
+    if (open) listRef.current?.focus({ preventScroll: true }); // a focus scroll would close the menu
+  }, [open]);
+
+  // When the options change, follow the selected value if it is still listed, else clamp.
+  useEffect(() => {
+    const selected = items.findIndex((o) => o.value === value);
+    setActive((a) => (selected >= 0 ? selected : Math.min(a, items.length - 1)));
+  }, [itemsKey]); // only when the option values change, not on every render
+
+  // A fixed-position popup would drift from its button; close on scroll (any scroller) or resize.
+  useEffect(() => {
+    if (!open) return;
+    const onScroll = (e: Event) => {
+      // Scrolling the option list itself is fine; anything else moves the button.
+      if (!(e.target instanceof Node && rootRef.current?.contains(e.target))) setOpen(false);
+    };
+    const onResize = () => setOpen(false);
+    window.addEventListener('scroll', onScroll, { capture: true, passive: true });
+    window.addEventListener('resize', onResize, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', onScroll, { capture: true });
+      window.removeEventListener('resize', onResize);
+    };
   }, [open]);
 
   useEffect(() => {
@@ -158,7 +183,7 @@ export function MenuChip({
       case 'Enter':
       case ' ':
         e.preventDefault();
-        pick(items[active].value);
+        if (items[current]) pick(items[current].value);
         break;
       case 'Escape':
         e.preventDefault();
@@ -196,7 +221,7 @@ export function MenuChip({
           role="listbox"
           aria-label={label}
           tabIndex={-1}
-          aria-activedescendant={`${id}-opt-${active}`}
+          aria-activedescendant={`${id}-opt-${current}`}
           className="menu-chip-list"
           style={{ '--menu-top': `${top}px` } as CSSProperties}
           onKeyDown={onListKey}
@@ -207,7 +232,7 @@ export function MenuChip({
               id={`${id}-opt-${i}`}
               role="option"
               aria-selected={o.value === value}
-              className={i === active ? 'menu-chip-option is-active' : 'menu-chip-option'}
+              className={i === current ? 'menu-chip-option is-active' : 'menu-chip-option'}
               onMouseEnter={() => setActive(i)}
               onClick={() => pick(o.value)}
             >
