@@ -159,7 +159,7 @@ function PostForm({ characters, bosses, post }: FormProps) {
 
   return (
     <form className="char-form" onSubmit={submit}>
-      <div className="full">
+      <div>
         <div role="group" aria-label="Post type" className="actions">
           {(['recruiting', 'lfp'] as const).map((t) => (
             <button key={t} type="button" className="chip" aria-pressed={v.type === t} disabled={locked} onClick={() => set({ type: t })}>
@@ -169,7 +169,7 @@ function PostForm({ characters, bosses, post }: FormProps) {
         </div>
         {locked && <small>Can't change while others are in the party</small>}
       </div>
-      <label className="full">
+      <label>
         Character
         <select value={v.characterId} disabled={locked} onChange={(e) => set({ characterId: e.target.value })}>
           <option value="">Select a character</option>
@@ -178,7 +178,7 @@ function PostForm({ characters, bosses, post }: FormProps) {
           ))}
         </select>
       </label>
-      <div className="full">
+      <div>
         <h3>Bosses</h3>
         <BossMultiPicker value={v.bossIds} onChange={setBosses} bosses={bosses} max={MAX_POST_BOSSES} />
       </div>
@@ -214,7 +214,7 @@ function PostForm({ characters, bosses, post }: FormProps) {
           </label>
         </>
       )}
-      <div className="full">
+      <div>
         <label>
           Note
           <textarea value={v.note} maxLength={NOTE_MAX} rows={3} onChange={(e) => set({ note: e.target.value })} />
@@ -222,11 +222,11 @@ function PostForm({ characters, bosses, post }: FormProps) {
         <small>{`${v.note.length}/${NOTE_MAX}`}</small>
       </div>
       {error && (
-        <p className="full" role="alert">
+        <p role="alert">
           {error}
         </p>
       )}
-      <div className="full">
+      <div>
         <button type="submit" className="btn btn--primary" disabled={saving}>
           Save
         </button>

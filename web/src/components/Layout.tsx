@@ -3,12 +3,14 @@ import { Link, NavLink, Outlet, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useMe } from '../api/hooks';
 import { api } from '../api/client';
+import { useMediaQuery } from '../hooks/useMediaQuery';
 import { NotificationBell } from './NotificationBell';
 
 export function Layout() {
   const { data: me } = useMe();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  const isPhone = useMediaQuery('(max-width: 640px)');
   const close = () => setOpen(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const loginFailed = searchParams.get('login') === 'failed';
@@ -86,7 +88,7 @@ export function Layout() {
             <>
               <span className="user">
                 {me.avatarUrl && <img className="avatar" src={me.avatarUrl} alt="" />}
-                <span className="user-name">{me.discordUsername}</span>
+                <span className={isPhone ? 'user-name visually-hidden' : 'user-name'}>{me.discordUsername}</span>
               </span>
               <button type="button" className="btn btn--secondary logout" onClick={logout}>
                 Log out

@@ -87,6 +87,15 @@ describe('Midnight contrast (WCAG AA 4.5:1)', () => {
     expect(ratio(fg, bg)).toBeGreaterThanOrEqual(4.5);
   });
 
+  it('closed/muted status pill text passes on its 12% tint over --surface', () => {
+    const rule = /\.post-pill\s*\{([^}]*)\}/.exec(postCss)?.[1] ?? '';
+    const pct = /color-mix\(in srgb, var\(--muted\) (\d+)%, transparent\)/.exec(rule)?.[1];
+    if (!pct || !/color:\s*var\(--muted\)/.test(rule)) throw new Error('.post-pill color/tint not found');
+    expect(Number(pct)).toBe(12);
+    const bg = mixSrgb(t['--muted'], Number(pct) / 100, t['--surface']);
+    expect(ratio(t['--muted'], bg)).toBeGreaterThanOrEqual(4.5);
+  });
+
   it('board rows do not override the tag colors', () => {
     const rules = [...postCss.matchAll(/\.post-row\s+\.post-badge[^{]*\{([^}]*)\}/g)].map((m) => m[1]);
     for (const r of rules) expect(r).not.toMatch(/color|background/);

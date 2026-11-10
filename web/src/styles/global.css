@@ -111,10 +111,16 @@ p[role='alert'] {
   align-items: center;
   gap: var(--space-3);
 }
-.page {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 0 var(--space-4);
+.actions + .actions {
+  margin-top: var(--space-3);
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 .page__head {
   display: flex;
@@ -270,14 +276,6 @@ input[type='radio'] {
     min-width: 0;
     order: 1;
     gap: var(--space-2);
-  }
-  .user-name {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
   }
   .logout {
     padding: var(--space-1) var(--space-2);

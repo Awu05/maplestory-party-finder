@@ -63,7 +63,7 @@ export function ViewerActions({ post }: { post: PostDetailDTO }) {
     decline.isPending;
 
   return (
-    <section aria-label="Your actions">
+    <section className="viewer-actions" aria-label="Your actions">
       {error && <p role="alert">{friendlyError(error)}</p>}
 
       {post.myPending.length > 0 && (

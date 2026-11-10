@@ -1,13 +1,3 @@
-.post-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: var(--space-4);
-}
-@media (max-width: 600px) {
-  .post-grid {
-    grid-template-columns: 1fr;
-  }
-}
 .post-card {
   display: flex;
   flex-direction: column;
@@ -27,7 +17,8 @@ a.post-card:hover {
   align-self: flex-start;
 }
 .post-card__when,
-.post-card__meta {
+.post-card__meta,
+.post-card__slots {
   color: var(--muted);
   font-size: 0.85rem;
 }
@@ -149,7 +140,7 @@ a.post-card:hover {
 .post-pill {
   padding: var(--space-1) var(--space-2);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--muted) 18%, transparent);
+  background: color-mix(in srgb, var(--muted) 12%, transparent);
   color: var(--muted);
   font-size: 0.8rem;
 }
@@ -171,6 +162,9 @@ a.post-card:hover {
   background: var(--surface-2);
   border: 1px solid var(--border);
   color: var(--muted);
+}
+.actions + .viewer-actions {
+  margin-top: var(--space-3);
 }
 .post-detail__actions {
   margin: var(--space-4) 0;
@@ -319,14 +313,6 @@ a.post-card:hover {
 .board__placeholder {
   margin: 0;
   color: var(--muted);
-}
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
 }
 
 /* Board list refetch indicator. */

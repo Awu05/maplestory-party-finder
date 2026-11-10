@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { App } from '../src/App';
-import { mockApi, renderWithProviders, testQueryClient } from './setup';
+import { mockApi, renderWithProviders, setViewport, testQueryClient } from './setup';
 
 function findOrderViolations(css: string): string[] {
   const out: string[] = [];
@@ -130,6 +130,17 @@ describe('Layout', () => {
     };
     expect(orderOf('.header-right')).toBeLessThan(orderOf('.menu-button'));
     expect(orderOf('.menu-button')).toBeLessThan(orderOf('.nav'));
+  });
+
+  it('the username is visually hidden on phones only, via .visually-hidden', async () => {
+    mockApi({ '/api/auth/me': user, '/api/notifications?limit=30': { items: [], unreadCount: 0 } });
+    setViewport(375);
+    const phone = renderWithProviders(<App />);
+    expect(await screen.findByText('maple_fan')).toHaveClass('user-name', 'visually-hidden');
+    phone.unmount();
+    setViewport(1280);
+    renderWithProviders(<App />);
+    expect(await screen.findByText('maple_fan')).not.toHaveClass('visually-hidden');
   });
 
   it('findOrderViolations flags visual reordering only', () => {

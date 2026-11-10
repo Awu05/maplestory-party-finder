@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 const read = (p: string) => readFileSync(resolve(__dirname, '../src', p), 'utf8');
 const globalCss = read('styles/global.css');
 const chipsCss = read('components/ui/chips.css');
+const postCss = read('components/post/post.css');
 
 function walk(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
@@ -85,5 +86,39 @@ describe('button API', () => {
           .map((m) => `${f}: ${m[0].replace(/\s+/g, ' ').slice(0, 80)}`),
       );
     expect(offenders).toEqual([]);
+  });
+});
+
+describe('dead CSS and stray values', () => {
+  it.each(['.page', '.post-grid'])('%s is not defined', (cls) => {
+    const all = [globalCss, postCss].flatMap((c) => selectors(c)).flatMap((l) => l.split(',')).map((x) => x.trim());
+    expect(all).not.toContain(cls);
+  });
+
+  it('no className="full" leftovers', () => {
+    expect(tsx.filter((f) => /className="full"/.test(readFileSync(f, 'utf8')))).toEqual([]);
+  });
+
+  it('.post-card__slots is styled', () => {
+    expect(selectors(postCss).some((s) => s.includes('.post-card__slots'))).toBe(true);
+  });
+
+  it('post.css uses only the 640px breakpoint', () => {
+    const widths = [...postCss.matchAll(/max-width:\s*(\d+)px\)/g)].map((m) => m[1]);
+    expect(widths.filter((w) => w !== '640')).toEqual([]);
+  });
+
+  it('.visually-hidden lives in global.css and is not re-implemented', () => {
+    expect(ruleBody(globalCss, '.visually-hidden')).toMatch(/clip-path:\s*inset\(50%\)/);
+    expect(selectors(postCss)).not.toContain('.visually-hidden');
+    const phone = globalCss.slice(globalCss.indexOf('@media (max-width: 640px)'));
+    expect(ruleBody(phone, '.user-name')).not.toMatch(/clip-path/);
+  });
+});
+
+describe('action group spacing', () => {
+  it('stacked .actions rows and the viewer actions below them get --space-3', () => {
+    expect(ruleBody(globalCss, '.actions + .actions')).toMatch(/margin-top:\s*var\(--space-3\)/);
+    expect(ruleBody(postCss, '.actions + .viewer-actions')).toMatch(/margin-top:\s*var\(--space-3\)/);
   });
 });
