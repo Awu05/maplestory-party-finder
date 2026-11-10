@@ -136,6 +136,8 @@ a.button:hover,
 }
 .chip:hover:not(:disabled) {
   border-color: var(--accent);
+}
+.chip:hover:not(:disabled):not([aria-pressed='true']):not([aria-checked='true']) {
   background: var(--surface-2);
 }
 .chip[aria-pressed='true'],
