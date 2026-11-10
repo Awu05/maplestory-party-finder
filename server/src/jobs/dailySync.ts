@@ -1,14 +1,12 @@
 import type { PrismaClient } from '@prisma/client';
 import { syncCharacterFromNexon } from '../characters/service.js';
 import type { NexonClient } from '../nexon/client.js';
+import { DAY_MS } from '@pf/shared';
+import { errName, type Logger } from '../log.js';
 
 const JOB_NAME = 'daily-sync';
-const DAY_MS = 86_400_000;
 const NOTIFICATION_RETENTION_MS = 60 * DAY_MS;
 const DELIVERY_RETENTION_MS = 30 * DAY_MS;
-
-type Logger = { error(obj: object, msg: string): void };
-const errName = (err: unknown): string => (err instanceof Error ? err.constructor.name : 'Error');
 
 export class DailySyncJob {
   private readonly prisma: PrismaClient;

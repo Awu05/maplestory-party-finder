@@ -5,8 +5,7 @@ import { bossLabel, buildAcceptPing, buildNewPostMessage, buildRequestPing, type
 import { enqueueDelivery } from '../discord/outbox.js';
 import { postSummaryInclude, toPostSummaryDTO } from '../posts/serialize.js';
 import type { Storage } from '../storage/storage.js';
-
-type Logger = { error(obj: object, msg: string): void };
+import { errName, type Logger } from '../log.js';
 
 type NotificationKind = 'join_request' | 'invite' | 'accepted' | 'declined' | 'auto_declined' | 'removed' | 'member_left';
 
@@ -17,7 +16,6 @@ const requestDispatchInclude = {
 
 type RequestDispatchRow = Prisma.RequestGetPayload<{ include: typeof requestDispatchInclude }>;
 
-const errName = (err: unknown): string => (err instanceof Error ? err.constructor.name : 'Error');
 /** Safe diagnostics only: the error class, a string code (e.g. Prisma's P2003), and the event's ids. */
 const errCode = (err: unknown): { code?: string } => {
   const code = (err as { code?: unknown } | null)?.code;

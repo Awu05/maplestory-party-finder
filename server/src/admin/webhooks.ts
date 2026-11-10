@@ -1,10 +1,9 @@
 import type { FastifyInstance } from 'fastify';
-import type { WebhookHealthDTO } from '@pf/shared';
+import { DAY_MS, type WebhookHealthDTO } from '@pf/shared';
 import { requireAdmin } from '../auth/guards.js';
 import { AppError } from '../http/errors.js';
 import { buildTestMessage } from '../discord/messages.js';
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 const RECENT_FAILURES = 10;
 
 export async function adminWebhookRoutes(app: FastifyInstance): Promise<void> {

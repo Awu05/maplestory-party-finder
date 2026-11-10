@@ -2,6 +2,7 @@ import { Prisma, type PrismaClient } from '@prisma/client';
 import { effectivePostStatus } from '@pf/shared';
 import type { WebhookPayload } from './messages.js';
 import { SEND_TIMEOUT_MS, type SendResult, type WebhookSender } from './sender.js';
+import { errName, type Logger } from '../log.js';
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -13,15 +14,11 @@ const DEADLINE_MARGIN_MS = 10_000;
 const MIN_RETRY_AFTER_MS = 1_000;
 const MAX_RETRY_AFTER_MS = 3_600_000;
 
-type Logger = { error(obj: object, msg: string): void };
-
 export async function enqueueDelivery(db: Db, guildId: string, eventType: string, payload: WebhookPayload, postId?: string): Promise<void> {
   await db.webhookDelivery.create({
     data: { guildId, eventType, payload: payload as unknown as Prisma.InputJsonValue, ...(postId ? { postId } : {}) },
   });
 }
-
-const errName = (err: unknown): string => (err instanceof Error ? err.constructor.name : 'Error');
 
 type Claimed = { id: string; payload: WebhookPayload; attempts: number; eventType: string; postId: string | null; webhookUrl: string | null; active: boolean };
 

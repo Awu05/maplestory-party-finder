@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { SCHEDULED_GRACE_MS, type MyRequestsDTO, type PostDetailDTO, type PostSummaryDTO, type PostType, type RequestDTO } from '@pf/shared';
+import { DAY_MS, SCHEDULED_GRACE_MS, type MyRequestsDTO, type PostDetailDTO, type PostSummaryDTO, type PostType, type RequestDTO } from '@pf/shared';
 import { api } from './client';
 import { useMe } from './hooks';
 
@@ -11,8 +11,6 @@ export interface PostFilters {
   worldIds?: number[];
   when?: 'any' | '24h' | '7d' | 'flexible';
 }
-
-const DAY_MS = 86_400_000;
 
 export function boardQueryString(f: PostFilters, now: Date = new Date()): string {
   const p = new URLSearchParams();

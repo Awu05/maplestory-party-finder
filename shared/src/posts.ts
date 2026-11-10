@@ -1,10 +1,11 @@
 import type { PostStatus } from './types';
 
+export const DAY_MS = 86_400_000;
 export const SCHEDULED_GRACE_MS = 3 * 3600_000;
-export const FLEXIBLE_TTL_MS = 7 * 86_400_000;
+export const FLEXIBLE_TTL_MS = 7 * DAY_MS;
 export const MAX_PARTY_SIZE = 6;
 export const MIN_PARTY_SIZE = 2;
-export const MAX_SCHEDULE_AHEAD_MS = 30 * 86_400_000;
+export const MAX_SCHEDULE_AHEAD_MS = 30 * DAY_MS;
 export const SCHEDULE_PAST_TOLERANCE_MS = 5 * 60_000;
 export const OVERLAP_WINDOW_MS = 3 * 3600_000;
 export const MAX_POST_BOSSES = 10;
