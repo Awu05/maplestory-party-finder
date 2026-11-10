@@ -45,6 +45,14 @@ Guilds can post new parties and pings to a Discord channel through a webhook.
 - A daily sync refreshes every character from Nexon (skipping banned users' characters), oldest first, throttled. It checks hourly and runs when the last run was 24 hours ago or more, so the time of day drifts with the last run. It also prunes notifications older than 60 days and sent or failed deliveries older than 30 days.
 - Set `JOBS_ENABLED=false` to disable both jobs in a given instance.
 
+## Posts & free times
+
+- **Making a post.** Pick the hours you're free on the weekly "When you're free" grid. Leave it empty if you're flexible.
+- **Time zones.** Each viewer sees the free hours in their own time zone. The poster's time zone is stored with the post, so daylight-saving changes don't shift the hours; the server's own time zone (e.g. a home server in EST) doesn't matter. Viewers in half-hour time zones see whole-hour cells (rounded down).
+- **Finalize time.** The poster of a Recruiting post sets the actual time with **Finalize time** (**Change time** once set) on the post page. Party members get an in-app notification and a Discord ping showing the time in their own zone. A post with no final time expires 7 days after it's posted or renewed; once finalized it expires based on the final time.
+- **Board filters.** When: Any / Next 24h / This week / Not set (Next 24h and This week match finalized times). Free at picks a day and hour to find posts whose poster is free then.
+- **Discord new-post messages** show the final time, or "Not set yet — see free times on the post", or "Flexible".
+
 ## Characters
 
 - **Display name.** Click your avatar or name in the header to open the Profile popup, where you choose a display name (up to 50 characters) or log out. Leave it blank to use your Discord username. Cards, party lineups and new Discord post messages use this name; character details still show your real Discord username for copying, and mentions still reach your Discord account.
