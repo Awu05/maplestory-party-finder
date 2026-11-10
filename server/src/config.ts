@@ -12,6 +12,17 @@ export interface Config {
   webDist?: string;
   /** Run the webhook worker and daily sync job in this process (disable on a second instance). */
   jobsEnabled: boolean;
+  /** Fastify request logging (on in the real server, off in tests). */
+  logger: boolean;
+}
+
+/** PORT: unset or blank means 3000; otherwise a plain integer from 1 to 65535. */
+function parsePort(raw: string | undefined): number {
+  const v = (raw ?? '').trim();
+  if (v === '') return 3000;
+  const n = /^\d+$/.test(v) ? Number(v) : NaN;
+  if (!Number.isInteger(n) || n < 1 || n > 65535) throw new Error(`PORT must be an integer from 1 to 65535 (got ${JSON.stringify(raw)})`);
+  return n;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv): Config {
@@ -23,7 +34,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
   const sessionSecret = required('SESSION_SECRET');
   if (sessionSecret.length < 32) throw new Error('SESSION_SECRET must be at least 32 characters');
   return {
-    port: Number(env.PORT ?? 3000),
+    port: parsePort(env.PORT),
     databaseUrl: required('DATABASE_URL'),
     sessionSecret,
     discordClientId: env.DISCORD_CLIENT_ID ?? '',
@@ -37,5 +48,6 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     uploadDir: env.UPLOAD_DIR ?? './uploads',
     webDist: env.WEB_DIST || undefined,
     jobsEnabled: !['false', '0'].includes((env.JOBS_ENABLED ?? '').trim().toLowerCase()),
+    logger: true,
   };
 }
