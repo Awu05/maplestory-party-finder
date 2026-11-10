@@ -6,9 +6,10 @@ import { App } from '../src/App';
 import { boardQueryString } from '../src/api/postHooks';
 import { mockApi, renderWithProviders } from './setup';
 
+const tz = vi.hoisted(() => ({ zone: 'America/New_York' }));
 vi.mock('../src/components/post/time', async (orig) => ({
   ...(await orig<typeof import('../src/components/post/time')>()),
-  browserTimeZone: () => 'America/New_York',
+  browserTimeZone: () => tz.zone,
 }));
 
 const user = { id: 'u1', discordUsername: 'maple_fan', avatarUrl: null, isAdmin: false };
@@ -117,7 +118,10 @@ describe('BoardPage', () => {
     expect(postsCalls(fetchMock)).toContain('/api/posts?type=recruiting');
   });
 
-  afterEach(() => vi.useRealTimers());
+  afterEach(() => {
+    vi.useRealTimers();
+    tz.zone = 'America/New_York';
+  });
 
   it('When chips read Any, Next 24h, This week, Not set', async () => {
     mockApi({ ...base, '/api/auth/me': null, '/api/posts': [] });
@@ -127,7 +131,8 @@ describe('BoardPage', () => {
     expect(within(group).getAllByRole('radio').map((r) => r.textContent)).toEqual(['Any', 'Next 24h', 'This week', 'Not set']);
   });
 
-  const FREE_AT = '/api/posts?freeAt=2026-11-11T01%3A00%3A00.000Z';
+  // The last minute of the viewer's Tue 8p hour (Tue 8:59pm EST).
+  const FREE_AT = '/api/posts?freeAt=2026-11-11T01%3A59%3A00.000Z';
   const pickTue8p = async () => {
     fireEvent.click(screen.getByRole('button', { name: /^Free at/ }));
     fireEvent.click(await screen.findByRole('option', { name: 'Tue' }));
@@ -144,6 +149,14 @@ describe('BoardPage', () => {
     expect(screen.getByRole('button', { name: /^Hour/ })).toBeDisabled();
     await pickTue8p();
     await waitFor(() => expect(postsCalls(fetchMock)).toContain(FREE_AT));
+  });
+
+  it('a Kolkata viewer sends the last minute of their chosen hour, the instant a NY post free at that cell matches', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-10T15:00:00Z'));
+    tz.zone = 'Asia/Kolkata';
+    // Wed 6a IST is hour-of-week 78; its last minute, 6:59 IST, is 01:29Z (Tue 8:29pm in New York).
+    expect(boardQueryString({ freeAt: 78 })).toBe('freeAt=2026-11-11T01%3A29%3A00.000Z');
   });
 
   it('Any time clears freeAt', async () => {

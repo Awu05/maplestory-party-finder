@@ -115,6 +115,14 @@ describe('GET /api/posts', () => {
       expect(await ids('?freeAt=2026-11-11T01:59:59Z')).toEqual([nyPost.id]);
     });
 
+    it('a NY post free at 68 is found by the instant a Kolkata viewer sends for cell 78 (the last minute of that hour)', async () => {
+      const p = await ny();
+      // Kolkata cell 78 is Wed 6a IST; the web sends its last minute, 6:59 IST = 01:29Z = Tue 8:29pm EST.
+      expect(await ids('?freeAt=2026-11-11T01:29:00.000Z')).toEqual([p.id]);
+      // The start of that cell (6:00 IST = Tue 7:30pm EST) would land in poster hour 67 instead.
+      expect(await ids('?freeAt=2026-11-11T00:30:00.000Z')).toEqual([]);
+    });
+
     it('uses the post zone across a DST change (wall-clock hours, not fixed UTC hours)', async () => {
       const p = await ny();
       // Tue 2026-10-27 20:00 EDT (UTC-4) = 2026-10-28T00:00Z.

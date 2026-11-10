@@ -79,7 +79,7 @@ So a post now lists the hours the poster is free, picked on the old weekly days 
 - **Board query:**
   - `when=next24h` and `when=week` keep filtering on `scheduledAt`, which now means finalized posts only.
   - `when=flexible` is relabeled "Not set" in the UI and means `scheduledAt` is null.
-  - **A new `freeAt=<ISO instant>`** filter: the web sends the next occurrence of the viewer's chosen day and hour as an instant. The server keeps posts where `freeTimes` contains that instant's hour-of-week in **the post's own** `freeTimesZone`, computed in SQL as `EXTRACT(DOW FROM ts AT TIME ZONE zone) * 24 + EXTRACT(HOUR FROM ts AT TIME ZONE zone)`, for example as an id prefilter. It combines with the other filters.
+  - **A new `freeAt=<ISO instant>`** filter: the web sends the last minute of the next occurrence of the viewer's chosen day and hour as an instant (`freeSlotsForViewer` rounds a poster hour down into the viewer cell holding its start, so in half-hour zones only the cell's end falls in the poster hour shown there). The server keeps posts where `freeTimes` contains that instant's hour-of-week in **the post's own** `freeTimesZone`, computed in SQL as `EXTRACT(DOW FROM ts AT TIME ZONE zone) * 24 + EXTRACT(HOUR FROM ts AT TIME ZONE zone)`, for example as an id prefilter. It combines with the other filters.
 
 ## 5. Web (*my calls* unless marked)
 
@@ -100,7 +100,7 @@ So a post now lists the hours the poster is free, picked on the old weekly days 
 
 ### 5.3 Board filters
 - **When chips:** Any / Next 24h / This week / Not set.
-- **Free at** (a MenuChip-style control): pick a day (Sun–Sat) and an hour in the viewer's time zone. The web sends the next occurrence of that day and hour as `freeAt`. A clear option returns to "Any time".
+- **Free at** (a MenuChip-style control): pick a day (Sun–Sat) and an hour in the viewer's time zone. The web sends the last minute of the next occurrence of that viewer hour as `freeAt`, so it matches the poster hour the grid shows in that cell, even across half-hour zones. A clear option returns to "Any time".
 
 ### 5.4 Discord new-post message
 - **"When" field:** a finalized post keeps today's Discord timestamp. Otherwise:

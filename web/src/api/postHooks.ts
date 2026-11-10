@@ -11,7 +11,7 @@ export interface PostFilters {
   guildId?: string;
   worldIds?: number[];
   when?: 'any' | '24h' | '7d' | 'flexible';
-  /** Viewer-local hour-of-week (day * 24 + hour, 0 = Sunday): posts whose free times include it. */
+  /** Viewer-local hour-of-week (day * 24 + hour, 0 = Sunday): posts whose free times are shown in that cell. */
   freeAt?: number;
 }
 
@@ -29,7 +29,12 @@ export function boardQueryString(f: PostFilters, now: Date = new Date()): string
   } else if (f.when === 'flexible') {
     p.set('flexible', '1');
   }
-  if (f.freeAt !== undefined) p.set('freeAt', nextOccurrence(f.freeAt, browserTimeZone(), now).toISOString());
+  if (f.freeAt !== undefined) {
+    // The last minute of the viewer's hour: the grid rounds a poster hour down into the viewer cell holding
+    // its start, so in half-hour zones the cell's end, not its start, falls in the poster hour shown there.
+    const start = nextOccurrence(f.freeAt, browserTimeZone(), now);
+    p.set('freeAt', new Date(start.getTime() + 59 * 60_000).toISOString());
+  }
   return p.toString();
 }
 
