@@ -7,7 +7,7 @@ import { toCharacterDTO } from '../characters/serialize.js';
 import { deleteCharacter, getCharacter, listCharacters } from '../characters/service.js';
 import { AppError } from '../http/errors.js';
 import { postSummaryInclude, toPostSummaryDTO } from '../posts/serialize.js';
-import { autoDeclinePending } from '../requests/autoDecline.js';
+import { closeLivePosts } from '../posts/lifecycle.js';
 
 const idParam = z.object({ id: z.string().min(1) });
 const usersQuery = z.object({ q: z.string().trim().optional() });
@@ -22,16 +22,8 @@ const postsQuery = z.object({
 async function banUser(prisma: PrismaClient, userId: string): Promise<{ closedPostIds: string[]; declinedRequestIds: string[] }> {
   return prisma.$transaction(async (tx) => {
     await tx.user.update({ where: { id: userId }, data: { banned: true } });
-    // Same lock order as deleteCharacter: recruiting posts before LFP posts.
-    const locked = await tx.$queryRaw<{ id: string }[]>`
-      SELECT id FROM "Post"
-      WHERE "posterUserId" = ${userId} AND "deletedAt" IS NULL AND status IN ('open', 'full')
-      ORDER BY (type = 'lfp'), id
-      FOR UPDATE`;
-    const closedPostIds = locked.map((p) => p.id);
-    await tx.post.updateMany({ where: { id: { in: closedPostIds } }, data: { status: 'closed', closedReason: 'banned' } });
-    const declinedRequestIds = await autoDeclinePending(tx, {
-      OR: [{ postId: { in: closedPostIds } }, { lfpPostId: { in: closedPostIds } }, { character: { ownerId: userId } }],
+    const { closedPostIds, declinedIds: declinedRequestIds } = await closeLivePosts(tx, { posterUserId: userId }, 'banned', {
+      character: { ownerId: userId },
     });
     return { closedPostIds, declinedRequestIds };
   });

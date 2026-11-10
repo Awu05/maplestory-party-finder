@@ -2,7 +2,7 @@ import { Prisma, type PrismaClient } from '@prisma/client';
 import type { NexonCharacterPreview } from '@pf/shared';
 import { AppError } from '../http/errors.js';
 import { NexonUnavailableError, type NexonClient, type NexonCharacter } from '../nexon/client.js';
-import { autoDeclinePending } from '../requests/autoDecline.js';
+import { closeLivePosts } from '../posts/lifecycle.js';
 import { classToArchetype, type Archetype } from '@pf/shared';
 import { characterInclude, type CharacterRow } from './serialize.js';
 
@@ -208,16 +208,7 @@ export async function deleteCharacter(
   id: string,
 ): Promise<{ closedPostIds: string[]; declinedRequestIds: string[] }> {
   return prisma.$transaction(async (tx) => {
-    // Lock the live posts (recruiting before LFP, the global lock order) so a concurrent close can't
-    // make us report a post this call didn't close.
-    const locked = await tx.$queryRaw<{ id: string }[]>`
-      SELECT id FROM "Post"
-      WHERE "posterCharacterId" = ${id} AND "deletedAt" IS NULL AND status IN ('open', 'full')
-      ORDER BY (type = 'lfp'), id
-      FOR UPDATE`;
-    const closedPostIds = locked.map((p) => p.id);
-    await tx.post.updateMany({ where: { id: { in: closedPostIds } }, data: { status: 'closed', closedReason: 'character_deleted' } });
-    const declined = await autoDeclinePending(tx, { OR: [{ postId: { in: closedPostIds } }, { lfpPostId: { in: closedPostIds } }] });
+    const { closedPostIds, declinedIds: declined } = await closeLivePosts(tx, { posterCharacterId: id }, 'character_deleted');
     await tx.character.delete({ where: { id } });
     // The character's own requests cascade away with it; only the survivors still need an event.
     const survivors = await tx.request.findMany({ where: { id: { in: declined } }, select: { id: true } });
