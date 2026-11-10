@@ -1,0 +1,162 @@
+import type { FastifyInstance } from 'fastify';
+import type { Prisma, PrismaClient, User } from '@prisma/client';
+import { z } from 'zod';
+import type { AdminPostDTO, AdminUserDTO } from '@pf/shared';
+import { requireAdmin } from '../auth/guards.js';
+import { toCharacterDTO } from '../characters/serialize.js';
+import { deleteCharacter, getCharacter, listCharacters } from '../characters/service.js';
+import { AppError } from '../http/errors.js';
+import { postSummaryInclude, toPostSummaryDTO } from '../posts/serialize.js';
+import { autoDeclinePending } from '../requests/autoDecline.js';
+
+const idParam = z.object({ id: z.string().min(1) });
+const usersQuery = z.object({ q: z.string().trim().optional() });
+const banBody = z.object({ banned: z.boolean() });
+const reassignBody = z.object({ userId: z.string().min(1) });
+const postsQuery = z.object({
+  status: z.enum(['open', 'full', 'closed', 'deleted', 'all']).default('all'),
+  q: z.string().trim().optional(),
+});
+
+/** Bans the user, closes their live posts and auto-declines everything pending on them plus their own requests. */
+async function banUser(prisma: PrismaClient, userId: string): Promise<{ closedPostIds: string[]; declinedRequestIds: string[] }> {
+  return prisma.$transaction(async (tx) => {
+    await tx.user.update({ where: { id: userId }, data: { banned: true } });
+    // Same lock order as deleteCharacter: recruiting posts before LFP posts.
+    const locked = await tx.$queryRaw<{ id: string }[]>`
+      SELECT id FROM "Post"
+      WHERE "posterUserId" = ${userId} AND "deletedAt" IS NULL AND status IN ('open', 'full')
+      ORDER BY (type = 'lfp'), id
+      FOR UPDATE`;
+    const closedPostIds = locked.map((p) => p.id);
+    await tx.post.updateMany({ where: { id: { in: closedPostIds } }, data: { status: 'closed', closedReason: 'banned' } });
+    const declinedRequestIds = await autoDeclinePending(tx, {
+      OR: [{ postId: { in: closedPostIds } }, { lfpPostId: { in: closedPostIds } }, { character: { ownerId: userId } }],
+    });
+    return { closedPostIds, declinedRequestIds };
+  });
+}
+
+/** Moves a character (and what hangs off it) to another user; returns the ids of requests it cancelled. */
+async function reassignCharacter(prisma: PrismaClient, characterId: string, userId: string): Promise<string[]> {
+  return prisma.$transaction(async (tx) => {
+    const character = await tx.character.findUnique({ where: { id: characterId } });
+    if (!character) throw new AppError(404, 'NOT_FOUND', 'Character not found');
+    const target = await tx.user.findUnique({ where: { id: userId } });
+    if (!target || target.banned) throw new AppError(400, 'VALIDATION', 'Target user must exist and not be banned');
+
+    const pending = await tx.request.findMany({ where: { characterId, status: 'pending' }, select: { id: true } });
+    await tx.request.updateMany({
+      where: { id: { in: pending.map((r) => r.id) }, status: 'pending' },
+      data: { status: 'cancelled', decidedAt: new Date() },
+    });
+    await tx.character.update({ where: { id: characterId }, data: { ownerId: userId } });
+    await tx.postMember.updateMany({ where: { characterId }, data: { userId } });
+    // The new owner must be able to manage the posts this character posted.
+    await tx.post.updateMany({ where: { posterCharacterId: characterId }, data: { posterUserId: userId } });
+    return pending.map((r) => r.id);
+  });
+}
+
+export async function adminModerationRoutes(app: FastifyInstance): Promise<void> {
+  const { prisma, config, events, storage } = app.deps;
+
+  const userInclude = { _count: { select: { characters: true } } } as const;
+  const toUserDTO = (u: User & { _count: { characters: number } }): AdminUserDTO => ({
+    id: u.id,
+    discordUsername: u.username,
+    avatarUrl: u.avatar,
+    banned: u.banned,
+    isAdmin: config.adminDiscordIds.includes(u.discordId),
+    createdAt: u.createdAt.toISOString(),
+    characterCount: u._count.characters,
+  });
+
+  app.get('/admin/users', async (req) => {
+    await requireAdmin(req);
+    const { q } = usersQuery.parse(req.query);
+    const users = await prisma.user.findMany({
+      where: q ? { username: { startsWith: q, mode: 'insensitive' } } : {},
+      include: userInclude,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: 50,
+    });
+    return users.map(toUserDTO);
+  });
+
+  app.patch('/admin/users/:id', async (req) => {
+    const admin = await requireAdmin(req);
+    const { id } = idParam.parse(req.params);
+    const { banned } = banBody.parse(req.body);
+    const user = await prisma.user.findUnique({ where: { id } });
+    if (!user) throw new AppError(404, 'NOT_FOUND');
+    if (banned && (user.id === admin.user.id || config.adminDiscordIds.includes(user.discordId))) {
+      throw new AppError(400, 'CANNOT_BAN_ADMIN', 'Admins cannot be banned');
+    }
+    if (banned && !user.banned) {
+      const { closedPostIds, declinedRequestIds } = await banUser(prisma, id);
+      closedPostIds.forEach((postId) => events.emit({ type: 'post.closed', postId, reason: 'banned' }));
+      declinedRequestIds.forEach((requestId) =>
+        events.emit({ type: 'request.declined', requestId, auto: true, actorUserId: admin.user.id }),
+      );
+    } else if (!banned) {
+      await prisma.user.update({ where: { id }, data: { banned: false } });
+    }
+    return toUserDTO(await prisma.user.findUniqueOrThrow({ where: { id }, include: userInclude }));
+  });
+
+  app.get('/admin/users/:id/characters', async (req) => {
+    const admin = await requireAdmin(req);
+    const { id } = idParam.parse(req.params);
+    const rows = await listCharacters(prisma, { ownerId: id });
+    return rows.map((r) => toCharacterDTO(r, admin.user.id, storage));
+  });
+
+  app.post('/admin/characters/:id/reassign', async (req) => {
+    const admin = await requireAdmin(req);
+    const { id } = idParam.parse(req.params);
+    const { userId } = reassignBody.parse(req.body);
+    const cancelled = await reassignCharacter(prisma, id, userId);
+    cancelled.forEach((requestId) => events.emit({ type: 'request.cancelled', requestId }));
+    return toCharacterDTO(await getCharacter(prisma, id), admin.user.id, storage);
+  });
+
+  app.delete('/admin/characters/:id', async (req, reply) => {
+    const admin = await requireAdmin(req);
+    const { id } = idParam.parse(req.params);
+    const row = await prisma.character.findUnique({ where: { id }, select: { screenshotKey: true } });
+    if (!row) throw new AppError(404, 'NOT_FOUND', 'Character not found');
+    const { closedPostIds, declinedRequestIds } = await deleteCharacter(prisma, id);
+    closedPostIds.forEach((postId) => events.emit({ type: 'post.closed', postId, reason: 'character_deleted' }));
+    declinedRequestIds.forEach((requestId) =>
+      events.emit({ type: 'request.declined', requestId, auto: true, actorUserId: admin.user.id }),
+    );
+    if (row.screenshotKey) await storage.remove(row.screenshotKey).catch(() => undefined);
+    return reply.status(204).send();
+  });
+
+  app.get('/admin/posts', async (req) => {
+    const admin = await requireAdmin(req);
+    const { status, q } = postsQuery.parse(req.query);
+    const now = new Date();
+    const and: Prisma.PostWhereInput[] = [];
+    if (status === 'open' || status === 'full') and.push({ deletedAt: null, status, expiresAt: { gt: now } });
+    else if (status === 'closed') and.push({ deletedAt: null, OR: [{ status: 'closed' }, { expiresAt: { lte: now } }] });
+    else if (status === 'deleted') and.push({ deletedAt: { not: null } });
+    if (q) and.push({ posterCharacter: { ignLower: { startsWith: q.toLowerCase() } } });
+    const rows = await prisma.post.findMany({
+      where: { AND: and },
+      include: { ...postSummaryInclude, posterUser: { select: { username: true } } },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: 100,
+    });
+    return rows.map(
+      (r): AdminPostDTO => ({
+        ...toPostSummaryDTO(r, admin.user.id, storage, now),
+        deletedAt: r.deletedAt?.toISOString() ?? null,
+        closedReason: r.closedReason,
+        posterDiscordUsername: r.posterUser.username,
+      }),
+    );
+  });
+}

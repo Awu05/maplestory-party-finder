@@ -19,6 +19,7 @@ import type { DomainEvents } from './events.js';
 import type { Storage } from './storage/storage.js';
 import type { WebhookSender } from './discord/sender.js';
 import { adminWebhookRoutes } from './admin/webhooks.js';
+import { adminModerationRoutes } from './admin/moderation.js';
 
 export interface AppDeps {
   config: Config;
@@ -77,6 +78,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       await api.register(requestRoutes);
       await api.register(notificationRoutes);
       await api.register(adminWebhookRoutes);
+      await api.register(adminModerationRoutes);
     },
     { prefix: '/api' },
   );

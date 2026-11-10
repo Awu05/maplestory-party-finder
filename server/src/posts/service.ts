@@ -123,6 +123,7 @@ export async function listBoard(prisma: PrismaClient, f: BoardFilter, now: Date)
       deletedAt: null,
       status: 'open',
       expiresAt: { gt: now },
+      posterUser: { banned: false },
       ...(f.type ? { type: f.type } : {}),
       ...(f.guildId ? { guildId: f.guildId } : {}),
       ...(f.worldIds ? { worldId: { in: f.worldIds } } : {}),

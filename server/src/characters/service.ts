@@ -111,7 +111,7 @@ export interface ListCharactersFilter {
 export async function listCharacters(prisma: PrismaClient, filter: ListCharactersFilter): Promise<CharacterRow[]> {
   const rows = await prisma.character.findMany({
     where: {
-      ...(filter.ownerId ? { ownerId: filter.ownerId } : { guild: { active: true } }),
+      ...(filter.ownerId ? { ownerId: filter.ownerId } : { guild: { active: true }, owner: { banned: false } }),
       ...(filter.guildId ? { guildId: filter.guildId } : {}),
       ...(filter.worldId !== undefined ? { worldId: filter.worldId } : {}),
       ...(filter.q ? { ignLower: { startsWith: filter.q.toLowerCase() } } : {}),

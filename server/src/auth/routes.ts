@@ -38,6 +38,7 @@ export async function authRoutes(api: FastifyInstance): Promise<void> {
       create: { discordId: profile.discordId, username: profile.username, avatar: profile.avatarUrl },
       update: { username: profile.username, avatar: profile.avatarUrl },
     });
+    if (user.banned) return reply.redirect(`${config.webOrigin}/?login=banned`);
     req.session.set('userId', user.id);
     return reply.redirect(config.webOrigin);
   });
