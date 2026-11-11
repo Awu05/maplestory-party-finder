@@ -2,8 +2,9 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { isValidTimeZone, MAX_POST_BOSSES } from '@pf/shared';
 import { getViewer, requireAdmin, requireUser } from '../auth/guards.js';
-import { adminDeletePost, closePost, createPost, deletePost, editPost, finalizePostTime, getVisiblePost, listBoard, listMyParties, listMyPosts, removeMember, renewPost } from './service.js';
+import { adminDeletePost, announcePost, closePost, createPost, deletePost, editPost, finalizePostTime, getVisiblePost, listBoard, listMyParties, listMyPosts, removeMember, renewPost, reopenPost, setMemberFreeTimes } from './service.js';
 import { toPostDetailDTO, toPostSummaryDTO } from './serialize.js';
+import { AppError } from '../http/errors.js';
 
 // Field schemas are exported so the edit route can reuse them.
 export const postTypeSchema = z.enum(['lfp', 'recruiting']);
@@ -16,8 +17,8 @@ export const scheduledAtSchema = z.string().datetime().transform((s) => new Date
 export const noteSchema = z.string().max(300);
 export const partySizeSchema = z.number().int();
 export const minCpSchema = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
-/** Local hour-of-week slots (day * 24 + hour, 0 = Sunday, 0-167) in the poster's zone; the service dedupes and sorts. */
-export const freeTimesSchema = z.array(z.number().int().min(0).max(167)).max(168);
+/** Local half-hour slots (day * 48 + slot, 0-335); the service dedupes and sorts. */
+export const freeTimesSchema = z.array(z.number().int().min(0).max(335)).max(336);
 export const freeTimesZoneSchema = z.string().nullable();
 
 /**
@@ -69,6 +70,7 @@ const boardQuery = z.object({
   to: z.coerce.date().optional(),
   flexible: z.enum(['1']).optional(),
   freeAt: z.coerce.date().optional(),
+  freeFor: z.coerce.number().int().min(30).max(30).optional(),
 }).refine((q) => !(q.flexible && (q.from || q.to)), 'flexible cannot be combined with from/to');
 
 export async function postRoutes(app: FastifyInstance): Promise<void> {
@@ -79,6 +81,9 @@ export async function postRoutes(app: FastifyInstance): Promise<void> {
 
   app.post('/posts', async (req, reply) => {
     const viewer = await requireUser(req);
+    if (req.body && typeof req.body === 'object' && ('freeTimes' in req.body || 'freeTimesZone' in req.body) && req.headers['x-availability-version'] !== '2') {
+      throw new AppError(409, 'STALE_CLIENT', 'Please refresh this page before saving availability.');
+    }
     const input = createPostBody.parse(req.body);
     const row = await createPost(prisma, viewer.user.id, input);
     events.emit({ type: 'post.created', postId: row.id });
@@ -87,6 +92,9 @@ export async function postRoutes(app: FastifyInstance): Promise<void> {
 
   app.patch('/posts/:id', async (req) => {
     const viewer = await requireUser(req);
+    if (req.body && typeof req.body === 'object' && ('freeTimes' in req.body || 'freeTimesZone' in req.body) && req.headers['x-availability-version'] !== '2') {
+      throw new AppError(409, 'STALE_CLIENT', 'Please refresh this page before saving availability.');
+    }
     const { id } = req.params as { id: string };
     const input = editPostBody.parse(req.body);
     const now = new Date();
@@ -111,6 +119,17 @@ export async function postRoutes(app: FastifyInstance): Promise<void> {
     const viewer = await getViewer(req);
     const now = new Date();
     return toPostDetailDTO(await getVisiblePost(prisma, id, viewer, now), viewer, storage, now);
+  });
+
+  app.put('/posts/:id/members/:memberId/free-times', async (req) => {
+    const viewer = await requireUser(req);
+    const { id, memberId } = req.params as { id: string; memberId: string };
+    const body = z.object({ freeTimes: freeTimesSchema, freeTimesZone: freeTimesZoneSchema })
+      .superRefine(checkFreeTimes(false)).parse(req.body);
+    const now = new Date();
+    const row = await setMemberFreeTimes(prisma, viewer, id, memberId, body.freeTimes, body.freeTimesZone, now);
+    events.emit({ type: 'post.updated', postId: id });
+    return toPostDetailDTO(row, viewer, storage, now);
   });
 
   app.post('/posts/:id/close', async (req) => {
@@ -140,14 +159,41 @@ export async function postRoutes(app: FastifyInstance): Promise<void> {
     return toPostDetailDTO(row, viewer, storage, now);
   });
 
+  app.post('/posts/:id/discord-announcement', async (req) => {
+    const viewer = await requireUser(req);
+    const { id } = req.params as { id: string };
+    const now = new Date();
+    const post = await announcePost(prisma, viewer, id, now, storage, app.deps.config.webOrigin);
+    return toPostDetailDTO(post, viewer, storage, now);
+  });
+
+  app.post('/posts/:id/reopen', async (req) => {
+    const viewer = await requireUser(req);
+    const { id } = req.params as { id: string };
+    const now = new Date();
+    const { post, declinedRequestIds } = await reopenPost(prisma, viewer, id, now, storage, app.deps.config.webOrigin);
+    emitDeclined(declinedRequestIds, viewer.user.id);
+    events.emit({ type: 'post.reopened', postId: id });
+    return toPostDetailDTO(post, viewer, storage, now);
+  });
+
   app.put('/posts/:id/final-time', async (req) => {
     const viewer = await requireUser(req);
     const { id } = req.params as { id: string };
-    const { scheduledAt } = z.object({ scheduledAt: z.string().datetime().transform((s) => new Date(s)) }).parse(req.body);
+    const { scheduledAt, repeatWeekly, timeZone } = z.object({
+      scheduledAt: z.string().datetime().transform((s) => new Date(s)),
+      repeatWeekly: z.boolean().default(false),
+      timeZone: z.string().optional(),
+    }).superRefine((body, ctx) => {
+      if (body.repeatWeekly && (!body.timeZone || !isValidTimeZone(body.timeZone))) {
+        ctx.addIssue({ code: 'custom', path: ['timeZone'], message: 'Choose a valid time zone for weekly reminders' });
+      }
+    }).parse(req.body);
     const now = new Date();
-    const row = await finalizePostTime(prisma, viewer, id, scheduledAt, now);
+    const { post, declinedRequestIds } = await finalizePostTime(prisma, viewer, id, scheduledAt, now, repeatWeekly ? timeZone! : null, { storage, webOrigin: app.deps.config.webOrigin });
+    emitDeclined(declinedRequestIds, viewer.user.id);
     events.emit({ type: 'post.finalized', postId: id, actorUserId: viewer.user.id });
-    return toPostDetailDTO(row, viewer, storage, now);
+    return toPostDetailDTO(post, viewer, storage, now);
   });
 
   app.delete('/posts/:id/members/:memberId', async (req) => {

@@ -1,7 +1,8 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
 import type { PostSummaryDTO } from '@pf/shared';
 import type { DomainEvent, DomainEvents } from '../events.js';
-import { bossLabel, buildAcceptPing, buildNewPostMessage, buildRequestPing, buildTimeSetPing, type WebhookPayload } from '../discord/messages.js';
+import { bossLabel, buildAcceptPing, buildRequestPing, buildTimeSetPing, type WebhookPayload } from '../discord/messages.js';
+import { enqueuePostAnnouncement } from '../discord/postAnnouncement.js';
 import { enqueueDelivery } from '../discord/outbox.js';
 import { postSummaryInclude, toPostSummaryDTO } from '../posts/serialize.js';
 import type { Storage } from '../storage/storage.js';
@@ -92,22 +93,7 @@ export class EventDispatcher implements DomainEvents {
   private async postCreated(postId: string): Promise<void> {
     const row = await this.prisma.post.findUnique({ where: { id: postId }, include: postSummaryInclude });
     if (!row) return;
-    const post = this.dto(row);
-    const guilds = await this.prisma.guild.findMany({
-      where: { active: true, webhookUrl: { not: null }, worlds: { some: { worldId: row.worldId } } },
-      select: { id: true, bossRoleIds: true },
-      orderBy: { id: 'asc' },
-    });
-    if (guilds.length === 0) return;
-    // One insert for the whole broadcast.
-    await this.prisma.webhookDelivery.createMany({
-      data: guilds.map((g) => {
-        const mappings = g.bossRoleIds as Record<string, string>;
-        const roles = row.bosses.map((b) => mappings[String(b.bossDifficulty.bossId)]).filter((id): id is string => typeof id === 'string');
-        const payload = buildNewPostMessage(post, this.webOrigin, roles);
-        return { guildId: g.id, eventType: 'post.created', payload: payload as unknown as Prisma.InputJsonValue, postId };
-      }),
-    });
+    await enqueuePostAnnouncement(this.prisma, row, this.storage, this.webOrigin, new Date());
   }
 
   private async requestCreated(row: RequestDispatchRow): Promise<void> {

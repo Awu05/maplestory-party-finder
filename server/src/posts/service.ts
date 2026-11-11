@@ -1,6 +1,6 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
 import {
-  canonicalTimeZone, effectivePostStatus, FLEXIBLE_TTL_MS, MAX_SCHEDULE_AHEAD_MS, maxPartySizeFor, MIN_PARTY_SIZE, postExpiresAt, SCHEDULE_PAST_TOLERANCE_MS,
+  canonicalTimeZone, DAY_MS, effectivePostStatus, FLEXIBLE_TTL_MS, MAX_SCHEDULE_AHEAD_MS, maxPartySizeFor, MIN_PARTY_SIZE, postExpiresAt, SCHEDULE_PAST_TOLERANCE_MS,
   type PostType,
 } from '@pf/shared';
 import type { Viewer } from '../auth/guards.js';
@@ -10,6 +10,11 @@ import { autoDeclinePending } from '../requests/autoDecline.js';
 import { postInclude, postSummaryInclude, type PostRow, type PostSummaryRow } from './serialize.js';
 import { assertPostgresZone } from './pgZones.js';
 import { memberSnapshot, parseSnapshot } from './snapshot.js';
+import { buildPartyThread } from '../discord/messages.js';
+import { enqueuePostAnnouncement } from '../discord/postAnnouncement.js';
+import { enqueueDelivery } from '../discord/outbox.js';
+import { toPostSummaryDTO } from './serialize.js';
+import type { Storage } from '../storage/storage.js';
 
 export interface CreatePostInput {
   type: PostType;
@@ -126,23 +131,29 @@ export interface BoardFilter {
   from?: Date;
   to?: Date;
   flexible?: boolean;
-  /** Keeps posts free at this instant's hour-of-week in each post's own freeTimesZone. */
+  /** Keeps posts free at this instant's half-hour slot in their own freeTimesZone. */
   freeAt?: Date;
+  freeFor?: number;
 }
 
 /**
  * Ids of board-visible posts (open, not deleted, not expired) whose freeTimes contain `freeAt`'s local
- * hour-of-week in their own zone. Bounded to live posts so the id list stays small.
+ * half-hour slot in their own zone. Bounded to live posts so the id list stays small.
  */
-export async function postIdsFreeAt(prisma: PrismaClient, freeAt: Date, now: Date): Promise<string[]> {
+export async function postIdsFreeAt(prisma: PrismaClient, freeAt: Date, now: Date, freeFor?: number): Promise<string[]> {
+  const end = new Date(freeAt.getTime() + (freeFor ? freeFor * 60_000 - 1 : 0));
   const rows = await prisma.$queryRaw<{ id: string }[]>`
     SELECT id FROM "Post"
     WHERE "deletedAt" IS NULL
       AND status = 'open'
       AND "expiresAt" > ${now}
       AND "freeTimesZone" IS NOT NULL
-      AND ((EXTRACT(DOW FROM (${freeAt}::timestamptz AT TIME ZONE "freeTimesZone")) * 24
-           + EXTRACT(HOUR FROM (${freeAt}::timestamptz AT TIME ZONE "freeTimesZone")))::int) = ANY("freeTimes")`;
+      AND ((EXTRACT(DOW FROM (${freeAt}::timestamptz AT TIME ZONE "freeTimesZone")) * 48
+           + EXTRACT(HOUR FROM (${freeAt}::timestamptz AT TIME ZONE "freeTimesZone")) * 2
+           + FLOOR(EXTRACT(MINUTE FROM (${freeAt}::timestamptz AT TIME ZONE "freeTimesZone")) / 30))::int) = ANY("freeTimes")
+      AND ((EXTRACT(DOW FROM (${end}::timestamptz AT TIME ZONE "freeTimesZone")) * 48
+           + EXTRACT(HOUR FROM (${end}::timestamptz AT TIME ZONE "freeTimesZone")) * 2
+           + FLOOR(EXTRACT(MINUTE FROM (${end}::timestamptz AT TIME ZONE "freeTimesZone")) / 30))::int) = ANY("freeTimes")`;
   return rows.map((r) => r.id);
 }
 
@@ -150,7 +161,7 @@ export async function listBoard(prisma: PrismaClient, f: BoardFilter, now: Date)
   const and: Prisma.PostWhereInput[] = [];
   if (f.bossId !== undefined) and.push({ bosses: { some: { bossDifficulty: { bossId: f.bossId } } } });
   if (f.bossDifficultyId !== undefined) and.push({ bosses: { some: { bossDifficultyId: f.bossDifficultyId } } });
-  if (f.freeAt !== undefined) and.push({ id: { in: await postIdsFreeAt(prisma, f.freeAt, now) } });
+  if (f.freeAt !== undefined) and.push({ id: { in: await postIdsFreeAt(prisma, f.freeAt, now, f.freeFor) } });
   return prisma.post.findMany({
     where: {
       deletedAt: null,
@@ -179,12 +190,13 @@ export function listMyPosts(prisma: PrismaClient, userId: string): Promise<PostS
   });
 }
 
-/** Parties (>= 2 members) the user belongs to, deleted ones included: scheduledAt desc (nulls last), then createdAt desc. */
+/** Parties the user belongs to: include solo finalized runs and keep ended lineups as history. */
 export async function listMyParties(prisma: PrismaClient, userId: string): Promise<PostRow[]> {
   const ids = await prisma.$queryRaw<{ id: string }[]>`
     SELECT p.id FROM "Post" p
     WHERE EXISTS (SELECT 1 FROM "PostMember" m WHERE m."postId" = p.id AND m."userId" = ${userId})
-      AND (SELECT count(*) FROM "PostMember" m2 WHERE m2."postId" = p.id) >= 2
+      AND ((p.type = 'recruiting' AND p."scheduledAt" IS NOT NULL)
+        OR (SELECT count(*) FROM "PostMember" m2 WHERE m2."postId" = p.id) >= 2)
     ORDER BY p."scheduledAt" DESC NULLS LAST, p."createdAt" DESC, p.id DESC
     LIMIT 100`;
   const rows = await prisma.post.findMany({ where: { id: { in: ids.map((r) => r.id) } }, include: postInclude });
@@ -220,6 +232,48 @@ function assertPoster(post: PostRow, viewer: Viewer): void {
   if (post.posterUserId !== viewer.user.id) throw new AppError(403, 'NOT_OWNER', 'Only the poster can do that');
 }
 
+/** A finalized lineup is closed to recruitment but remains active until its scheduled run expires. */
+function isActiveFinalized(post: PostRow, now: Date): boolean {
+  return post.status === 'closed' && post.closedReason === 'finalized' && post.deletedAt === null && post.expiresAt > now;
+}
+
+export async function setMemberFreeTimes(
+  prisma: PrismaClient, viewer: Viewer, postId: string, memberId: string,
+  freeTimes: number[], freeTimesZone: string | null, now: Date,
+): Promise<PostRow> {
+  const availability = normalizeFreeTimes(freeTimes, freeTimesZone);
+  if (availability.freeTimesZone) await assertPostgresZone(prisma, availability.freeTimesZone);
+  return prisma.$transaction(async (tx) => {
+    const row = await loadPostForUpdate(tx, postId);
+    const member = row.members.find((m) => m.id === memberId && m.userId === viewer.user.id);
+    if (!member) throw new AppError(403, 'NOT_MEMBER', 'Only current party members can update their own availability');
+    if (effectivePostStatus(row, now) === 'closed' && !isActiveFinalized(row, now)) throw new AppError(409, 'POST_CLOSED', 'Post is closed');
+    if (member.role === 'poster') {
+      await tx.post.update({ where: { id: postId }, data: availability });
+    } else {
+      await tx.postMember.update({ where: { id: member.id }, data: availability });
+    }
+    return tx.post.findUniqueOrThrow({ where: { id: postId }, include: postInclude });
+  });
+}
+
+/**
+ * Whether `characterId` is in a live party other than `excludePostId`: not deleted, not expired, and
+ * open, full or finalized. `role` limits it to memberships with that role (e.g. not its own posts).
+ */
+async function liveMembershipElsewhere(tx: Prisma.TransactionClient, characterId: string, excludePostId: string, now: Date, role?: 'member'): Promise<boolean> {
+  const membership = await tx.postMember.findFirst({
+    where: {
+      characterId,
+      postId: { not: excludePostId },
+      ...(role ? { role } : {}),
+      post: { deletedAt: null, expiresAt: { gt: now }, OR: [{ status: { in: ['open', 'full'] } }, { status: 'closed', closedReason: 'finalized' }] },
+    },
+    select: { id: true },
+  });
+  return membership !== null;
+}
+
 const postRequests = (postId: string): Prisma.RequestWhereInput => ({ OR: [{ postId }, { lfpPostId: postId }] });
 
 export interface LifecycleResult {
@@ -231,7 +285,7 @@ export async function closePost(prisma: PrismaClient, viewer: Viewer, id: string
   return prisma.$transaction(async (tx) => {
     const row = await loadPostForUpdate(tx, id);
     assertPoster(row, viewer);
-    if (row.status === 'closed' || row.deletedAt !== null) throw new AppError(409, 'POST_CLOSED', 'Post is already closed');
+    if ((row.status === 'closed' && row.closedReason !== 'finalized') || row.deletedAt !== null) throw new AppError(409, 'POST_CLOSED', 'Post is already closed');
     const declinedRequestIds = await autoDeclinePending(tx, postRequests(id));
     const post = await tx.post.update({ where: { id }, data: { status: 'closed', closedReason: 'manual' }, include: postInclude });
     return { post, declinedRequestIds };
@@ -266,15 +320,84 @@ export async function renewPost(prisma: PrismaClient, viewer: Viewer, id: string
   });
 }
 
-/** Poster sets (or changes) a recruiting post's final time. Status is unchanged; expiry follows the new time. */
-export async function finalizePostTime(prisma: PrismaClient, viewer: Viewer, id: string, scheduledAt: Date, now: Date): Promise<PostRow> {
+/** Enforce the cooldown and enqueue every guild's announcement under the post lock. */
+export async function announcePost(prisma: PrismaClient, viewer: Viewer, id: string, now: Date, storage: Storage, webOrigin: string): Promise<PostRow> {
+  return prisma.$transaction(async (tx) => {
+    const row = await loadPostForUpdate(tx, id);
+    assertPoster(row, viewer);
+    if (effectivePostStatus(row, now) !== 'open') throw new AppError(409, 'POST_CLOSED', 'Only open posts can be announced');
+    const previous = Math.max(row.createdAt.getTime(), row.lastDiscordAnnouncementAt?.getTime() ?? 0);
+    if (now.getTime() < previous + DAY_MS) throw new AppError(429, 'ANNOUNCEMENT_COOLDOWN', 'Discord notifications can be sent once every 24 hours.');
+    const queued = await enqueuePostAnnouncement(tx, row, storage, webOrigin, now, 'post.announcement');
+    if (!queued) throw new AppError(409, 'NO_ANNOUNCEMENT_WEBHOOK', 'No active Discord notification webhook is configured for this world.');
+    return tx.post.update({ where: { id }, data: { lastDiscordAnnouncementAt: now }, include: postInclude });
+  });
+}
+
+/** Reopens an ended party for recruitment with the existing lineup and a fresh flexible window. */
+export async function reopenPost(prisma: PrismaClient, viewer: Viewer, id: string, now: Date, storage: Storage, webOrigin: string): Promise<LifecycleResult> {
+  return prisma.$transaction(async (tx) => {
+    const row = await loadPostForUpdate(tx, id);
+    assertPoster(row, viewer);
+    if (row.deletedAt !== null) throw new AppError(404, 'NOT_FOUND', 'Post not found');
+    if (effectivePostStatus(row, now) !== 'closed') throw new AppError(409, 'POST_OPEN', 'This post is already open');
+    if (!row.posterCharacterId) throw new AppError(409, 'CHARACTER_UNAVAILABLE', 'The posting character is no longer available');
+    const character = await getPostingCharacter(tx, row.posterCharacterId, viewer.user.id);
+    if (character.worldId !== row.worldId && row.members.length > 1) {
+      throw new AppError(409, 'WRONG_WORLD', 'The posting character has moved worlds. Create a new post for that world.');
+    }
+    // An LFP post says the character is looking; however it was closed, not while it is in a party.
+    if (row.type === 'lfp' && (await liveMembershipElsewhere(tx, character.id, id, now, 'member'))) {
+      throw new AppError(409, 'IN_PARTY', 'Leave your current party before reopening this post.');
+    }
+    const declinedRequestIds = await autoDeclinePending(tx, postRequests(id));
+    const full = row.type === 'recruiting' && row.partySize !== null && row.members.length >= row.partySize;
+    let post = await tx.post.update({ where: { id }, data: {
+      status: full ? 'full' : 'open', closedReason: full ? 'full' : null,
+      scheduledAt: null, weeklyTimeZone: null, weeklyAnchorAt: null,
+      expiresAt: new Date(now.getTime() + FLEXIBLE_TTL_MS), worldId: character.worldId, guildId: character.guildId,
+    }, include: postInclude });
+    // A party that is still full is not recruiting, so there is nothing to announce.
+    const queued = full ? 0 : await enqueuePostAnnouncement(tx, post, storage, webOrigin, now, 'post.reopened');
+    if (queued) post = await tx.post.update({ where: { id }, data: { lastDiscordAnnouncementAt: now }, include: postInclude });
+    return { post, declinedRequestIds };
+  });
+}
+
+/** Finalizing closes recruitment; the poster may still change the time or end the party. */
+export async function finalizePostTime(prisma: PrismaClient, viewer: Viewer, id: string, scheduledAt: Date, now: Date, weeklyTimeZone: string | null = null, forum?: { storage: Storage; webOrigin: string }): Promise<LifecycleResult> {
+  const zone = weeklyTimeZone ? canonicalTimeZone(weeklyTimeZone) : null;
+  if (zone) await assertPostgresZone(prisma, zone);
   return prisma.$transaction(async (tx) => {
     const row = await loadPostForUpdate(tx, id);
     assertPoster(row, viewer);
     if (row.type !== 'recruiting') throw new AppError(409, 'WRONG_POST_TYPE', 'Only recruiting posts have a final time');
-    if (effectivePostStatus(row, now) === 'closed') throw new AppError(409, 'POST_CLOSED', 'Post is closed');
+    if (effectivePostStatus(row, now) === 'closed' && !isActiveFinalized(row, now)) throw new AppError(409, 'POST_CLOSED', 'Post is closed');
     assertScheduleWindow(scheduledAt, now);
-    return tx.post.update({ where: { id }, data: { scheduledAt, expiresAt: postExpiresAt(scheduledAt, now) }, include: postInclude });
+    const declinedRequestIds = await autoDeclinePending(tx, postRequests(id));
+    const post = await tx.post.update({
+      where: { id },
+      data: { status: 'closed', closedReason: 'finalized', scheduledAt, expiresAt: postExpiresAt(scheduledAt, now), weeklyTimeZone: zone, weeklyAnchorAt: zone ? scheduledAt : null },
+      include: postInclude,
+    });
+    if (forum) {
+      const guild = await tx.guild.findUnique({ where: { id: post.guildId }, select: { active: true, partyForumWebhookUrl: true } });
+      if (guild?.active && guild.partyForumWebhookUrl) {
+        const users = await tx.user.findMany({ where: { id: { in: post.members.map((member) => member.userId) } }, select: { id: true, discordId: true } });
+        const ids = new Map(users.map((user) => [user.id, user.discordId]));
+        const roster = post.members.map((member) => ({ ign: parseSnapshot(member.snapshot).ign, discordId: ids.get(member.userId) ?? '' }));
+        const thread = buildPartyThread(toPostSummaryDTO(post, null, forum.storage, now), forum.webOrigin, roster);
+        const payload = { ...thread.message, thread_name: thread.name };
+        if (!row.forumThreadRequested) {
+          await enqueueDelivery(tx, post.guildId, 'post.party_thread', payload, post.id);
+          await tx.post.update({ where: { id }, data: { forumThreadRequested: true } });
+        } else {
+          // If delivery has not started, use the latest time without making another thread.
+          await tx.webhookDelivery.updateMany({ where: { postId: id, eventType: 'post.party_thread', status: 'pending', attempts: 0, nextAttemptAt: { lte: now } }, data: { payload } });
+        }
+      }
+    }
+    return { post, declinedRequestIds };
   });
 }
 
@@ -321,15 +444,7 @@ async function reopenMatchedLfpPost(
   if (!lfp || lfp.status !== 'closed' || lfp.closedReason !== 'lfp_matched' || lfp.deletedAt !== null) return null;
   if (lfp.expiresAt.getTime() <= now.getTime()) return null;
   // Still in another live party (e.g. joined one by join request): the character is not looking.
-  const otherParty = await tx.postMember.findFirst({
-    where: {
-      characterId,
-      postId: { not: recruitingPostId },
-      post: { deletedAt: null, status: { in: ['open', 'full'] }, expiresAt: { gt: now } },
-    },
-    select: { id: true },
-  });
-  if (otherParty) return null;
+  if (await liveMembershipElsewhere(tx, characterId, recruitingPostId, now)) return null;
   await tx.post.update({ where: { id: lfp.id }, data: { status: 'open', closedReason: null } });
   return lfp.id;
 }
@@ -347,7 +462,7 @@ export async function removeMember(prisma: PrismaClient, viewer: Viewer, postId:
     if (!self && row.posterUserId !== viewer.user.id) throw new AppError(403, 'NOT_ALLOWED', 'You cannot remove that member');
     if (member.role === 'poster') throw new AppError(409, 'CANNOT_LEAVE_OWN_POST', 'The poster cannot leave their own post');
     // An ended party (deleted, closed or expired) keeps its lineup as a record.
-    if (effectivePostStatus(row, now) === 'closed') throw new AppError(409, 'POST_CLOSED', 'Post is closed');
+    if (effectivePostStatus(row, now) === 'closed' && !isActiveFinalized(row, now)) throw new AppError(409, 'POST_CLOSED', 'Post is closed');
     await tx.postMember.delete({ where: { id: memberId } });
     const reopenedLfpPostId = member.characterId === null ? null : await reopenMatchedLfpPost(tx, postId, member.characterId, now);
     const reopened = row.status === 'full';
@@ -459,7 +574,7 @@ export async function editPost(prisma: PrismaClient, viewer: Viewer, id: string,
         type,
         partySize,
         minCp,
-        ...(dropFinalTime ? { scheduledAt: null, expiresAt: postExpiresAt(null, now) } : {}),
+        ...(dropFinalTime ? { scheduledAt: null, weeklyTimeZone: null, weeklyAnchorAt: null, expiresAt: postExpiresAt(null, now) } : {}),
         ...(input.note !== undefined ? { note: input.note } : {}),
         ...(free ?? {}),
         ...(character ? { posterCharacterId: character.id, worldId: character.worldId, guildId: character.guildId } : {}),

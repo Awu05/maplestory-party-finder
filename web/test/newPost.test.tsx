@@ -39,7 +39,7 @@ const poster: PartyMemberDTO = {
   joinedAt: '2026-11-09T00:00:00Z',
   character: lily,
   snapshot: { ign: 'Lily', jobName: 'Bishop', level: 280, imageUrl: 'http://img/lily.png', worldName: 'Kronos', guildName: 'Maple Guild' },
-  isMine: true,
+  freeTimes: [], freeTimesZone: null, isMine: true,
 };
 
 function makePost(over: Partial<PostDetailDTO> = {}): PostDetailDTO {
@@ -52,7 +52,7 @@ function makePost(over: Partial<PostDetailDTO> = {}): PostDetailDTO {
     bosses: [{ bossDifficultyId: 7, bossName: 'Lucid', difficulty: 'Hard' }],
     scheduledAt: localInputToUtcIso('2026-11-10T20:00'),
     freeTimes: [],
-    freeTimesZone: null,
+    weeklyTimeZone: null, freeTimesZone: null,
     expiresAt: '2026-11-17T00:00:00Z',
     createdAt: '2026-11-09T00:00:00Z',
     partySize: 4,
@@ -96,6 +96,11 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe('NewPostPage (create)', () => {
+  it('explains when new posts expire and how renewal works', async () => {
+    mockApi(base);
+    renderWithProviders(<App />, { route: '/posts/new' });
+    expect(await screen.findByText(/Posts without a finalized time expire 7 days after creation/)).toHaveTextContent('You can renew your post for 7 days from the time you renew it.');
+  });
   it('recruiting submit', async () => {
     const m = mockApi({ ...base, '/api/posts/p1': makePost(), 'POST /api/posts': makePost() });
     renderWithProviders(<App />, { route: '/posts/new' });
@@ -164,7 +169,7 @@ describe('NewPostPage (create)', () => {
     pickSlot('Sat 2p');
     save();
     await screen.findByRole('heading', { name: 'Lineup' });
-    expect(body(writes(m)[0])).toMatchObject({ freeTimes: [68, 158], freeTimesZone: 'America/New_York' });
+    expect(body(writes(m)[0])).toMatchObject({ freeTimes: [136, 316], freeTimesZone: 'America/New_York' });
   });
 
   it('an empty grid sends no free times and a null zone', async () => {
@@ -227,7 +232,7 @@ describe('NewPostPage (edit)', () => {
   });
 
   it('shows stored free times selected and PATCHes without them when only the note changes', async () => {
-    const post = makePost({ freeTimes: [68], freeTimesZone: 'America/New_York' });
+    const post = makePost({ freeTimes: [136], freeTimesZone: 'America/New_York' });
     const m = mockApi({ ...base, '/api/posts/p1': post, 'PATCH /api/posts/p1': post });
     renderWithProviders(<App />, { route: '/posts/p1/edit' });
     await waitFor(() => expect(screen.getByLabelText('Note')).toHaveValue('Chill run'));
@@ -240,7 +245,7 @@ describe('NewPostPage (edit)', () => {
 
   it('converts a post stored in another zone and re-stores changes in the browser zone', async () => {
     // Tue 8p Los Angeles is Tue 11p New York.
-    const post = makePost({ freeTimes: [68], freeTimesZone: 'America/Los_Angeles' });
+    const post = makePost({ freeTimes: [136], freeTimesZone: 'America/Los_Angeles' });
     const m = mockApi({ ...base, '/api/posts/p1': post, 'PATCH /api/posts/p1': post });
     renderWithProviders(<App />, { route: '/posts/p1/edit' });
     await waitFor(() => expect(screen.getByLabelText('Note')).toHaveValue('Chill run'));
@@ -248,7 +253,20 @@ describe('NewPostPage (edit)', () => {
     pickSlot('Wed 1a');
     save();
     await screen.findByRole('heading', { name: 'Lineup' });
-    expect(body(writes(m)[0])).toEqual({ freeTimes: [71, 73], freeTimesZone: 'America/New_York' });
+    expect(body(writes(m)[0])).toEqual({ freeTimes: [142, 146], freeTimesZone: 'America/New_York' });
+  });
+
+  it('edits in the saved zone when conversion would split a half hour', async () => {
+    const post = makePost({ freeTimes: [147], freeTimesZone: 'Asia/Kathmandu' });
+    const m = mockApi({ ...base, '/api/posts/p1': post, 'PATCH /api/posts/p1': post });
+    renderWithProviders(<App />, { route: '/posts/p1/edit' });
+    await waitFor(() => expect(screen.getByLabelText('Note')).toHaveValue('Chill run'));
+    expect(screen.getByText(/Editing availability in Asia\/Kathmandu/)).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Wed 1:30a' })).toHaveAttribute('aria-pressed', 'true');
+    pickSlot('Wed 2a');
+    save();
+    await screen.findByRole('heading', { name: 'Lineup' });
+    expect(body(writes(m)[0])).toEqual({ freeTimes: [147, 148], freeTimesZone: 'Asia/Kathmandu' });
   });
 
   it('says "No changes to save." and does not send when nothing changed', async () => {

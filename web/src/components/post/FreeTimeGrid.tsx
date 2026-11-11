@@ -1,5 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
+import { SLOTS_PER_DAY } from '@pf/shared';
+import { setTimeFormat, useTimeFormat } from '../../lib/timeFormat';
+import type { TimeFormat } from '../../lib/timeFormat';
 import './FreeTimeGrid.css';
 
 export const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -9,8 +12,23 @@ export function hourLabel(hour: number): string {
   return `${h12}${hour < 12 ? 'a' : 'p'}`;
 }
 
+export function halfHourLabel(slot: number, format: TimeFormat = '12h'): string {
+  const hour = Math.floor(slot / 2);
+  if (format === '24h') return `${String(hour).padStart(2, '0')}:${slot % 2 ? '30' : '00'}`;
+  const label = hourLabel(hour);
+  return slot % 2 ? `${label.slice(0, -1)}:30${label.slice(-1)}` : label;
+}
+
+export interface AvailabilityLayer {
+  id: string;
+  label: string;
+  color: string;
+  slots: number[];
+  coverage?: Map<number, number>;
+}
+
 interface Props {
-  /** Selected slots as hour-of-week in the viewer's zone (day * 24 + hour, 0 = Sunday). No conversion happens here. */
+  /** Half-hour slots in the viewer's zone (day * 48 + half-hour, 0 = Sunday). */
   value: number[];
   /** The grid's accessible name; ignored when labelledBy is given. */
   label?: string;
@@ -21,14 +39,17 @@ interface Props {
   readOnly?: boolean;
   /** Id of an element describing the grid (e.g. a hint), set as aria-describedby. */
   describedBy?: string;
+  participants?: AvailabilityLayer[];
 }
 
 const lastDay = DAY_LABELS.length - 1;
 
-/** 7-day × 24-hour grid shown in the viewer's local time zone. */
-export function FreeTimeGrid({ value, onChange, readOnly, label: gridLabel, labelledBy, describedBy }: Props) {
+/** 7-day × 48-slot grid shown in the viewer's local time zone. */
+export function FreeTimeGrid({ value, onChange, readOnly, label: gridLabel, labelledBy, describedBy, participants }: Props) {
+  const timeFormat = useTimeFormat();
   const selected = new Set(value);
-  const hours = Array.from({ length: 24 }, (_, h) => h);
+  const layers = participants?.map((p) => ({ ...p, selected: new Set(p.slots) }));
+  const slots = Array.from({ length: SLOTS_PER_DAY / 2 }, (_, h) => h);
   const editable = !readOnly && !!onChange;
 
   // The latest selection, updated on every apply so several drag events before a re-render all count;
@@ -42,17 +63,18 @@ export function FreeTimeGrid({ value, onChange, readOnly, label: gridLabel, labe
 
   // Roving tabindex: the grid is one Tab stop, the active cell; arrows move it.
   const [active, setActive] = useState(() => (value.length > 0 ? Math.min(...value) : 0));
-  const cellRefs = useRef(new Map<number, HTMLButtonElement>());
-  const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>, slot: number) => {
-    const day = Math.floor(slot / 24);
-    const hour = slot % 24;
+  const [focused, setFocused] = useState(false);
+  const cellRefs = useRef(new Map<number, HTMLElement>());
+  const onKeyDown = (e: KeyboardEvent<HTMLElement>, slot: number) => {
+    const day = Math.floor(slot / SLOTS_PER_DAY);
+    const hour = slot % SLOTS_PER_DAY;
     let next: number;
-    if (e.key === 'ArrowLeft') next = Math.max(day - 1, 0) * 24 + hour;
-    else if (e.key === 'ArrowRight') next = Math.min(day + 1, lastDay) * 24 + hour;
-    else if (e.key === 'ArrowUp') next = day * 24 + Math.max(hour - 1, 0);
-    else if (e.key === 'ArrowDown') next = day * 24 + Math.min(hour + 1, 23);
+    if (e.key === 'ArrowLeft') next = day === 0 && hour >= 24 ? lastDay * SLOTS_PER_DAY + hour - 24 : Math.max(day - 1, 0) * SLOTS_PER_DAY + hour;
+    else if (e.key === 'ArrowRight') next = day === lastDay && hour < 24 ? hour + 24 : Math.min(day + 1, lastDay) * SLOTS_PER_DAY + hour;
+    else if (e.key === 'ArrowUp') next = day * SLOTS_PER_DAY + Math.max(hour - 1, 0);
+    else if (e.key === 'ArrowDown') next = day * SLOTS_PER_DAY + Math.min(hour + 1, SLOTS_PER_DAY - 1);
     else if (e.key === 'Home') next = hour;
-    else if (e.key === 'End') next = lastDay * 24 + hour;
+    else if (e.key === 'End') next = lastDay * SLOTS_PER_DAY + hour;
     else return;
     e.preventDefault();
     setActive(next);
@@ -84,7 +106,33 @@ export function FreeTimeGrid({ value, onChange, readOnly, label: gridLabel, labe
     onChange?.(next);
   };
 
+  const cellInfo = (slot: number) => {
+    const day = Math.floor(slot / SLOTS_PER_DAY);
+    const time = slot % SLOTS_PER_DAY;
+    const available = layers?.filter((p) => p.selected.has(slot)) ?? [];
+    const mask = (p: (typeof available)[number]) => p.coverage?.get(slot) ?? 3;
+    const early = available.filter((p) => mask(p) & 1);
+    const late = available.filter((p) => mask(p) & 2);
+    const everyone = !!layers && layers.length > 1 && early.length === layers.length && late.length === layers.length;
+    const names = available.map((p) => `${p.label}${mask(p) === 1 ? ' (first 15 minutes)' : mask(p) === 2 ? ' (last 15 minutes)' : ''}`).join(', ');
+    const overlap = Math.max(early.length, late.length);
+    const label = `${DAY_LABELS[day]} ${halfHourLabel(time, timeFormat)}${layers ? ` — ${names || 'No one available'}${overlap > 1 && !everyone ? ` — ${overlap} overlap` : ''}${everyone ? ' — Everyone available' : ''}` : ''}`;
+    const segment = (group: typeof available) => group.length === 0
+      ? 'linear-gradient(var(--surface-2), var(--surface-2))'
+      : group.length === 1 ? `linear-gradient(${group[0].color}, ${group[0].color})`
+      : `repeating-linear-gradient(135deg, ${group.map((p, i) => `${p.color} ${i * 6}px ${(i + 1) * 6}px`).join(', ')})`;
+    const background = available.length === 0 ? undefined : early.length === late.length && early.every((p, i) => p.id === late[i].id)
+      ? segment(early) : `${segment(early)} top / 100% 50% no-repeat, ${segment(late)} bottom / 100% 50% no-repeat`;
+    return { label, style: background ? { background } : undefined, everyone, count: overlap > 1 ? overlap : null };
+  };
+
   return (
+    <>
+    <div className="ftg__toolbar" role="group" aria-label="Time format">
+      <span>Time format</span>
+      <button type="button" className="chip" aria-pressed={timeFormat === '12h'} onClick={() => setTimeFormat('12h')}>12-hour</button>
+      <button type="button" className="chip" aria-pressed={timeFormat === '24h'} onClick={() => setTimeFormat('24h')}>24-hour</button>
+    </div>
     <div className="ftg">
       <table
         className="ftg__table"
@@ -96,25 +144,36 @@ export function FreeTimeGrid({ value, onChange, readOnly, label: gridLabel, labe
       >
         <thead>
           <tr>
-            <td />
-            {DAY_LABELS.map((d) => (
-              <th key={d} scope="col">
-                {d}
+            {[0, SLOTS_PER_DAY / 2].map((start) => (
+              <th key={start} scope="colgroup" colSpan={8}>
+                {halfHourLabel(start, timeFormat)}–{halfHourLabel(start + SLOTS_PER_DAY / 2 - 1, timeFormat)}
               </th>
+            ))}
+          </tr>
+          <tr>
+            {[0, 1].map((period) => (
+              <Fragment key={period}>
+                <th scope="col">Time</th>
+                {DAY_LABELS.map((d) => <th key={d} scope="col">{d}</th>)}
+              </Fragment>
             ))}
           </tr>
         </thead>
         <tbody>
-          {hours.map((h) => (
+          {slots.map((h) => (
             <tr key={h}>
-              <th scope="row">{hourLabel(h)}</th>
+              {[h, h + SLOTS_PER_DAY / 2].map((time) => <Fragment key={time}>
+              <th scope="row">{halfHourLabel(time, timeFormat)}</th>
               {DAY_LABELS.map((d, day) => {
-                const on = selected.has(day * 24 + h);
-                const slot = day * 24 + h;
-                const label = `${d} ${hourLabel(h)}`;
-                const cls = on ? 'ftg__cell ftg__cell--on' : 'ftg__cell';
+                const on = selected.has(day * SLOTS_PER_DAY + time);
+                const slot = day * SLOTS_PER_DAY + time;
+                const { label, style, everyone, count } = cellInfo(slot);
+                const cls = `ftg__cell${on ? ' ftg__cell--on' : ''}${everyone ? ' ftg__cell--all' : ''}`;
                 if (!editable) {
-                  return <td key={d} role="gridcell" aria-label={label} aria-selected={on} className={cls} />;
+                  return <td key={d} ref={(el) => { if (el) cellRefs.current.set(slot, el); else cellRefs.current.delete(slot); }}
+                    role="gridcell" aria-label={label} title={label} aria-selected={on} className={cls} style={style}
+                    tabIndex={slot === active ? 0 : -1} onFocus={() => { setActive(slot); setFocused(true); }}
+                    onBlur={() => setFocused(false)} onKeyDown={(e) => onKeyDown(e, slot)}>{count}</td>;
                 }
                 return (
                   <td key={d} role="gridcell" aria-selected={on} className="ftg__td">
@@ -125,10 +184,13 @@ export function FreeTimeGrid({ value, onChange, readOnly, label: gridLabel, labe
                       }}
                       type="button"
                       className={cls}
+                      style={style}
+                      title={label}
                       aria-label={label}
                       aria-pressed={on}
                       tabIndex={slot === active ? 0 : -1}
-                      onFocus={() => setActive(slot)}
+                      onFocus={() => { setActive(slot); setFocused(true); }}
+                      onBlur={() => setFocused(false)}
                       onKeyDown={(e) => onKeyDown(e, slot)}
                       onMouseDown={(e) => {
                         if (e.button !== 0) return;
@@ -144,14 +206,17 @@ export function FreeTimeGrid({ value, onChange, readOnly, label: gridLabel, labe
                         if (mouseHandled.current) mouseHandled.current = false;
                         else apply(slot, !on);
                       }}
-                    />
+                    >{count}</button>
                   </td>
                 );
               })}
+              </Fragment>)}
             </tr>
           ))}
         </tbody>
       </table>
     </div>
+    {participants && <p className="ftg__status" role="status">{focused ? cellInfo(active).label : 'Focus a cell to see who is available.'}</p>}
+    </>
   );
 }

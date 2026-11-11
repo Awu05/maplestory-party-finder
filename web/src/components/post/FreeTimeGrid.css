@@ -1,42 +1,54 @@
+.ftg__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
 .ftg {
   max-width: 100%;
-  max-height: 22rem;
-  overflow: auto;
+  overflow-x: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   -webkit-overflow-scrolling: touch;
 }
 .ftg__table {
   border-collapse: separate;
-  border-spacing: 2px;
-  font-size: 0.72rem;
-  min-width: 18rem;
+  border-spacing: 1px;
+  font-size: 0.875rem;
+  min-width: 32rem;
   width: 100%;
 }
 .ftg__table th {
-  position: sticky;
   background: var(--surface-2);
   color: var(--muted);
   font-weight: 600;
   padding: 0 0.25rem;
 }
-.ftg__table thead th {
-  top: 0;
-  z-index: 1;
-}
 .ftg__table tbody th {
-  left: 0;
   text-align: right;
   white-space: nowrap;
 }
 .ftg__cell {
   min-width: 1.75rem;
-  height: 0.9rem;
+  height: 1rem;
   border-radius: 2px;
   background: color-mix(in srgb, var(--border) 45%, var(--surface));
 }
 .ftg__cell--on {
   background: var(--accent);
+}
+.ftg__cell--all {
+  box-shadow: inset 0 0 0 2px #fff;
+}
+.ftg__cell {
+  text-align: center;
+  color: #101323;
+  font-size: 0.75rem;
+  font-weight: 800;
+  line-height: 1;
 }
 .ftg__td {
   padding: 0;
@@ -52,6 +64,15 @@ button.ftg__cell {
 button.ftg__cell:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
+}
+.ftg__cell[role='gridcell']:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.ftg__status {
+  margin: var(--space-2) 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
 }
 /* Phone tap targets: at least 24px tall. */
 @media (max-width: 640px) {

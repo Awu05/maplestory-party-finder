@@ -23,11 +23,24 @@ describe('GET /api/me/parties', () => {
   it('includes a soft-deleted post with 2 members, excludes a solo post; requires login', async () => {
     const party = await makePost({ posterUserId: userId, deletedAt: new Date() });
     await addMember(party.id, (await makeCharacter()).id);
-    const solo = await makePost({ posterUserId: userId });
+    const solo = await makePost({ posterUserId: userId, scheduledAt: null });
     const res = await get('/api/me/parties');
     expect(ids(res)).toEqual([party.id]);
     expect(ids(res)).not.toContain(solo.id);
     expect((await app.inject({ method: 'GET', url: '/api/me/parties' })).statusCode).toBe(401);
+  });
+
+  it('includes solo finalized parties, including past runs, but not other users\' parties', async () => {
+    const solo = await makePost({ posterUserId: userId, scheduledAt: null });
+    const at = new Date(Date.now() + 86_400_000).toISOString();
+    const finalized = await app.inject({ method: 'PUT', url: `/api/posts/${solo.id}/final-time`, headers: { cookie }, payload: { scheduledAt: at } });
+    expect(finalized.statusCode).toBe(200);
+    const past = await makePost({ posterUserId: userId, status: 'closed', closedReason: 'manual', scheduledAt: new Date(Date.now() - 86_400_000), expiresAt: new Date(Date.now() - 1000) });
+    const other = await makePost({ status: 'closed', closedReason: 'finalized' });
+    const result = (await get('/api/me/parties')).json();
+    expect(result.map((p: { id: string }) => p.id)).toEqual([solo.id, past.id]);
+    expect(result.find((p: { id: string }) => p.id === solo.id)).toMatchObject({ memberCount: 1, recruitmentClosed: true });
+    expect(result.map((p: { id: string }) => p.id)).not.toContain(other.id);
   });
 
   it('includes parties I joined as a member; orders scheduledAt desc, flexible last', async () => {
@@ -41,6 +54,25 @@ describe('GET /api/me/parties', () => {
     const late = await mk({ scheduledAt: new Date(Date.now() + 3 * day) });
     const flexible = await mk({ scheduledAt: null });
     expect(ids(await get('/api/me/parties'))).toEqual([late, early, flexible]);
+  });
+});
+
+describe('GET /api/me/parties cap', () => {
+  it('returns at most the 100 latest parties, in order', async () => {
+    const character = await makeCharacter({ ownerId: userId });
+    const base = Date.now() + 86_400_000;
+    const posts = await prisma.post.createManyAndReturn({
+      data: Array.from({ length: 101 }, (_, i) => ({
+        type: 'recruiting' as const, partySize: 4, status: 'closed' as const, closedReason: 'finalized' as const,
+        posterUserId: userId, posterCharacterId: character.id, worldId: character.worldId, guildId: character.guildId!,
+        scheduledAt: new Date(base + i * 60_000), expiresAt: new Date(base + i * 60_000 + 3 * 3_600_000),
+      })),
+      select: { id: true, scheduledAt: true },
+    });
+    await prisma.postMember.createMany({ data: posts.map((p) => ({ postId: p.id, characterId: character.id, userId, role: 'poster' as const, cpAtJoin: character.combatPower, snapshot: { ign: character.ign, jobName: character.jobName, level: character.level, imageUrl: character.imageUrl, worldName: 'w', guildName: 'g' } })) });
+    const result = ids(await get('/api/me/parties'));
+    const expected = [...posts].sort((a, b) => b.scheduledAt!.getTime() - a.scheduledAt!.getTime()).slice(0, 100).map((p) => p.id);
+    expect(result).toEqual(expected);
   });
 });
 

@@ -20,7 +20,7 @@ afterAll(async () => {
 });
 
 const patch = (id: string, body: unknown, c: string | null = cookie) =>
-  app.inject({ method: 'PATCH', url: `/api/posts/${id}`, payload: body as object, headers: c ? { cookie: c } : {} });
+  app.inject({ method: 'PATCH', url: `/api/posts/${id}`, payload: body as object, headers: { ...(c ? { cookie: c } : {}), 'x-availability-version': '2' } });
 const pending = async (postId: string, over: Record<string, unknown> = {}) => {
   const c = await makeCharacter();
   return prisma.request.create({ data: { kind: 'join_request', postId, characterId: c.id, createdByUserId: c.ownerId, ...over } });
@@ -28,6 +28,12 @@ const pending = async (postId: string, over: Record<string, unknown> = {}) => {
 const reqStatus = async (id: string) => (await prisma.request.findUniqueOrThrow({ where: { id } })).status;
 
 describe('PATCH /api/posts/:id', () => {
+  it('does not overwrite half-hour slots from a stale browser tab', async () => {
+    const p = await makePost({ posterUserId: userId, freeTimes: [136, 137], freeTimesZone: 'UTC' });
+    const res = await app.inject({ method: 'PATCH', url: `/api/posts/${p.id}`, headers: { cookie }, payload: { freeTimes: [68], freeTimesZone: 'UTC' } });
+    expect(res.statusCode).toBe(409);
+    expect((await prisma.post.findUniqueOrThrow({ where: { id: p.id } })).freeTimes).toEqual([136, 137]);
+  });
   it('poster edits note, bosses, free times -> 200, post.updated', async () => {
     const b1 = await makeBossDifficulty({ partyCap: 6 });
     const b2 = await makeBossDifficulty({ partyCap: 6 });
@@ -77,7 +83,7 @@ describe('PATCH /api/posts/:id', () => {
     expect(noZone.statusCode).toBe(400);
     expect(noZone.json().error.code).toBe('VALIDATION');
     for (const body of [
-      { freeTimes: [30], freeTimesZone: null }, { freeTimes: [30], freeTimesZone: 'Mars/Base' }, { freeTimes: [30], freeTimesZone: '+05:30' }, { freeTimes: [168] },
+      { freeTimes: [30], freeTimesZone: null }, { freeTimes: [30], freeTimesZone: 'Mars/Base' }, { freeTimes: [30], freeTimesZone: '+05:30' }, { freeTimes: [336] },
     ]) {
       const res = await patch(p.id, body);
       expect(res.statusCode).toBe(400);

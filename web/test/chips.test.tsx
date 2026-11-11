@@ -121,6 +121,19 @@ describe('MenuChip', () => {
     expect(button).toHaveFocus();
   });
 
+  it('scrolls the active option into view when using the keyboard', () => {
+    const { button } = setup();
+    fireEvent.click(button);
+    const list = screen.getByRole('listbox');
+    const last = screen.getByRole('option', { name: 'Gamma' });
+    Object.defineProperty(list, 'clientHeight', { configurable: true, value: 50 });
+    Object.defineProperty(last, 'offsetTop', { configurable: true, value: 120 });
+    Object.defineProperty(last, 'offsetHeight', { configurable: true, value: 20 });
+    fireEvent.keyDown(list, { key: 'End' });
+    expect(list.scrollTop).toBe(90);
+    expect(list).toHaveFocus();
+  });
+
   it('click on an option selects it', () => {
     const { button, onChange } = setup();
     fireEvent.click(button);

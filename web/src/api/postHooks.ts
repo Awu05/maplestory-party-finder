@@ -11,7 +11,7 @@ export interface PostFilters {
   guildId?: string;
   worldIds?: number[];
   when?: 'any' | '24h' | '7d' | 'flexible';
-  /** Viewer-local hour-of-week (day * 24 + hour, 0 = Sunday): posts whose free times are shown in that cell. */
+  /** Viewer-local half-hour slot (day * 48 + slot, 0 = Sunday). */
   freeAt?: number;
 }
 
@@ -29,24 +29,25 @@ export function boardQueryString(f: PostFilters, now: Date = new Date()): string
   } else if (f.when === 'flexible') {
     p.set('flexible', '1');
   }
-  if (f.freeAt !== undefined) p.set('freeAt', freeAtInstant(f.freeAt, now));
+  if (f.freeAt !== undefined) {
+    p.set('freeAt', freeAtInstant(f.freeAt, now));
+    p.set('freeFor', '30');
+  }
   return p.toString();
 }
 
 /**
- * The instant sent as `freeAt` for a viewer-local hour-of-week: the last minute of its next occurrence.
- * The grid rounds a poster hour down into the viewer cell holding its start, so in half-hour zones the
- * cell's end, not its start, falls in the poster hour shown there.
+ * The instant sent as `freeAt` for a viewer-local half-hour slot: its start.
  */
-export function freeAtInstant(hourOfWeek: number, now: Date = new Date()): string {
-  const start = nextOccurrence(hourOfWeek, browserTimeZone(), now);
-  return new Date(start.getTime() + 59 * 60_000).toISOString();
+export function freeAtInstant(slotOfWeek: number, now: Date = new Date()): string {
+  const start = nextOccurrence(slotOfWeek, browserTimeZone(), now);
+  return start.toISOString();
 }
 
 export function usePosts(filters: PostFilters, opts: { enabled?: boolean } = {}) {
-  // The key holds the freeAt instant, not just the hour-of-week, so a cached result never answers for
+  // The key holds the freeAt instant, not just the half-hour slot, so a cached result never answers for
   // an occurrence that has passed.
-  // One clock read feeds both the key and the request, so they can't disagree at an hour boundary.
+  // One clock read feeds both the key and the request, so they can't disagree at a slot boundary.
   const now = new Date();
   const freeAt = filters.freeAt !== undefined ? freeAtInstant(filters.freeAt, now) : undefined;
   return useQuery({
@@ -61,8 +62,13 @@ export function usePosts(filters: PostFilters, opts: { enabled?: boolean } = {})
   });
 }
 
-export const usePost = (id: string | undefined) =>
-  useQuery({ queryKey: ['posts', 'detail', id], queryFn: () => api<PostDetailDTO>(`/api/posts/${id}`), enabled: !!id });
+export const usePost = (id: string | undefined, opts: { live?: boolean } = {}) =>
+  useQuery({
+    queryKey: ['posts', 'detail', id],
+    queryFn: () => api<PostDetailDTO>(`/api/posts/${id}`),
+    enabled: !!id,
+    refetchInterval: opts.live ? 15_000 : false,
+  });
 
 function useInvalidatePosts() {
   const qc = useQueryClient();
@@ -73,7 +79,7 @@ export interface PostInput {
   type: PostType;
   characterId: string;
   bossDifficultyIds: number[];
-  /** Local hour-of-week slots (day * 24 + hour, 0 = Sunday) in freeTimesZone. */
+  /** Local half-hour slots (day * 48 + slot, 0 = Sunday) in freeTimesZone. */
   freeTimes: number[];
   freeTimesZone: string | null;
   partySize?: number;
@@ -85,7 +91,7 @@ export type UpdatePostInput = Partial<Omit<PostInput, 'minCp'>> & { minCp?: numb
 export function useCreatePost() {
   const invalidate = useInvalidatePosts();
   return useMutation({
-    mutationFn: (input: PostInput) => api<PostDetailDTO>('/api/posts', { method: 'POST', json: input }),
+    mutationFn: (input: PostInput) => api<PostDetailDTO>('/api/posts', { method: 'POST', headers: { 'X-Availability-Version': '2' }, json: input }),
     onSuccess: invalidate,
   });
 }
@@ -93,7 +99,7 @@ export function useCreatePost() {
 export function useUpdatePost(id: string) {
   const invalidate = useInvalidatePosts();
   return useMutation({
-    mutationFn: (input: UpdatePostInput) => api<PostDetailDTO>(`/api/posts/${id}`, { method: 'PATCH', json: input }),
+    mutationFn: (input: UpdatePostInput) => api<PostDetailDTO>(`/api/posts/${id}`, { method: 'PATCH', headers: { 'X-Availability-Version': '2' }, json: input }),
     onSuccess: invalidate,
   });
 }
@@ -122,12 +128,45 @@ export function useRenewPost(id: string) {
   });
 }
 
+export function useReopenPost(id: string) {
+  const invalidate = useInvalidatePosts();
+  return useMutation({
+    mutationFn: () => api<PostDetailDTO>(`/api/posts/${id}/reopen`, { method: 'POST' }),
+    onSuccess: invalidate,
+  });
+}
+
+export function useAnnouncePost(id: string) {
+  const qc = useQueryClient();
+  const invalidate = useInvalidatePosts();
+  return useMutation({
+    mutationFn: () => api<PostDetailDTO>(`/api/posts/${id}/discord-announcement`, { method: 'POST' }),
+    onSuccess: async (post) => {
+      qc.setQueryData(['posts', 'detail', id], post);
+      await invalidate();
+    },
+  });
+}
+
 export function useFinalizeTime(postId: string) {
   const invalidate = useInvalidatePosts();
   return useMutation({
-    mutationFn: (scheduledAt: string) =>
-      api<PostDetailDTO>(`/api/posts/${postId}/final-time`, { method: 'PUT', json: { scheduledAt } }),
+    mutationFn: (input: { scheduledAt: string; repeatWeekly: boolean; timeZone?: string }) =>
+      api<PostDetailDTO>(`/api/posts/${postId}/final-time`, { method: 'PUT', json: input }),
     onSuccess: invalidate,
+  });
+}
+
+export function useMemberAvailability(postId: string) {
+  const qc = useQueryClient();
+  const invalidate = useInvalidatePosts();
+  return useMutation({
+    mutationFn: ({ memberId, ...json }: { memberId: string; freeTimes: number[]; freeTimesZone: string | null }) =>
+      api<PostDetailDTO>(`/api/posts/${postId}/members/${memberId}/free-times`, { method: 'PUT', json }),
+    onSuccess: async (post) => {
+      qc.setQueryData(['posts', 'detail', postId], post);
+      await invalidate();
+    },
   });
 }
 

@@ -18,6 +18,8 @@ const FRIENDLY: Record<string, string> = {
   WRONG_WORLD: "That character isn't on this post's world.",
   NOT_ALLOWED: "You can't do that.",
   POST_CLOSED: 'This post is closed.',
+  POST_OPEN: 'This post is already open.',
+  CHARACTER_UNAVAILABLE: 'The posting character is no longer available.',
   POST_FULL: 'This party is already full.',
   ALREADY_MEMBER: 'That character is already in the party.',
   ALREADY_PENDING: 'There is already a pending request for that character.',
@@ -27,6 +29,8 @@ const FRIENDLY: Record<string, string> = {
   PARTY_TOO_SMALL: "Party size can't be smaller than the current number of members.",
   HAS_MEMBERS: 'Others have already joined, so this can no longer be changed.',
   NO_WEBHOOK: 'This guild has no webhook set.',
+  ANNOUNCEMENT_COOLDOWN: 'Discord notifications can be sent once every 24 hours.',
+  NO_ANNOUNCEMENT_WEBHOOK: 'No active Discord notification webhook is configured for this world.',
   CANNOT_BAN_ADMIN: "Admins can't be banned.",
   WRONG_POST_TYPE: "That isn't allowed for this type of post.",
 };

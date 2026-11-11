@@ -30,7 +30,7 @@ const poster: PartyMemberDTO = {
   joinedAt: '2026-11-09T00:00:00Z',
   character,
   snapshot: { ign: 'Lily', jobName: 'Bishop', level: 280, imageUrl: 'http://img/lily.png', worldName: 'Kronos', guildName: 'Maple Guild' },
-  isMine: false,
+  freeTimes: [], freeTimesZone: null, isMine: false,
 };
 
 const p1: PostSummaryDTO = {
@@ -42,7 +42,7 @@ const p1: PostSummaryDTO = {
   bosses: [{ bossDifficultyId: 7, bossName: 'Lucid', difficulty: 'Hard' }],
   scheduledAt: null,
   freeTimes: [],
-  freeTimesZone: null,
+  weeklyTimeZone: null, freeTimesZone: null,
   expiresAt: '2026-11-16T00:00:00Z',
   createdAt: '2026-11-09T00:00:00Z',
   partySize: 4,
@@ -341,7 +341,7 @@ describe('Board list', () => {
     const release = holdRequest(mockApi({ ...base, '/api/posts': [p1, p2], '/api/posts?type=lfp': [p2] }), '/api/posts?type=lfp');
     renderBoard();
     await within(await screen.findByRole('listbox', { name: 'Posts' })).findAllByRole('option');
-    fireEvent.click(screen.getByRole('radio', { name: 'LFP' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Looking for party' }));
     const list = screen.getByRole('listbox', { name: 'Posts' });
     expect(list).toHaveAttribute('aria-busy', 'true'); // refetch indicator, rows kept
     expect(within(list).getAllByRole('option')).toHaveLength(2);
@@ -434,12 +434,18 @@ describe('Board filters (menus)', () => {
     await waitFor(() => expect(postsCalls(fetchMock)).toContain('/api/posts?guildId=g1'));
   });
 
-  it('wraps each filter label with its chips in a group', async () => {
+  it('groups related filters under clear accessible headings', async () => {
     mockApi({ ...base, '/api/posts': [] });
     renderBoard();
-    const type = await screen.findByRole('radiogroup', { name: 'Type' });
-    expect(type.closest('.board-filters__group')).toHaveTextContent(/^Type/);
-    const worlds = screen.getByRole('group', { name: 'Worlds' });
-    expect(worlds.closest('.board-filters__group')).toHaveTextContent(/^Worlds/);
+    const party = await screen.findByRole('group', { name: 'Party type' });
+    expect(within(party).getByRole('radiogroup', { name: 'Type' })).toBeInTheDocument();
+    const location = screen.getByRole('group', { name: 'Location' });
+    expect(within(location).getByRole('group', { name: 'Worlds' })).toBeInTheDocument();
+    expect(within(location).getByRole('button', { name: /^Guild/ })).toBeInTheDocument();
+    const boss = screen.getByRole('group', { name: 'Boss' });
+    expect(within(boss).getByRole('button', { name: 'Difficulty' })).toBeDisabled();
+    const availability = screen.getByRole('group', { name: 'Availability' });
+    expect(within(availability).getByRole('button', { name: 'Day' })).toBeInTheDocument();
+    expect(within(availability).getByRole('button', { name: 'Time' })).toBeDisabled();
   });
 });

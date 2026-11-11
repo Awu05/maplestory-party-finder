@@ -16,7 +16,7 @@ const poster = {
   joinedAt: '2026-11-09T00:00:00Z',
   character: null,
   snapshot: { ign: 'Lily', jobName: 'Bishop', level: 280, imageUrl: 'http://i/x.png', worldName: 'Kronos', guildName: 'G' },
-  isMine: true,
+  freeTimes: [], freeTimesZone: null, isMine: true,
 } as PostDetailDTO['poster'];
 
 const post = (over: Partial<PostDetailDTO> = {}): PostDetailDTO => ({
@@ -28,7 +28,7 @@ const post = (over: Partial<PostDetailDTO> = {}): PostDetailDTO => ({
   bosses: [{ bossDifficultyId: 7, bossName: 'Lucid', difficulty: 'Hard' }],
   scheduledAt: null,
   freeTimes: [],
-  freeTimesZone: null,
+  weeklyTimeZone: null, freeTimesZone: null,
   expiresAt: '2026-12-02T00:00:00Z',
   createdAt: '2026-11-09T00:00:00Z',
   partySize: 4,
@@ -93,6 +93,30 @@ describe('Finalize dialog', () => {
     return { fetchMock, btn };
   };
 
+  it('can enable weekly reminders with the selected time zone', async () => {
+    const put = vi.fn((_init?: RequestInit) => post());
+    await open({}, { 'PUT /api/posts/p1/final-time': put });
+    const repeat = screen.getByRole('checkbox', { name: 'Repeat weekly' });
+    expect(repeat).not.toBeChecked();
+    fireEvent.change(screen.getByLabelText('Final time'), { target: { value: '2026-11-20T19:30' } });
+    fireEvent.click(repeat);
+    expect(screen.getByText(/America\/New_York/)).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(put).toHaveBeenCalledTimes(1));
+    expect(JSON.parse(String(put.mock.calls[0]?.[0]?.body))).toMatchObject({ repeatWeekly: true, timeZone: 'America/New_York' });
+  });
+
+  it('loads an existing weekly setting and lets the owner disable it', async () => {
+    const put = vi.fn((_init?: RequestInit) => post());
+    await open({ weeklyTimeZone: 'America/New_York', scheduledAt: '2026-11-20T00:30:00Z' }, { 'PUT /api/posts/p1/final-time': put });
+    const repeat = screen.getByRole('checkbox', { name: 'Repeat weekly' });
+    expect(repeat).toBeChecked();
+    fireEvent.click(repeat);
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(put).toHaveBeenCalledTimes(1));
+    expect(JSON.parse(String(put.mock.calls[0]?.[0]?.body))).toMatchObject({ repeatWeekly: false });
+  });
+
   it('limits the input to now through 30 days ahead, in local time at minute precision', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-11-10T15:00:30Z'));
@@ -126,7 +150,7 @@ describe('Finalize dialog', () => {
     fireEvent.change(await screen.findByLabelText('Final time'), { target: { value: '2026-12-01T20:00' } });
     const before = detailGets(fetchMock);
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(bodies).toEqual([{ scheduledAt: localInputToUtcIso('2026-12-01T20:00') }]));
+    await waitFor(() => expect(bodies).toEqual([{ scheduledAt: localInputToUtcIso('2026-12-01T20:00'), repeatWeekly: false }]));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     await waitFor(() => expect(detailGets(fetchMock)).toBeGreaterThan(before));
   });

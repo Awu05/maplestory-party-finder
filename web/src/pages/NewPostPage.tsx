@@ -1,7 +1,7 @@
-import { useId, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { MAX_POST_BOSSES, POST_TYPE_LABELS, freeSlotsForViewer, maxPartySizeFor } from '@pf/shared';
+import { MAX_POST_BOSSES, POST_TYPE_LABELS, freeSlotCoverageForViewer, freeSlotsForViewer, maxPartySizeFor } from '@pf/shared';
 import type { BossDTO, CharacterDTO, PostDetailDTO, PostType } from '@pf/shared';
 import { useBosses, useCharacters, useMe } from '../api/hooks';
 import { useCreatePost, usePost, useUpdatePost } from '../api/postHooks';
@@ -32,14 +32,14 @@ function sizeRange(bosses: BossDTO[], bossIds: number[], lowest: number) {
 
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
 
-function valuesFromPost(post: PostDetailDTO): Values {
+function valuesFromPost(post: PostDetailDTO, editingZone: string): Values {
   return {
     type: post.type,
     characterId: post.poster.characterId ?? '',
     bossIds: post.bosses.map((b) => b.bossDifficultyId),
-    // Shown in the browser's zone; saving re-stores the grid in that zone.
+    // Use the chosen editing zone, preserving quarter-hour-offset selections when needed.
     freeTimes: post.freeTimesZone
-      ? freeSlotsForViewer(post.freeTimes, post.freeTimesZone, browserTimeZone(), new Date())
+      ? freeSlotsForViewer(post.freeTimes, post.freeTimesZone, editingZone, new Date())
       : [],
     partySize: post.partySize ?? DEFAULT_PARTY_SIZE,
     minCp: post.minCp === null ? '' : post.minCp.toLocaleString('en-US'),
@@ -56,7 +56,7 @@ function parseCp(text: string): number | null {
 
 const sameSet = (a: number[], b: number[]) => a.length === b.length && a.every((x) => b.includes(x));
 
-function changedFields(v: Values, orig: Values): UpdatePostInput {
+function changedFields(v: Values, orig: Values, editingZone: string): UpdatePostInput {
   const out: UpdatePostInput = {};
   if (v.type !== orig.type) out.type = v.type;
   if (v.characterId !== orig.characterId) out.characterId = v.characterId;
@@ -75,7 +75,7 @@ function changedFields(v: Values, orig: Values): UpdatePostInput {
   if (v.note !== orig.note) out.note = v.note;
   if (!sameSet(v.freeTimes, orig.freeTimes)) {
     out.freeTimes = v.freeTimes;
-    out.freeTimesZone = v.freeTimes.length > 0 ? browserTimeZone() : null;
+    out.freeTimesZone = v.freeTimes.length > 0 ? editingZone : null;
   }
   return out;
 }
@@ -100,7 +100,15 @@ function PostForm({ characters, bosses, post }: FormProps) {
   const navigate = useNavigate();
   const create = useCreatePost();
   const update = useUpdatePost(post?.id ?? '');
-  const orig = post ? valuesFromPost(post) : EMPTY;
+  const browserZone = browserTimeZone();
+  const hasPartialSlots = useMemo(() => {
+    if (!post?.freeTimesZone) return false;
+    const coverage = [...freeSlotCoverageForViewer(post.freeTimes, post.freeTimesZone, browserZone, new Date()).values()];
+    const quarters = coverage.reduce((sum, mask) => sum + Number(Boolean(mask & 1)) + Number(Boolean(mask & 2)), 0);
+    return coverage.some((mask) => mask !== 3) || quarters !== post.freeTimes.length * 2;
+  }, [post?.freeTimes, post?.freeTimesZone, browserZone]);
+  const editingZone = hasPartialSlots ? post!.freeTimesZone! : browserZone;
+  const orig = post ? valuesFromPost(post, editingZone) : EMPTY;
   const [v, setV] = useState<Values>(orig);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -129,7 +137,7 @@ function PostForm({ characters, bosses, post }: FormProps) {
     setSaving(true);
     try {
       if (post) {
-        const changes = changedFields(v, orig);
+        const changes = changedFields(v, orig, editingZone);
         if (Object.keys(changes).length === 0) {
           setSaving(false);
           return setError('No changes to save.');
@@ -156,6 +164,7 @@ function PostForm({ characters, bosses, post }: FormProps) {
 
   return (
     <form className="char-form" onSubmit={submit}>
+      {!post && <p className="post-form__expiry">Posts without a finalized time expire 7 days after creation. You can renew your post for 7 days from the time you renew it.</p>}
       <div>
         <div role="group" aria-label="Post type" className="actions">
           {(['recruiting', 'lfp'] as const).map((t) => (
@@ -182,6 +191,7 @@ function PostForm({ characters, bosses, post }: FormProps) {
       <div>
         <h3>When you're free</h3>
         <small id={freeHintId}>Leave empty if you're flexible</small>
+        {editingZone !== browserZone && <p><small>Editing availability in {editingZone} to preserve your selected times.</small></p>}
         <FreeTimeGrid
           label="When you're free"
           describedBy={freeHintId}

@@ -18,7 +18,7 @@ export function CharacterPicker({ characters, worldId, post, myParties, onPick, 
   const memberIds = new Set(post.members.map((m) => m.characterId));
   const pendingIds = new Set(post.myPending.map((r) => r.character.id));
   const activeParties = myParties.filter(
-    (party) => !party.deleted && (party.status === 'open' || party.status === 'full'),
+    (party) => !party.deleted && (party.status === 'open' || party.status === 'full' || !!party.recruitmentClosed),
   );
 
   return (

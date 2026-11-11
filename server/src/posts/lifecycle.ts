@@ -19,7 +19,7 @@ export async function closeLivePosts(
     'posterUserId' in owner ? Prisma.sql`"posterUserId" = ${owner.posterUserId}` : Prisma.sql`"posterCharacterId" = ${owner.posterCharacterId}`;
   const locked = await tx.$queryRaw<{ id: string }[]>`
     SELECT id FROM "Post"
-    WHERE ${ownerSql} AND "deletedAt" IS NULL AND status IN ('open', 'full')
+    WHERE ${ownerSql} AND "deletedAt" IS NULL AND (status IN ('open', 'full') OR (status = 'closed' AND "closedReason" = 'finalized'))
     ORDER BY (type = 'lfp'), id
     FOR UPDATE`;
   const closedPostIds = locked.map((p) => p.id);

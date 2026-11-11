@@ -59,6 +59,7 @@ model Guild {
   name              String            @unique
   iconUrl           String?
   webhookUrl        String?
+  partyForumWebhookUrl String?
   bossRoleIds       Json              @default("{}")
   active            Boolean           @default(true)
   worlds            GuildWorld[]
@@ -178,7 +179,13 @@ model Post {
   guild             Guild        @relation(fields: [guildId], references: [id])
   /// The final time; null until the poster finalizes it.
   scheduledAt       DateTime?
-  /// Free hours as local hour-of-week (day * 24 + hour, 0 = Sunday) in freeTimesZone.
+  weeklyTimeZone    String?
+  weeklyAnchorAt    DateTime?
+  /// One forum thread is requested for this party, even if its time changes.
+  forumThreadRequested Boolean @default(false)
+  /// Last manually requested Discord announcement; creation starts the first cooldown.
+  lastDiscordAnnouncementAt DateTime?
+  /// Half-hour slots (day * 48 + slot, 0 = Sunday) in freeTimesZone.
   freeTimes         Int[]        @default([])
   /// IANA zone of freeTimes; null when freeTimes is empty.
   freeTimesZone     String?
@@ -187,7 +194,7 @@ model Post {
   minCp             BigInt?
   note              String       @default("")
   status            PostStatus   @default(open)
-  /// manual | full | lfp_matched | character_deleted
+  /// manual | finalized | full | lfp_matched | character_deleted
   closedReason      String?
   deletedAt         DateTime?
   createdAt         DateTime     @default(now())
@@ -197,6 +204,7 @@ model Post {
   lfpInvites        Request[]    @relation("RequestLfpPost")
 
   @@index([status, expiresAt])
+  @@index([weeklyTimeZone, scheduledAt])
 }
 
 model PostBoss {
@@ -221,6 +229,10 @@ model PostMember {
   /// MemberSnapshot
   snapshot    Json
   joinedAt    DateTime   @default(now())
+  freeTimes   Int[]      @default([])
+  freeTimesZone String?
+  /// Last known guild for routing reminders if this member's character is deleted.
+  reminderGuildId String?
 
   @@unique([postId, characterId])
   @@index([userId])

@@ -29,7 +29,7 @@ const member = (id: string, ign: string, role: 'poster' | 'member'): PartyMember
   joinedAt: '2026-11-09T00:00:00Z',
   character: character(`c-${id}`, ign),
   snapshot: { ign, jobName: 'Bishop', level: 280, imageUrl: `http://img/${ign}.png`, worldName: 'Kronos', guildName: 'Maple Guild' },
-  isMine: false,
+  freeTimes: [], freeTimesZone: null, isMine: false,
 });
 
 const lily = member('m1', 'Lily', 'poster');
@@ -44,7 +44,7 @@ const p1: PostSummaryDTO = {
   bosses: [{ bossDifficultyId: 7, bossName: 'Lucid', difficulty: 'Hard' }],
   scheduledAt: null,
   freeTimes: [],
-  freeTimesZone: null,
+  weeklyTimeZone: null, freeTimesZone: null,
   expiresAt: '2026-11-16T00:00:00Z',
   createdAt: '2026-11-09T00:00:00Z',
   partySize: null,
@@ -230,7 +230,7 @@ describe('Board list refetch indicator', () => {
     const list = await screen.findByRole('listbox', { name: 'Posts' });
     await within(list).findAllByRole('option');
     expect(list).not.toHaveAttribute('aria-busy');
-    fireEvent.click(screen.getByRole('radio', { name: 'LFP' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Looking for party' }));
     await waitFor(() => expect(screen.getByRole('listbox', { name: 'Posts' })).toHaveAttribute('aria-busy', 'true'));
     release();
     await waitFor(() => expect(screen.getByRole('listbox', { name: 'Posts' })).not.toHaveAttribute('aria-busy'));

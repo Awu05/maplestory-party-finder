@@ -41,7 +41,7 @@ export type GuildDTO = {
   active: boolean;
 };
 
-export type AdminGuildDTO = GuildDTO & { webhookUrl: string | null; bossRoleIds: Record<string, string> };
+export type AdminGuildDTO = GuildDTO & { webhookUrl: string | null; partyForumWebhookUrl?: string | null; bossRoleIds: Record<string, string> };
 
 export type WorldDTO = {
   id: number;
@@ -79,16 +79,22 @@ export interface PartyMemberDTO {
   character: CharacterDTO | null; // null once the character is deleted
   snapshot: MemberSnapshot;
   isMine: boolean;
+  /** Member availability; the poster's availability comes from the post. */
+  freeTimes: number[];
+  freeTimesZone: string | null;
 }
 
 export interface PostSummaryDTO {
   id: string; type: PostType; world: { id: number; name: string }; guild: { id: string; name: string };
   poster: PartyMemberDTO; bosses: PostBossDTO[];
   scheduledAt: string | null; expiresAt: string; createdAt: string;
-  /** Local hour-of-week slots (day * 24 + hour, 0 = Sunday) in freeTimesZone; scheduledAt is the final time. */
+  weeklyTimeZone: string | null;
+  /** Local half-hour slots (day * 48 + slot, 0 = Sunday) in freeTimesZone; scheduledAt is the final time. */
   freeTimes: number[]; freeTimesZone: string | null;
   partySize: number | null; memberCount: number; minCp: number | null; note: string;
   status: PostStatus; // effective
+  /** Recruitment is closed, but the scheduled party is still active. */
+  recruitmentClosed?: boolean;
   deleted: boolean; isPoster: boolean;
 }
 
@@ -106,6 +112,8 @@ export interface PostDetailDTO extends PostSummaryDTO {
   receivedInvites: RequestWithPostDTO[]; // LFP post only: pending invites answering it, to the viewer's characters
   sentInvitesToThis: RequestWithPostDTO[]; // LFP post only: pending invites answering it that the viewer sent
   canRenew: boolean; // poster only: flexible, not closed or deleted (expired still renews)
+  /** Earliest time the owner can request another Discord announcement. */
+  discordAnnouncementAvailableAt?: string | null;
 }
 
 export interface RequestWithPostDTO extends RequestDTO { post: PostSummaryDTO }

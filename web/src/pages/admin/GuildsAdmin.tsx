@@ -8,6 +8,7 @@ interface Draft {
   name: string;
   iconUrl: string;
   webhookUrl: string;
+  partyForumWebhookUrl: string;
   worldIds: number[];
   bossRoleIds: Record<string, string>;
 }
@@ -29,7 +30,7 @@ function TestWebhookButton({ guild }: { guild: AdminGuildDTO }) {
 
 const ROLE_ID = /^[1-9][0-9]{16,19}$/;
 
-const blank: Draft = { id: null, name: '', iconUrl: '', webhookUrl: '', worldIds: [], bossRoleIds: {} };
+const blank: Draft = { id: null, name: '', iconUrl: '', webhookUrl: '', partyForumWebhookUrl: '', worldIds: [], bossRoleIds: {} };
 
 export function GuildsAdmin() {
   const guilds = useAdminGuilds();
@@ -39,6 +40,7 @@ export function GuildsAdmin() {
   const update = useUpdateGuild();
   const [draft, setDraft] = useState<Draft | null>(null);
   const [showHook, setShowHook] = useState(false);
+  const [showForumHook, setShowForumHook] = useState(false);
   const [formError, setFormError] = useState('');
   const mutation = draft?.id ? update : create;
 
@@ -47,11 +49,12 @@ export function GuildsAdmin() {
     create.reset();
     update.reset();
     setShowHook(false);
+    setShowForumHook(false);
     setFormError('');
     setDraft(d);
   };
   const edit = (g: AdminGuildDTO) =>
-    open({ id: g.id, name: g.name, iconUrl: g.iconUrl ?? '', webhookUrl: g.webhookUrl ?? '', worldIds: g.worldIds, bossRoleIds: g.bossRoleIds ?? {} });
+    open({ id: g.id, name: g.name, iconUrl: g.iconUrl ?? '', webhookUrl: g.webhookUrl ?? '', partyForumWebhookUrl: g.partyForumWebhookUrl ?? '', worldIds: g.worldIds, bossRoleIds: g.bossRoleIds ?? {} });
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -68,6 +71,7 @@ export function GuildsAdmin() {
       name: draft.name,
       iconUrl: draft.iconUrl.trim() || null,
       webhookUrl: draft.webhookUrl.trim() || null,
+      ...(draft.partyForumWebhookUrl.trim() || draft.id ? { partyForumWebhookUrl: draft.partyForumWebhookUrl.trim() || null } : {}),
       worldIds: draft.worldIds,
       ...(bosses.data ? { bossRoleIds: Object.fromEntries(bosses.data.flatMap((boss) => {
         const roleId = draft.bossRoleIds[boss.id]?.trim();
@@ -121,9 +125,9 @@ export function GuildsAdmin() {
             Icon URL
             <input value={draft.iconUrl} onChange={(e) => setDraft({ ...draft, iconUrl: e.target.value })} />
           </label>
-          <div className="admin__row">
+          <div className="admin__webhook-row">
             <label>
-              Webhook URL
+              Boss channel webhook URL
               <input
                 type={showHook ? 'text' : 'password'}
                 autoComplete="off"
@@ -131,8 +135,16 @@ export function GuildsAdmin() {
                 onChange={(e) => setDraft({ ...draft, webhookUrl: e.target.value })}
               />
             </label>
-            <button type="button" className="btn btn--secondary" onClick={() => setShowHook((s) => !s)}>{showHook ? 'Hide' : 'Show'}</button>
+            <button type="button" className="btn btn--secondary" aria-label={`${showHook ? 'Hide' : 'Show'} boss channel webhook URL`} aria-pressed={showHook} onClick={() => setShowHook((s) => !s)}>{showHook ? 'Hide' : 'Show'}</button>
           </div>
+          <div className="admin__webhook-row">
+            <label>
+              Party forum webhook URL
+              <input type={showForumHook ? 'text' : 'password'} autoComplete="off" value={draft.partyForumWebhookUrl} onChange={(e) => setDraft({ ...draft, partyForumWebhookUrl: e.target.value })} />
+            </label>
+            <button type="button" className="btn btn--secondary" aria-label={`${showForumHook ? 'Hide' : 'Show'} party forum URL`} aria-pressed={showForumHook} onClick={() => setShowForumHook((s) => !s)}>{showForumHook ? 'Hide' : 'Show'}</button>
+          </div>
+          <small>Use a webhook for the Discord forum where finalized parties should get a thread.</small>
           <details className="admin__boss-roles">
             <summary>Boss role pings</summary>
             <p>New posts ping the roles for their bosses in this Discord server. Paste a role ID for each boss, or leave blank for no ping. All difficulties use the same role.</p>

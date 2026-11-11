@@ -30,7 +30,7 @@ const member = (id: string, ign: string, role: 'poster' | 'member'): PartyMember
   joinedAt: '2026-11-09T00:00:00Z',
   character: character(`c-${id}`, ign),
   snapshot: { ign, jobName: 'Bishop', level: 280, imageUrl: `http://img/${ign}.png`, worldName: 'Kronos', guildName: 'Maple Guild' },
-  isMine: false,
+  freeTimes: [], freeTimesZone: null, isMine: false,
 });
 
 const post = (id: string, boss: string, over: Partial<PostDetailDTO> = {}): PostDetailDTO => {
@@ -44,7 +44,7 @@ const post = (id: string, boss: string, over: Partial<PostDetailDTO> = {}): Post
     bosses: [{ bossDifficultyId: 7, bossName: boss, difficulty: 'Hard' }],
     scheduledAt: '2026-12-01T20:00:00Z',
     freeTimes: [],
-    freeTimesZone: null,
+    weeklyTimeZone: null, freeTimesZone: null,
     expiresAt: '2026-12-02T00:00:00Z',
     createdAt: '2026-11-09T00:00:00Z',
     partySize: 4,
@@ -111,6 +111,7 @@ describe('MyPartiesPage', () => {
         post('p2', 'Will', { status: 'full' }),
         post('p3', 'Zakum', { status: 'closed' }),
         post('p4', 'Hilla', { deleted: true }),
+        post('p5', 'Kaling', { status: 'closed', recruitmentClosed: true }),
       ],
     });
     const upcoming = await screen.findByRole('region', { name: 'Upcoming' });
@@ -118,6 +119,8 @@ describe('MyPartiesPage', () => {
     expect(within(upcoming).getAllByText(/Will/).length).toBeGreaterThan(0);
     expect(within(upcoming).getByText('Open')).toBeInTheDocument();
     expect(within(upcoming).getByText('Full')).toBeInTheDocument();
+    expect(within(upcoming).getAllByText(/Kaling/).length).toBeGreaterThan(0);
+    expect(within(upcoming).getByText('Recruitment closed')).toBeInTheDocument();
     expect(within(upcoming).getByText('Memberp1')).toBeInTheDocument();
     const past = screen.getByRole('region', { name: 'Past' });
     expect(within(past).getAllByText(/Zakum/).length).toBeGreaterThan(0);

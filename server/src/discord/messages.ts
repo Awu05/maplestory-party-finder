@@ -6,6 +6,21 @@ export type WebhookPayload = {
   embeds?: object[];
   allowed_mentions: { parse: string[]; users?: string[]; roles?: string[] };
   username?: string;
+  thread_name?: string;
+  /** Stored with a queued weekly reminder (stripped before sending) to check it and rebuild its message. */
+  _weekly?: WeeklyReminderMeta;
+};
+
+/** The parts of a post a weekly reminder shows. */
+export type WeeklyReminderPost = Pick<PostSummaryDTO, 'id' | 'scheduledAt'> & { bosses: Pick<PostBossDTO, 'bossName' | 'difficulty'>[] };
+
+export type WeeklyReminderMeta = {
+  nextAt: string;
+  anchorAt: string;
+  timeZone: string;
+  /** Absent on rows queued before the message was rebuilt at send time. */
+  post?: WeeklyReminderPost;
+  webOrigin?: string;
 };
 
 const ZWSP = '​';
@@ -25,9 +40,9 @@ export function neutralize(text: string): string {
 
 const clip = (s: string, max: number): string => (s.length > max ? s.slice(0, max - 1) + '…' : s);
 
-export const bossLabel = (b: PostBossDTO): string => `${b.difficulty} ${b.bossName}`;
-const bossesLabel = (post: PostSummaryDTO): string => post.bosses.map(bossLabel).join(' + ');
-const postLink = (post: PostSummaryDTO, webOrigin: string): string => `${webOrigin}/posts/${post.id}`;
+export const bossLabel = (b: Pick<PostBossDTO, 'bossName' | 'difficulty'>): string => `${b.difficulty} ${b.bossName}`;
+const bossesLabel = (post: Pick<WeeklyReminderPost, 'bosses'>): string => post.bosses.map(bossLabel).join(' + ');
+const postLink = (post: Pick<PostSummaryDTO, 'id'>, webOrigin: string): string => `${webOrigin}/posts/${post.id}`;
 
 export function discordTime(iso: string | null): string {
   if (!iso) return 'Flexible';
@@ -116,4 +131,37 @@ export function buildTimeSetPing(args: {
 
 export function buildTestMessage(guildName: string): WebhookPayload {
   return { content: `✅ Party Finder is connected to ${neutralize(guildName)}.`, allowed_mentions: { parse: [] } };
+}
+
+/** Thread title and opening message for a finalized party. */
+export function buildPartyThread(post: PostSummaryDTO, webOrigin: string, members: { ign: string; discordId: string }[] = []): { name: string; message: WebhookPayload } {
+  const bosses = clip(neutralize(bossesLabel(post)), 700);
+  const poster = clip(neutralize(post.poster.snapshot.ign), 100);
+  const roster = members.filter((member) => /^[1-9]\d{16,19}$/.test(member.discordId))
+    .map((member) => `• ${clip(neutralize(member.ign), 50)}: <@${member.discordId}> (\`${member.discordId}\`)`).join('\n');
+  return {
+    name: clip(`${bosses} — ${poster}`, 100),
+    message: {
+      content: `**${bosses}**\nHosted by ${poster} · ${clip(neutralize(post.world.name), 100)}\nTime: ${discordTime(post.scheduledAt)}\nMembers:\n${roster || 'No Discord IDs available'}\nParty details: ${postLink(post, webOrigin)}`,
+      allowed_mentions: { parse: [] },
+    },
+  };
+}
+
+/** Just what a weekly reminder needs from the post, so the outbox can rebuild it at send time. */
+export function weeklyReminderPost(post: PostSummaryDTO): WeeklyReminderPost {
+  return { id: post.id, scheduledAt: post.scheduledAt, bosses: post.bosses.map((b) => ({ bossName: b.bossName, difficulty: b.difficulty })) };
+}
+
+export function buildWeeklyReminder(args: {
+  recipientDiscordIds: string[];
+  post: WeeklyReminderPost;
+  webOrigin: string;
+}): WebhookPayload {
+  const users = [...new Set(args.recipientDiscordIds)];
+  const text = `Weekly party reminder: ${neutralize(bossesLabel(args.post))} is starting now (${discordTime(args.post.scheduledAt)}) → ${postLink(args.post, args.webOrigin)}`;
+  return {
+    content: [...users.map((id) => `<@${id}>`), text].join(' '),
+    allowed_mentions: { parse: [], users },
+  };
 }

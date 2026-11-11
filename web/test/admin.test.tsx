@@ -20,6 +20,23 @@ function body(init?: RequestInit) {
 }
 
 describe('admin pages', () => {
+  it('saves a masked party forum webhook for a guild', async () => {
+    const patch = vi.fn((_init?: RequestInit) => ({}));
+    mockApi({
+      '/api/admin/guilds': [{ id: 'g1', name: 'G', iconUrl: null, worldIds: [1], active: true, webhookUrl: null, partyForumWebhookUrl: null, bossRoleIds: {} }],
+      '/api/worlds?all=1': worlds,
+      '/api/bosses': [],
+      'PATCH /api/admin/guilds/g1': patch,
+    });
+    renderWithProviders(<GuildsAdmin />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit G' }));
+    const input = screen.getByLabelText('Party forum webhook URL');
+    expect(input).toHaveAttribute('type', 'password');
+    fireEvent.change(input, { target: { value: 'https://discord.com/api/webhooks/123/forum' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save guild' }));
+    await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
+    expect(body(patch.mock.calls[0][0]).partyForumWebhookUrl).toBe('https://discord.com/api/webhooks/123/forum');
+  });
   it('edits and clears boss role mappings for a guild', async () => {
     let guild = { id: 'g1', name: 'G', iconUrl: null, worldIds: [1], active: true, webhookUrl: null, bossRoleIds: { '7': '111111111111111111' } as Record<string, string> };
     const patch = vi.fn((init?: RequestInit) => {
@@ -115,9 +132,17 @@ describe('admin pages', () => {
       type: async (el: Element, v: string) => void fireEvent.change(el, { target: { value: v } }),
     };
     await u.click(await screen.findByRole('button', { name: 'Edit G' }));
-    const input = screen.getByLabelText('Webhook URL');
+    const input = screen.getByLabelText('Boss channel webhook URL');
+    const forum = screen.getByLabelText('Party forum webhook URL');
     expect(input).toHaveAttribute('type', 'password');
-    await u.click(screen.getByRole('button', { name: 'Show' }));
+    expect(forum).toHaveAttribute('type', 'password');
+    await u.click(screen.getByRole('button', { name: 'Show boss channel webhook URL' }));
+    expect(input).toHaveAttribute('type', 'text');
+    expect(forum).toHaveAttribute('type', 'password');
+    await u.click(screen.getByRole('button', { name: 'Show party forum URL' }));
+    expect(forum).toHaveAttribute('type', 'text');
+    await u.click(screen.getByRole('button', { name: 'Hide party forum URL' }));
+    expect(forum).toHaveAttribute('type', 'password');
     expect(input).toHaveAttribute('type', 'text');
     expect(screen.queryAllByText(/discord\.com\/api\/webhooks/)).toHaveLength(0);
   });

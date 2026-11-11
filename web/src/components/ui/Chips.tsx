@@ -122,6 +122,17 @@ export function MenuChip({
     if (open) listRef.current?.focus({ preventScroll: true }); // a focus scroll would close the menu
   }, [open]);
 
+  // aria-activedescendant keeps focus on the list, so scroll the active option ourselves.
+  useEffect(() => {
+    const list = listRef.current;
+    const option = list?.children[current] as HTMLElement | undefined;
+    if (!open || !list || !option || !list.clientHeight) return;
+    if (option.offsetTop < list.scrollTop) list.scrollTop = option.offsetTop;
+    else if (option.offsetTop + option.offsetHeight > list.scrollTop + list.clientHeight) {
+      list.scrollTop = option.offsetTop + option.offsetHeight - list.clientHeight;
+    }
+  }, [open, current]);
+
   // When the options change, follow the selected value if it is still listed, else clamp.
   useEffect(() => {
     const selected = items.findIndex((o) => o.value === value);

@@ -155,6 +155,64 @@ describe('renew', () => {
   });
 });
 
+describe('reopen', () => {
+  it('reopens a finalized or past party, preserves members, and clears its old schedule and reminders', async () => {
+    const p = await makePost({ posterUserId, status: 'closed', closedReason: 'finalized', scheduledAt: new Date(Date.now() - 86_400_000), expiresAt: new Date(Date.now() - 1000), weeklyTimeZone: 'UTC', weeklyAnchorAt: new Date(Date.now() - 86_400_000) });
+    await addMember(p.id, (await makeCharacter({ worldId: p.worldId, guildId: p.guildId })).id);
+    const pending = await pendingRequest(p.id);
+    const before = Date.now();
+    const response = await call('POST', `/api/posts/${p.id}/reopen`, posterCookie);
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ status: 'open', memberCount: 2, scheduledAt: null, weeklyTimeZone: null });
+    expect(new Date(response.json().expiresAt).getTime()).toBeGreaterThanOrEqual(before + FLEXIBLE_TTL_MS);
+    expect((await prisma.post.findUniqueOrThrow({ where: { id: p.id } })).weeklyAnchorAt).toBeNull();
+    expect((await prisma.request.findUniqueOrThrow({ where: { id: pending.id } })).status).toBe('declined');
+    expect(events.events).toContainEqual({ type: 'post.reopened', postId: p.id });
+    expect((await call('GET', '/api/posts')).json().map((post: { id: string }) => post.id)).toContain(p.id);
+  });
+
+  it('reopens full parties as full without putting them on the board', async () => {
+    const p = await makePost({ posterUserId, status: 'closed', closedReason: 'manual', partySize: 2 });
+    const member = await addMember(p.id, (await makeCharacter({ worldId: p.worldId, guildId: p.guildId })).id);
+    const response = await call('POST', `/api/posts/${p.id}/reopen`, posterCookie);
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ status: 'full', memberCount: 2, scheduledAt: null });
+    expect((await call('GET', '/api/posts')).json()).toHaveLength(0);
+    expect((await call('DELETE', `/api/posts/${p.id}/members/${member.id}`, posterCookie)).statusCode).toBe(200);
+    expect((await call('GET', '/api/posts')).json().map((post: { id: string }) => post.id)).toContain(p.id);
+  });
+
+  it('rejects non-owners, deleted posts, and posts that are already open', async () => {
+    const p = await makePost({ posterUserId, status: 'closed', closedReason: 'manual' });
+    const other = await loginAs(app, 'other-1', 'other');
+    expect((await call('POST', `/api/posts/${p.id}/reopen`, other)).statusCode).toBe(403);
+    const deleted = await makePost({ posterUserId, deletedAt: new Date() });
+    expect((await call('POST', `/api/posts/${deleted.id}/reopen`, posterCookie)).statusCode).toBe(404);
+    const open = await makePost({ posterUserId, scheduledAt: null });
+    expect((await call('POST', `/api/posts/${open.id}/reopen`, posterCookie)).statusCode).toBe(409);
+  });
+
+  it('refuses to reopen a manually closed LFP post while its character is in another live party', async () => {
+    const lfp = await makePost({ posterUserId, type: 'lfp', partySize: null, scheduledAt: null, status: 'closed', closedReason: 'manual' });
+    const party = await makePost({ scheduledAt: null });
+    const membership = await addMember(party.id, lfp.posterCharacterId!);
+    const response = await call('POST', `/api/posts/${lfp.id}/reopen`, posterCookie);
+    expect(response.statusCode).toBe(409);
+    expect(response.json().error).toMatchObject({ code: 'IN_PARTY', message: 'Leave your current party before reopening this post.' });
+    expect((await prisma.post.findUniqueOrThrow({ where: { id: lfp.id } })).status).toBe('closed');
+    await prisma.postMember.delete({ where: { id: membership.id } });
+    expect((await call('POST', `/api/posts/${lfp.id}/reopen`, posterCookie)).statusCode).toBe(200);
+  });
+
+  it('rejects a party whose posting character has been deleted', async () => {
+    const p = await makePost({ posterUserId, status: 'closed', closedReason: 'manual' });
+    await prisma.character.delete({ where: { id: p.posterCharacterId! } });
+    const response = await call('POST', `/api/posts/${p.id}/reopen`, posterCookie);
+    expect(response.statusCode).toBe(409);
+    expect(response.json().error.code).toBe('CHARACTER_UNAVAILABLE');
+  });
+});
+
 describe('admin', () => {
   it('hard-deletes even a soft-deleted party post; non-admin -> 403', async () => {
     const p = await makePost({ posterUserId, deletedAt: new Date() });

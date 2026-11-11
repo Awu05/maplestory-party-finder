@@ -1,6 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import {
-  effectivePostStatus, type PartyMemberDTO, type PostBossDTO, type PostDetailDTO, type PostSummaryDTO, type RequestWithPostDTO,
+  DAY_MS, effectivePostStatus, type PartyMemberDTO, type PostBossDTO, type PostDetailDTO, type PostSummaryDTO, type RequestWithPostDTO,
 } from '@pf/shared';
 import type { Viewer } from '../auth/guards.js';
 import { characterInclude, toCharacterDTO } from '../characters/serialize.js';
@@ -43,6 +43,8 @@ export function toMemberDTO(m: MemberRow, viewerUserId: string | null, storage: 
     character: m.character ? toCharacterDTO(m.character, viewerUserId, storage) : null,
     snapshot: parseSnapshot(m.snapshot),
     isMine: viewerUserId !== null && m.userId === viewerUserId,
+    freeTimes: m.freeTimes,
+    freeTimesZone: m.freeTimesZone,
   };
 }
 
@@ -73,6 +75,7 @@ export function toPostSummaryDTO(row: PostSummaryRow, viewerUserId: string | nul
     poster: toMemberDTO(poster, viewerUserId, storage),
     bosses: toBossDTOs(row),
     scheduledAt: row.scheduledAt?.toISOString() ?? null,
+    weeklyTimeZone: row.weeklyTimeZone,
     freeTimes: row.freeTimes,
     freeTimesZone: row.freeTimesZone,
     expiresAt: row.expiresAt.toISOString(),
@@ -82,6 +85,7 @@ export function toPostSummaryDTO(row: PostSummaryRow, viewerUserId: string | nul
     minCp: row.minCp === null ? null : Number(row.minCp),
     note: row.note,
     status: effectivePostStatus(row, now),
+    recruitmentClosed: row.status === 'closed' && row.closedReason === 'finalized' && row.deletedAt === null && row.expiresAt > now,
     deleted: row.deletedAt !== null,
     isPoster: viewerUserId !== null && row.posterUserId === viewerUserId,
   };
@@ -115,5 +119,6 @@ export function toPostDetailDTO(row: PostRow, viewer: Viewer | null, storage: St
     receivedInvites: lfpInvites((r) => r.character.ownerId === viewerUserId),
     sentInvitesToThis: lfpInvites((r) => r.createdByUserId === viewerUserId),
     canRenew: isPoster && row.scheduledAt === null && row.status !== 'closed' && row.deletedAt === null,
+    discordAnnouncementAvailableAt: isPoster ? new Date(Math.max(row.createdAt.getTime(), row.lastDiscordAnnouncementAt?.getTime() ?? 0) + DAY_MS).toISOString() : null,
   };
 }
