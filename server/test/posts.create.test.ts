@@ -40,6 +40,25 @@ const body = (over: Record<string, unknown> = {}) => ({
 });
 
 describe('POST /api/posts', () => {
+  it('rejects multiple difficulties of one boss on create and edit without changing the post', async () => {
+    const hard = await prisma.bossDifficulty.findUniqueOrThrow({ where: { id: hardLucid } });
+    const normal = await makeBossDifficulty({ bossId: hard.bossId, difficulty: 'Normal', partyCap: 6 });
+    const selections = [hardLucid, normal.id];
+    const invalid = await post(body({ bossDifficultyIds: selections }));
+    expect(invalid.statusCode).toBe(400);
+    expect(invalid.json().error.message).toBe('Select only one difficulty per boss');
+    expect(await prisma.post.count()).toBe(0);
+    const created = await post(body());
+    expect(created.statusCode).toBe(201);
+    const edited = await app.inject({ method: 'PATCH', url: `/api/posts/${created.json().id}`, headers: { cookie }, payload: { bossDifficultyIds: selections } });
+    expect(edited.statusCode).toBe(400);
+    expect(edited.json().error.message).toBe('Select only one difficulty per boss');
+    const saved = await prisma.postBoss.findMany({ where: { postId: created.json().id } });
+    expect(saved.map((boss) => boss.bossDifficultyId)).toEqual([hardLucid]);
+    const replaced = await app.inject({ method: 'PATCH', url: `/api/posts/${created.json().id}`, headers: { cookie }, payload: { bossDifficultyIds: [normal.id] } });
+    expect(replaced.statusCode).toBe(200);
+    expect(replaced.json().bosses.map((boss: { bossDifficultyId: number }) => boss.bossDifficultyId)).toEqual([normal.id]);
+  });
   it('accepts more than ten boss difficulties when creating and editing a post', async () => {
     const difficulties = await Promise.all(Array.from({ length: 12 }, () => makeBossDifficulty({ partyCap: 6 })));
     const ids = difficulties.map((difficulty) => difficulty.id);

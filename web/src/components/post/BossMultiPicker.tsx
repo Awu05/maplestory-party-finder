@@ -26,12 +26,14 @@ function BossArea({ name, bossCount, selectedCount, children }: { name: string; 
 }
 
 export function BossMultiPicker({ value, onChange, bosses }: Props) {
-  const toggle = (id: number, on: boolean) => onChange(on ? [...value, id] : value.filter((v) => v !== id));
+  const toggle = (boss: BossDTO, id: number, on: boolean) => onChange(on
+    ? [...value.filter((selected) => !boss.difficulties.some((difficulty) => difficulty.id === selected)), id]
+    : value.filter((selected) => selected !== id));
 
   return (
     <div className="boss-picker panel">
       <p className="boss-picker__count">{`${value.length} selected`}</p>
-      <p className="boss-picker__hint">Expand an area to choose bosses and difficulties.</p>
+      <p className="boss-picker__hint">Expand an area to choose bosses. Select one difficulty per boss.</p>
       {groupBossesByArea(bosses).map((area) => (
         <BossArea key={area.name} name={area.name} bossCount={area.bosses.length}
           selectedCount={area.bosses.reduce((count, boss) => count + boss.difficulties.filter((d) => value.includes(d.id)).length, 0)}>
@@ -61,7 +63,7 @@ export function BossMultiPicker({ value, onChange, bosses }: Props) {
                       type="checkbox"
                       aria-label={`${d.difficulty} ${boss.name}`}
                       checked={checked}
-                      onChange={(e) => toggle(d.id, e.target.checked)}
+                      onChange={(e) => toggle(boss, d.id, e.target.checked)}
                     />{' '}
                     {d.difficulty}
                   </label>

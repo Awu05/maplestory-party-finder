@@ -13,6 +13,30 @@ function Picker({ initial = [] }: { initial?: number[] }) {
   return <BossMultiPicker bosses={bosses} value={value} onChange={setValue} />;
 }
 
+it('replaces a boss difficulty while preserving other bosses and allowing deselection', () => {
+  const options = bosses.map((boss) => boss.id === 1
+    ? { ...boss, difficulties: [...boss.difficulties, { id: 100, difficulty: 'Normal', partyCap: 6 }] }
+    : boss);
+  function SingleDifficultyPicker() {
+    const [value, setValue] = useState([1, 3]);
+    return <BossMultiPicker bosses={options} value={value} onChange={setValue} />;
+  }
+  render(<SingleDifficultyPicker />);
+  const normal = screen.getByRole('checkbox', { name: 'Normal Zakum' });
+  const hard = screen.getByRole('checkbox', { name: 'Hard Zakum' });
+  fireEvent.click(normal);
+  expect(normal).toBeChecked();
+  expect(hard).not.toBeChecked();
+  expect(screen.getByRole('checkbox', { name: 'Hard Lucid' })).toBeChecked();
+  expect(screen.getByText('2 selected')).toBeInTheDocument();
+  fireEvent.click(hard);
+  expect(normal).not.toBeChecked();
+  expect(hard).toBeChecked();
+  fireEvent.click(hard);
+  expect(hard).not.toBeChecked();
+  expect(screen.getByText('1 selected', { selector: '.boss-picker__count' })).toBeInTheDocument();
+});
+
 describe('BossMultiPicker area groups', () => {
   it('groups known areas and keeps custom bosses available', () => {
     render(<Picker />);
