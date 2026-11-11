@@ -46,16 +46,26 @@ function parsePort(raw: string | undefined): number {
 }
 
 /**
- * TRUST_PROXY: unset/blank means one hop when WEB_ORIGIN is https (the server only speaks plain HTTP,
- * so an https site must have a TLS proxy in front), else false. Otherwise `true`, `false`, a positive
- * hop count, or comma-separated proxy IPs/CIDRs.
+ * Loopback, private-network and link-local ranges: where a reverse proxy in front of this server lives
+ * (the same machine, a Docker network, the LAN). A visitor connecting straight to the port from the
+ * internet is not in these ranges, so they cannot fake X-Forwarded-For.
+ */
+export const PRIVATE_PROXIES: string[] = [
+  '127.0.0.0/8', '::1/128', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '169.254.0.0/16', 'fc00::/7', 'fe80::/10',
+];
+
+/**
+ * TRUST_PROXY: `true`, `false`, a positive hop count, or comma-separated proxy IPs/CIDRs.
+ * Unset/blank: PRIVATE_PROXIES when WEB_ORIGIN is https (the server only speaks plain HTTP, so an https
+ * site has a TLS proxy in front), else false. The default is never a bare hop count, because a hop
+ * count believes X-Forwarded-For from anyone who can reach the port directly.
  */
 function parseTrustProxy(raw: string | undefined, webOrigin: string): Config['trustProxy'] {
   const v = (raw ?? '').trim();
   const fail = (): never => {
     throw new Error(`TRUST_PROXY must be true, false, a positive hop count, or comma-separated IPs/CIDRs (got ${JSON.stringify(raw)})`);
   };
-  if (v === '') return webOrigin.startsWith('https://') ? 1 : false;
+  if (v === '') return webOrigin.startsWith('https://') ? [...PRIVATE_PROXIES] : false;
   if (/^(true|false)$/i.test(v)) return v.toLowerCase() === 'true';
   if (/^\d+$/.test(v)) {
     const hops = Number(v);

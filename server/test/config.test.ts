@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { loadConfig, withUtcSession } from '../src/config.js';
+import { loadConfig, PRIVATE_PROXIES, withUtcSession } from '../src/config.js';
 import { buildTestApp, testConfig } from './helpers.js';
 
 const base = { SESSION_SECRET: 'x'.repeat(32), DATABASE_URL: 'postgresql://x' };
@@ -91,11 +91,12 @@ describe('withUtcSession', () => {
 });
 
 describe('loadConfig TRUST_PROXY', () => {
-  it('defaults to one proxy hop for an https WEB_ORIGIN and off otherwise', () => {
+  it('defaults to local and private-network proxies for an https WEB_ORIGIN and off otherwise', () => {
     expect(loadConfig(base).trustProxy).toBe(false);
     expect(loadConfig({ ...base, WEB_ORIGIN: 'http://localhost:3000' }).trustProxy).toBe(false);
-    expect(loadConfig({ ...base, WEB_ORIGIN: 'https://pf.example.com' }).trustProxy).toBe(1);
-    expect(loadConfig({ ...base, WEB_ORIGIN: 'https://pf.example.com', TRUST_PROXY: ' ' }).trustProxy).toBe(1);
+    expect(loadConfig({ ...base, WEB_ORIGIN: 'https://pf.example.com' }).trustProxy).toEqual(PRIVATE_PROXIES);
+    expect(loadConfig({ ...base, WEB_ORIGIN: 'https://pf.example.com', TRUST_PROXY: ' ' }).trustProxy).toEqual(PRIVATE_PROXIES);
+    expect(PRIVATE_PROXIES).toEqual(expect.arrayContaining(['127.0.0.0/8', '::1/128', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16']));
   });
   it.each([
     ['false', false], ['FALSE', false], ['true', true], [' True ', true], ['1', 1], ['2', 2],
@@ -123,6 +124,23 @@ describe('trustProxy in the app', () => {
       // One trusted hop: only the address our proxy appended counts, not entries a client prepended.
       expect((await forgot(app, '198.51.100.1, 203.0.113.1')).statusCode).toBe(429);
       expect((await forgot(app, '203.0.113.2')).statusCode).toBe(503);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('by default (https) a visitor connecting directly from the internet cannot fake their address', async () => {
+    const { app } = await buildTestApp({ config: testConfig({ trustProxy: PRIVATE_PROXIES }) });
+    const direct = (forwardedFor: string) => app.inject({
+      method: 'POST', url: '/api/auth/password/forgot', remoteAddress: '203.0.113.50',
+      headers: { origin: 'http://localhost:5173', 'x-forwarded-for': forwardedFor }, payload: { email: 'maple@example.com' },
+    });
+    try {
+      // The peer is a public address, not a proxy we trust: every spoofed value lands in its one bucket.
+      for (let i = 0; i < 10; i++) expect((await direct(`198.51.100.${i + 1}`)).statusCode).toBe(503);
+      expect((await direct('198.51.100.99')).statusCode).toBe(429);
+      // A real proxy on the private network is still believed.
+      expect((await forgot(app, '198.51.100.200')).statusCode).toBe(503);
     } finally {
       await app.close();
     }
