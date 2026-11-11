@@ -20,7 +20,6 @@ const FRIENDLY: Record<string, string> = {
   POST_CLOSED: 'This post is closed.',
   POST_OPEN: 'This post is already open.',
   CHARACTER_UNAVAILABLE: 'The posting character is no longer available.',
-  IN_PARTY: 'Leave your current party before reopening this post.',
   POST_FULL: 'This party is already full.',
   ALREADY_MEMBER: 'That character is already in the party.',
   ALREADY_PENDING: 'There is already a pending request for that character.',
