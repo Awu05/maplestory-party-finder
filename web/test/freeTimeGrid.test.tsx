@@ -65,6 +65,20 @@ describe('FreeTimeGrid', () => {
     expect(onChange).toHaveBeenCalledWith([137]);
     expect(within(screen.getByRole('grid')).getAllByRole('button')).toHaveLength(336);
   });
+  it('Clear selection empties the grid, and is disabled when nothing is selected', () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<FreeTimeGrid value={[136, 137, 230]} onChange={onChange} label="Free times" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Clear selection' }));
+    expect(onChange).toHaveBeenLastCalledWith([]);
+    rerender(<FreeTimeGrid value={[]} onChange={onChange} label="Free times" />);
+    expect(screen.getByRole('button', { name: 'Clear selection' })).toBeDisabled();
+  });
+
+  it('read-only grids have no Clear selection button', () => {
+    render(<FreeTimeGrid value={[136]} readOnly label="Free times" />);
+    expect(screen.queryByRole('button', { name: 'Clear selection' })).toBeNull();
+  });
+
   it('exports labels', () => {
     expect(DAY_LABELS[2]).toBe('Tue');
     expect(hourLabel(20)).toBe('8p');

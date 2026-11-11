@@ -133,6 +133,21 @@ export function FreeTimeGrid({ value, onChange, readOnly, label: gridLabel, labe
       <button type="button" className="chip" aria-pressed={timeFormat === '12h'} onClick={() => setTimeFormat('12h')}>12-hour</button>
       <button type="button" className="chip" aria-pressed={timeFormat === '24h'} onClick={() => setTimeFormat('24h')}>24-hour</button>
     </div>
+    {editable && (
+      <div className="ftg__toolbar">
+        <button
+          type="button"
+          className="btn btn--secondary btn--compact"
+          disabled={value.length === 0}
+          onClick={() => {
+            latest.current = [];
+            onChange?.([]);
+          }}
+        >
+          Clear selection
+        </button>
+      </div>
+    )}
     <div className="ftg">
       <table
         className="ftg__table"
