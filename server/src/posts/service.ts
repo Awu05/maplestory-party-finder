@@ -342,7 +342,8 @@ export async function reopenPost(prisma: PrismaClient, viewer: Viewer, id: strin
       scheduledAt: null, weeklyTimeZone: null, weeklyAnchorAt: null,
       expiresAt: new Date(now.getTime() + FLEXIBLE_TTL_MS), worldId: character.worldId, guildId: character.guildId,
     }, include: postInclude });
-    const queued = await enqueuePostAnnouncement(tx, post, storage, webOrigin, now, 'post.reopened');
+    // A party that is still full is not recruiting, so there is nothing to announce.
+    const queued = full ? 0 : await enqueuePostAnnouncement(tx, post, storage, webOrigin, now, 'post.reopened');
     if (queued) post = await tx.post.update({ where: { id }, data: { lastDiscordAnnouncementAt: now }, include: postInclude });
     return { post, declinedRequestIds };
   });

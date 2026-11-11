@@ -107,10 +107,11 @@ export class WebhookWorker {
     }
     if ((row.eventType === 'post.created' || row.eventType === 'post.reopened' || row.eventType === 'post.announcement' || row.eventType === 'post.weekly_reminder' || row.eventType === 'post.party_thread') && row.postId) {
       // Announce only a post that is still live (open or full): not deleted, closed for any reason, or expired.
+      // A manual announcement or a reopen announcement also needs it to still be recruiting (open, not full).
       const post = await this.prisma.post.findUnique({ where: { id: row.postId }, select: { status: true, closedReason: true, expiresAt: true, deletedAt: true, weeklyTimeZone: true, weeklyAnchorAt: true, scheduledAt: true } });
       const weekly = row.payload._weekly;
       const activeFinalized = (row.eventType === 'post.weekly_reminder' || row.eventType === 'post.party_thread') && post?.status === 'closed' && post.closedReason === 'finalized' && post.deletedAt === null && post.expiresAt > this.now();
-      if (!post || (effectivePostStatus(post, this.now()) === 'closed' && !activeFinalized) || (row.eventType === 'post.announcement' && effectivePostStatus(post, this.now()) !== 'open') || (row.eventType === 'post.party_thread' && !activeFinalized) || (row.eventType === 'post.weekly_reminder' &&
+      if (!post || (effectivePostStatus(post, this.now()) === 'closed' && !activeFinalized) || ((row.eventType === 'post.announcement' || row.eventType === 'post.reopened') && effectivePostStatus(post, this.now()) !== 'open') || (row.eventType === 'post.party_thread' && !activeFinalized) || (row.eventType === 'post.weekly_reminder' &&
         (!weekly || post.weeklyTimeZone !== weekly.timeZone || post.weeklyAnchorAt?.toISOString() !== weekly.anchorAt || post.scheduledAt?.toISOString() !== weekly.nextAt))) {
         await fail(row.attempts + 1, 'Post no longer available');
         return;

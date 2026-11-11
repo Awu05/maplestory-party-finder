@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { DAY_MS } from '@pf/shared';
-import { buildTestApp, FakeWebhookSender, loginAs, makeBossDifficulty, makeCharacter, makeGuild, makePost, makeWorld, prisma, resetDb } from './helpers.js';
+import { addMember, buildTestApp, FakeWebhookSender, loginAs, makeBossDifficulty, makeCharacter, makeGuild, makePost, makeWorld, prisma, resetDb } from './helpers.js';
 import { WebhookWorker } from '../src/discord/outbox.js';
 
 let app: FastifyInstance;
@@ -94,4 +94,23 @@ it('still reopens successfully when no Discord channel is configured', async () 
   expect(response.statusCode).toBe(200);
   expect(response.json().status).toBe('open');
   expect(await prisma.webhookDelivery.count()).toBe(0);
+});
+
+it('reopening a party that is still full does not announce it or start the cooldown', async () => {
+  const p = await post(new Date(Date.now() - DAY_MS - 1000), { status: 'closed', closedReason: 'manual', partySize: 2 });
+  await addMember(p.id, (await makeCharacter({ worldId, guildId })).id);
+  const response = await app.inject({ method: 'POST', url: `/api/posts/${p.id}/reopen`, headers: { cookie: ownerCookie } });
+  expect(response.statusCode).toBe(200);
+  expect(response.json().status).toBe('full');
+  expect(await prisma.webhookDelivery.count()).toBe(0);
+  expect((await prisma.post.findUniqueOrThrow({ where: { id: p.id } })).lastDiscordAnnouncementAt).toBeNull();
+});
+
+it('drops a queued reopen announcement if the party is full at send time', async () => {
+  const p = await post(new Date(Date.now() - DAY_MS - 1000), { status: 'closed', closedReason: 'manual' });
+  expect((await app.inject({ method: 'POST', url: `/api/posts/${p.id}/reopen`, headers: { cookie: ownerCookie } })).statusCode).toBe(200);
+  await prisma.post.update({ where: { id: p.id }, data: { status: 'full', closedReason: 'full' } });
+  const sender = new FakeWebhookSender();
+  expect((await new WebhookWorker({ prisma, sender }).runOnce()).failed).toBe(1);
+  expect(sender.calls).toHaveLength(0);
 });
