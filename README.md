@@ -55,7 +55,7 @@ Guilds can post new parties and pings to a Discord channel through a webhook.
 - **Time zones.** Availability is stored in each person's time zone and shown in the viewer's zone. Split cells show partial availability when zones differ by 15 or 45 minutes. Editing uses the saved zone when needed to avoid losing part of a selected time.
 - **Finalize time.** The poster sets the time with **Finalize time** on the post page. This closes recruitment, removes the post from the board, and declines pending requests and invites. The party remains available to its members, and the poster can change the time or end it. Members get an in-app notification and a Discord ping showing the time in their own zone. A post with no final time expires 7 days after it's posted or renewed; once finalized it expires based on the final time.
 - **Reopen a party.** The poster can reopen a closed or past party from its post page. The existing lineup and availability stay, the old final time and weekly reminders are cleared, and recruitment gets a fresh seven-day window. Reopening sends a Discord announcement with boss-role pings to configured channels for that world and starts a new 24-hour cooldown for Notify Discord. A full party returns to the board once a member leaves or is removed.
-- **Board filters.** When: Any / Next 24h / This week / Not set (Next 24h and This week match finalized times). Free at picks a day and half-hour to find posts whose poster is free for that entire half-hour.
+- **Board filters.** Free times: pick a day and half-hour to find posts whose poster is free for that entire half-hour; Reset clears it.
 - **Discord new-post messages** show the final time, or "Not set yet — see free times on the post", or "Flexible".
 
 ## Characters

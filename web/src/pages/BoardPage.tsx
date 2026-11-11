@@ -3,7 +3,7 @@ import type { KeyboardEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import type { PostSummaryDTO, PostType } from '@pf/shared';
 import { useBosses, useCharacters, useGuilds, useMe, useWorlds } from '../api/hooks';
-import { usePosts, type PostFilters } from '../api/postHooks';
+import { usePosts } from '../api/postHooks';
 import { friendlyError } from '../api/errors';
 import { ChipGroup, MenuChip, ToggleChip } from '../components/ui/Chips';
 import { DAY_LABELS, halfHourLabel } from '../components/post/FreeTimeGrid';
@@ -25,7 +25,6 @@ export function BoardPage() {
   const [bossId, setBossId] = useState('');
   const [difficultyId, setDifficultyId] = useState('');
   const [guildId, setGuildId] = useState('');
-  const [when, setWhen] = useState<NonNullable<PostFilters['when']>>('any');
   const [freeDay, setFreeDay] = useState('');
   const [freeHour, setFreeHour] = useState('');
   const [pickedWorlds, setPickedWorlds] = useState<number[] | null>(null);
@@ -42,7 +41,6 @@ export function BoardPage() {
       bossDifficultyId: difficultyId ? Number(difficultyId) : undefined,
       guildId: guildId || undefined,
       worldIds: worldIds.length > 0 ? worldIds : undefined,
-      when,
       freeAt: freeDay !== '' && freeHour !== '' ? Number(freeDay) * 48 + Number(freeHour) : undefined,
     },
     { enabled: defaultsReady },
@@ -132,18 +130,6 @@ export function BoardPage() {
         </fieldset>
         <fieldset className="board-filters__group">
           <legend>Availability</legend>
-          <span className="board-filters__label">Finalized time</span>
-          <ChipGroup<NonNullable<PostFilters['when']>>
-            label="When"
-            value={when}
-            onChange={setWhen}
-            options={[
-              { value: 'any', label: 'Any' },
-              { value: '24h', label: 'Next 24h' },
-              { value: '7d', label: 'This week' },
-              { value: 'flexible', label: 'Not set' },
-            ]}
-          />
           <span className="board-filters__label">Free times</span>
           <div className="board-filters__controls">
             {/* Both a day and a time are required to filter availability. */}
@@ -167,6 +153,18 @@ export function BoardPage() {
               disabled={freeDay === ''}
               options={Array.from({ length: 48 }, (_, h) => ({ value: String(h), label: halfHourLabel(h, timeFormat) }))}
             />
+            <button
+              type="button"
+              className="btn btn--secondary btn--compact"
+              aria-label="Reset free time"
+              disabled={freeDay === ''}
+              onClick={() => {
+                setFreeDay('');
+                setFreeHour('');
+              }}
+            >
+              Reset
+            </button>
           </div>
           <p className="board-filters__hint">Choose a day and time to match free times in your time zone.</p>
         </fieldset>
