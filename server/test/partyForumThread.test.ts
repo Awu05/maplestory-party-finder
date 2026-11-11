@@ -25,6 +25,18 @@ afterEach(async () => { await app.close(); });
 
 const finalize = (at: Date) => app.inject({ method: 'PUT', url: `/api/posts/${postId}/final-time`, headers: { cookie }, payload: { scheduledAt: at.toISOString() } });
 
+it('creates a forum thread through a configured world channel when the host has no guild', async () => {
+  const post = await prisma.post.findUniqueOrThrow({ where: { id: postId } });
+  await prisma.character.update({ where: { id: post.posterCharacterId! }, data: { guildId: null } });
+  await prisma.post.update({ where: { id: postId }, data: { guildId: null } });
+  expect((await finalize(new Date(Date.now() + 86_400_000))).statusCode).toBe(200);
+  const delivery = await prisma.webhookDelivery.findFirstOrThrow({ where: { postId, eventType: 'post.party_thread' } });
+  expect(delivery.guildId).toBe(post.guildId);
+  const sender = new FakeWebhookSender();
+  expect((await new WebhookWorker({ prisma, sender }).runOnce()).sent).toBe(1);
+  expect(sender.calls[0]!.url).toBe(FORUM_URL);
+});
+
 it('refreshes the time and roster before retrying a rate-limited thread', async () => {
   const post = await prisma.post.findUniqueOrThrow({ where: { id: postId } });
   const user = await makeUser({ discordId: MEMBER_DISCORD_ID });
@@ -75,10 +87,10 @@ it('queues and delivers exactly one forum thread for the host guild', async () =
 
 it('does not create a thread without a forum webhook or after the party is reopened', async () => {
   const p = await prisma.post.findUniqueOrThrow({ where: { id: postId } });
-  await prisma.guild.update({ where: { id: p.guildId }, data: { partyForumWebhookUrl: null } });
+  await prisma.guild.update({ where: { id: p.guildId! }, data: { partyForumWebhookUrl: null } });
   expect((await finalize(new Date(Date.now() + 86_400_000))).statusCode).toBe(200);
   expect(await prisma.webhookDelivery.count({ where: { postId, eventType: 'post.party_thread' } })).toBe(0);
-  await prisma.guild.update({ where: { id: p.guildId }, data: { partyForumWebhookUrl: FORUM_URL } });
+  await prisma.guild.update({ where: { id: p.guildId! }, data: { partyForumWebhookUrl: FORUM_URL } });
   expect((await finalize(new Date(Date.now() + 86_400_000))).statusCode).toBe(200);
   expect((await app.inject({ method: 'POST', url: `/api/posts/${postId}/reopen`, headers: { cookie } })).statusCode).toBe(200);
   const sender = new FakeWebhookSender();
@@ -93,11 +105,11 @@ it('does not create a thread without a forum webhook or after the party is reope
 it('queues a new thread on the next finalize after a delivery failed (webhook removed, then fixed)', async () => {
   const p = await prisma.post.findUniqueOrThrow({ where: { id: postId } });
   expect((await finalize(new Date(Date.now() + 86_400_000))).statusCode).toBe(200);
-  await prisma.guild.update({ where: { id: p.guildId }, data: { partyForumWebhookUrl: null } });
+  await prisma.guild.update({ where: { id: p.guildId! }, data: { partyForumWebhookUrl: null } });
   const sender = new FakeWebhookSender();
   expect((await new WebhookWorker({ prisma, sender }).runOnce()).failed).toBe(1);
   expect((await prisma.post.findUniqueOrThrow({ where: { id: postId } })).forumThreadRequested).toBe(false);
-  await prisma.guild.update({ where: { id: p.guildId }, data: { partyForumWebhookUrl: FORUM_URL } });
+  await prisma.guild.update({ where: { id: p.guildId! }, data: { partyForumWebhookUrl: FORUM_URL } });
   expect((await finalize(new Date(Date.now() + 2 * 86_400_000))).statusCode).toBe(200);
   expect(await prisma.webhookDelivery.count({ where: { postId, eventType: 'post.party_thread', status: 'pending' } })).toBe(1);
   expect((await new WebhookWorker({ prisma, sender }).runOnce()).sent).toBe(1);

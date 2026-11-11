@@ -37,20 +37,16 @@ const shared = {
 const bodyOf = (call: unknown[]) => JSON.parse((call[1] as RequestInit).body as string);
 
 describe('CharactersPage', () => {
-  it('renders cards and filtering by guild refetches with ?guildId=', async () => {
-    const fetchMock = mockApi({
+  it('renders cards without a guild filter', async () => {
+    mockApi({
       ...shared,
       '/api/characters': [character, other],
-      '/api/characters?guildId=g2': [other],
     });
     renderWithProviders(<CharactersPage />);
     expect(await screen.findByLabelText(/Lily, level/)).toBeInTheDocument();
     expect(screen.getByLabelText(/Bob, level/)).toBeInTheDocument();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Guild' }));
-    fireEvent.click(await screen.findByRole('option', { name: 'Other Guild' }));
-    await waitFor(() => expect(screen.queryByLabelText(/Lily, level/)).not.toBeInTheDocument());
-    expect(fetchMock.mock.calls.map((c) => String(c[0]))).toContain('/api/characters?guildId=g2');
+    expect(screen.queryByRole('button', { name: 'Guild' })).not.toBeInTheDocument();
   });
 
   it('debounces the IGN search by 300ms', async () => {
@@ -169,7 +165,7 @@ describe('CharacterFormPage', () => {
     await fillAddForm();
     fireEvent.change(screen.getByLabelText('Guild'), { target: { value: '' } });
     expect(screen.getByRole('option', { name: 'No guild' })).toBeInTheDocument();
-    expect(screen.getByLabelText('Guild')).toHaveAccessibleDescription("Optional. You'll need a guild to make or join parties.");
+    expect(screen.getByLabelText('Guild')).toHaveAccessibleDescription('Optional. You can create and join parties without a guild.');
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     expect(await screen.findByRole('heading', { name: 'My list' })).toBeInTheDocument();
     const post = fetchMock.mock.calls.find((c) => String(c[0]) === '/api/characters' && (c[1] as RequestInit).method === 'POST')!;

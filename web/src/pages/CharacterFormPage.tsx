@@ -139,7 +139,7 @@ function DetailsForm({ initial, lead, validate, guilds, onSubmit }: FormProps) {
             ))}
         </select>
       </label>
-      <small id="guild-hint">Optional. You'll need a guild to make or join parties.</small>
+      <small id="guild-hint">Optional. You can create and join parties without a guild.</small>
       <label>
         Scouter screenshot
         <input

@@ -50,7 +50,6 @@ export const useRarityTiers = () =>
   });
 
 export interface CharacterFilters {
-  guildId?: string;
   worldId?: number;
   archetype?: string;
   q?: string;
@@ -59,7 +58,6 @@ export interface CharacterFilters {
 
 export function useCharacters(filters: CharacterFilters = {}, opts: { enabled?: boolean } = {}) {
   const params = new URLSearchParams();
-  if (filters.guildId) params.set('guildId', filters.guildId);
   if (filters.worldId !== undefined) params.set('worldId', String(filters.worldId));
   if (filters.archetype) params.set('archetype', filters.archetype);
   if (filters.q) params.set('q', filters.q);

@@ -73,14 +73,11 @@ function validateRecruitingFields(
   }
 }
 
-/** The caller's own character, which must belong to an active guild in an active world. */
+/** The caller's own character on an active world. */
 async function getPostingCharacter(db: Db, characterId: string, userId: string) {
   const character = await getOwnedCharacter(db, characterId, userId);
-  if (character.guildId === null) throw new AppError(400, 'NO_GUILD', 'Pick a guild for this character first');
-  const guild = await db.guild.findUnique({ where: { id: character.guildId } });
-  if (!guild || !guild.active) throw new AppError(400, 'GUILD_INACTIVE', 'That guild is not accepting posts');
   if (!character.world.active) throw new AppError(400, 'WORLD_INACTIVE', 'That world is not active');
-  return character as typeof character & { guildId: string };
+  return character;
 }
 
 export async function createPost(prisma: PrismaClient, userId: string, input: CreatePostInput): Promise<PostRow> {
@@ -129,42 +126,16 @@ export interface BoardFilter {
   type?: PostType;
   bossId?: number;
   bossDifficultyId?: number;
-  guildId?: string;
   worldIds?: number[];
   from?: Date;
   to?: Date;
   flexible?: boolean;
-  /** Keeps posts free at this instant's half-hour slot in their own freeTimesZone. */
-  freeAt?: Date;
-  freeFor?: number;
-}
-
-/**
- * Ids of board-visible posts (open, not deleted, not expired) whose freeTimes contain `freeAt`'s local
- * half-hour slot in their own zone. Bounded to live posts so the id list stays small.
- */
-export async function postIdsFreeAt(prisma: PrismaClient, freeAt: Date, now: Date, freeFor?: number): Promise<string[]> {
-  const end = new Date(freeAt.getTime() + (freeFor ? freeFor * 60_000 - 1 : 0));
-  const rows = await prisma.$queryRaw<{ id: string }[]>`
-    SELECT id FROM "Post"
-    WHERE "deletedAt" IS NULL
-      AND status = 'open'
-      AND "expiresAt" > ${now}
-      AND "freeTimesZone" IS NOT NULL
-      AND ((EXTRACT(DOW FROM (${freeAt}::timestamptz AT TIME ZONE "freeTimesZone")) * 48
-           + EXTRACT(HOUR FROM (${freeAt}::timestamptz AT TIME ZONE "freeTimesZone")) * 2
-           + FLOOR(EXTRACT(MINUTE FROM (${freeAt}::timestamptz AT TIME ZONE "freeTimesZone")) / 30))::int) = ANY("freeTimes")
-      AND ((EXTRACT(DOW FROM (${end}::timestamptz AT TIME ZONE "freeTimesZone")) * 48
-           + EXTRACT(HOUR FROM (${end}::timestamptz AT TIME ZONE "freeTimesZone")) * 2
-           + FLOOR(EXTRACT(MINUTE FROM (${end}::timestamptz AT TIME ZONE "freeTimesZone")) / 30))::int) = ANY("freeTimes")`;
-  return rows.map((r) => r.id);
 }
 
 export async function listBoard(prisma: PrismaClient, f: BoardFilter, now: Date): Promise<PostSummaryRow[]> {
   const and: Prisma.PostWhereInput[] = [];
   if (f.bossId !== undefined) and.push({ bosses: { some: { bossDifficulty: { bossId: f.bossId } } } });
   if (f.bossDifficultyId !== undefined) and.push({ bosses: { some: { bossDifficultyId: f.bossDifficultyId } } });
-  if (f.freeAt !== undefined) and.push({ id: { in: await postIdsFreeAt(prisma, f.freeAt, now, f.freeFor) } });
   return prisma.post.findMany({
     where: {
       deletedAt: null,
@@ -172,7 +143,6 @@ export async function listBoard(prisma: PrismaClient, f: BoardFilter, now: Date)
       expiresAt: { gt: now },
       posterUser: { banned: false },
       ...(f.type ? { type: f.type } : {}),
-      ...(f.guildId ? { guildId: f.guildId } : {}),
       ...(f.worldIds ? { worldId: { in: f.worldIds } } : {}),
       // A range comparison never matches NULL, so from/to exclude flexible posts.
       ...(f.from || f.to ? { scheduledAt: { ...(f.from ? { gte: f.from } : {}), ...(f.to ? { lte: f.to } : {}) } } : {}),
@@ -383,7 +353,9 @@ export async function finalizePostTime(prisma: PrismaClient, viewer: Viewer, id:
       include: postInclude,
     });
     if (forum) {
-      const guild = await tx.guild.findUnique({ where: { id: post.guildId }, select: { active: true, partyForumWebhookUrl: true } });
+      const guild = post.guildId
+        ? await tx.guild.findUnique({ where: { id: post.guildId }, select: { id: true, active: true, partyForumWebhookUrl: true } })
+        : await tx.guild.findFirst({ where: { active: true, partyForumWebhookUrl: { not: null }, worlds: { some: { worldId: post.worldId } } }, orderBy: { id: 'asc' }, select: { id: true, active: true, partyForumWebhookUrl: true } });
       if (guild?.active && guild.partyForumWebhookUrl) {
         const users = await tx.user.findMany({ where: { id: { in: post.members.map((member) => member.userId) } }, select: { id: true, discordId: true } });
         const ids = new Map(users.map((user) => [user.id, user.discordId]));
@@ -391,7 +363,7 @@ export async function finalizePostTime(prisma: PrismaClient, viewer: Viewer, id:
         const thread = buildPartyThread(toPostSummaryDTO(post, null, forum.storage, now), forum.webOrigin, roster);
         const payload = { ...thread.message, thread_name: thread.name, _forum: { webOrigin: forum.webOrigin } };
         if (!row.forumThreadRequested) {
-          await enqueueDelivery(tx, post.guildId, 'post.party_thread', payload, post.id);
+          await enqueueDelivery(tx, guild.id, 'post.party_thread', payload, post.id);
           await tx.post.update({ where: { id }, data: { forumThreadRequested: true } });
         } else {
           await tx.webhookDelivery.updateMany({ where: { postId: id, eventType: 'post.party_thread', status: 'pending' }, data: { payload } });

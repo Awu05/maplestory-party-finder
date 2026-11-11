@@ -49,6 +49,18 @@ async function party(over: Parameters<typeof makePost>[0] = {}) {
   return { guild, character, post };
 }
 
+it('routes guildless party members to a configured world channel', async () => {
+  const { guild, character, post } = await party();
+  await prisma.guildWorld.create({ data: { guildId: guild.id, worldId: post.worldId } });
+  await prisma.character.update({ where: { id: character.id }, data: { guildId: null } });
+  await prisma.post.update({ where: { id: post.id }, data: { guildId: null } });
+  expect(await job.runOnce(at)).toBe(1);
+  const delivery = await prisma.webhookDelivery.findFirstOrThrow({ where: { postId: post.id } });
+  expect(delivery.guildId).toBe(guild.id);
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: character.ownerId } });
+  expect(delivery.payload).toMatchObject({ allowed_mentions: { users: [user.discordId] } });
+});
+
 it('advances and queues weekly reminders for finalized carrying parties', async () => {
   const { post } = await party({ type: 'carrying', status: 'closed', closedReason: 'finalized' });
   expect(await job.runOnce(at)).toBe(1);

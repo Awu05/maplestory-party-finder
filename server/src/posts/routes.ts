@@ -59,7 +59,6 @@ const boardQuery = z.object({
   type: postTypeSchema.optional(),
   bossId: z.coerce.number().int().optional(),
   bossDifficultyId: z.coerce.number().int().optional(),
-  guildId: z.string().min(1).optional(),
   worldIds: z
     .string()
     .regex(/^\d+(,\d+)*$/, 'worldIds must be comma-separated integers')
@@ -68,8 +67,6 @@ const boardQuery = z.object({
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
   flexible: z.enum(['1']).optional(),
-  freeAt: z.coerce.date().optional(),
-  freeFor: z.coerce.number().int().min(30).max(30).optional(),
 }).refine((q) => !(q.flexible && (q.from || q.to)), 'flexible cannot be combined with from/to');
 
 export async function postRoutes(app: FastifyInstance): Promise<void> {

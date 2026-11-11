@@ -3,7 +3,6 @@ import type { FastifyInstance } from 'fastify';
 import {
   addMember, buildTestApp, loginAs, makeBossDifficulty, makeCharacter, makeGuild, makePost, makeUser, makeWorld, prisma, resetDb,
 } from './helpers.js';
-import { postIdsFreeAt } from '../src/posts/service.js';
 
 const HOUR = 3_600_000;
 let app: FastifyInstance;
@@ -49,7 +48,7 @@ describe('GET /api/posts', () => {
     const limboPost = await mk({ bossDifficultyIds: [limbo] });
     const normalPost = await mk({ bossDifficultyIds: [lucidNormal] });
     const otherGuild = await makeGuild({ worldIds: [worldId] });
-    const gPost = await mk({ guildId: otherGuild.id });
+    await mk({ guildId: otherGuild.id });
     const w2 = await makeWorld({ nexonWorldId: 46, name: 'Bera' });
     const wPost = await mk({ worldId: w2.id, guildId: (await makeGuild({ worldIds: [w2.id] })).id });
     const soon = await mk({ scheduledAt: new Date(Date.now() + 2 * HOUR) });
@@ -61,12 +60,11 @@ describe('GET /api/posts', () => {
     expect(await ids(`?bossId=${lucidBossId}`)).toContain(normalPost.id);
     expect(await ids(`?bossId=${lucidBossId}`)).not.toContain(limboPost.id);
     expect(await ids(`?bossDifficultyId=${lucidNormal}`)).toEqual([normalPost.id]);
-    expect(await ids(`?guildId=${otherGuild.id}`)).toEqual([gPost.id]);
     expect(await ids(`?worldIds=${w2.id}`)).toEqual([wPost.id]);
     expect(await ids(`?worldIds=${w2.id},${worldId + 100}`)).toEqual([wPost.id]);
     const to = new Date(Date.now() + 5 * 24 * HOUR).toISOString();
     const from = new Date().toISOString();
-    expect(await ids(`?from=${from}&to=${to}&bossDifficultyId=${lucid}&guildId=${guildId}`)).toContain(soon.id);
+    expect(await ids(`?from=${from}&to=${to}&bossDifficultyId=${lucid}`)).toContain(soon.id);
     expect(await ids(`?from=${from}&to=${to}`)).not.toContain(later.id);
     expect(await ids(`?from=${from}&to=${to}`)).not.toContain(flex.id);
     expect(await ids(`?from=${to}`)).toEqual([later.id]);
@@ -92,97 +90,8 @@ describe('GET /api/posts', () => {
     expect(rows.find((r) => r.id === q.id)).toMatchObject({ freeTimes: [], freeTimesZone: null });
   });
 
-  describe('freeAt', () => {
-    it('requires the whole selected half-hour when requested across quarter-hour zones', async () => {
-      const first = await mk({ freeTimes: [136], freeTimesZone: 'UTC' });
-      const both = await mk({ freeTimes: [136, 137], freeTimesZone: 'UTC' });
-      const second = await mk({ freeTimes: [137], freeTimesZone: 'UTC' });
-      const result = (await list('?freeAt=2026-11-10T20:15:00Z&freeFor=30')).map((p) => p.id);
-      expect(result).toContain(both.id);
-      expect(result).not.toContain(first.id);
-      expect(result).not.toContain(second.id);
-    });
-    // Tue 2026-11-10 20:00–21:00 in New York occupies half-hour slots 136 and 137.
-    const ny = (over: Parameters<typeof makePost>[0] = {}) =>
-      mk({ scheduledAt: null, freeTimes: [136, 137], freeTimesZone: 'America/New_York', ...over });
-    const ids = async (qs: string) => (await list(qs)).map((p) => p.id).sort();
-
-    it('distinguishes the first and second half of an hour', async () => {
-      const first = await ny({ freeTimes: [136] });
-      const second = await ny({ freeTimes: [137] });
-      expect(await ids('?freeAt=2026-11-11T01:29:00Z')).toEqual([first.id]);
-      expect(await ids('?freeAt=2026-11-11T01:30:00Z')).toEqual([second.id]);
-    });
-
-    it("matches the instant's half-hour slot in the post's own zone", async () => {
-      const p = await ny();
-      // Tue 5pm in Los Angeles = Tue 8pm in New York.
-      expect(await ids('?freeAt=2026-11-11T01:00:00Z')).toEqual([p.id]);
-      // Tue 8pm in Los Angeles = Tue 11pm in New York.
-      expect(await ids('?freeAt=2026-11-11T04:00:00Z')).toEqual([]);
-    });
-
-    it("uses each post's zone: the same wall hour in another zone matches a different instant", async () => {
-      const nyPost = await ny();
-      const kolkata = await mk({ scheduledAt: null, freeTimes: [136, 137], freeTimesZone: 'Asia/Kolkata' });
-      // Tue 20:00 in Kolkata (UTC+5:30) = 14:30Z; any minute in that hour matches.
-      expect(await ids('?freeAt=2026-11-10T14:30:00Z')).toEqual([kolkata.id]);
-      expect(await ids('?freeAt=2026-11-10T15:29:00Z')).toEqual([kolkata.id]);
-      expect(await ids('?freeAt=2026-11-10T15:30:00Z')).toEqual([]);
-      expect(await ids('?freeAt=2026-11-11T01:59:59Z')).toEqual([nyPost.id]);
-    });
-
-    it('matches the instant a Kolkata viewer sends for a corresponding NY half-hour', async () => {
-      const p = await ny();
-      // Wed 6:59 IST = 01:29Z = Tue 8:29pm EST.
-      expect(await ids('?freeAt=2026-11-11T01:29:00.000Z')).toEqual([p.id]);
-      // Wed 6:00 IST = Tue 7:30pm EST, before this availability.
-      expect(await ids('?freeAt=2026-11-11T00:30:00.000Z')).toEqual([]);
-    });
-
-    it('uses the post zone across a DST change (wall-clock hours, not fixed UTC hours)', async () => {
-      const p = await ny();
-      // Tue 2026-10-27 20:00 EDT (UTC-4) = 2026-10-28T00:00Z.
-      expect(await ids('?freeAt=2026-10-28T00:00:00Z')).toEqual([p.id]);
-      expect(await ids('?freeAt=2026-10-28T01:00:00Z')).toEqual([]);
-    });
-
-    it('a post with no zone or no free times never matches', async () => {
-      const p = await ny();
-      await mk({ scheduledAt: null });
-      await mk({ scheduledAt: null, freeTimes: [], freeTimesZone: null });
-      // Stored inconsistently (times without a zone): still never matches.
-      await mk({ scheduledAt: null, freeTimes: [136, 137], freeTimesZone: null });
-      expect(await ids('?freeAt=2026-11-11T01:00:00Z')).toEqual([p.id]);
-    });
-
-    it('combines with other filters', async () => {
-      const recruiting = await ny();
-      const lfp = await ny({ type: 'lfp', partySize: null });
-      await ny({ status: 'closed' });
-      await ny({ expiresAt: new Date(Date.now() - 60_000) });
-      expect(await ids('?freeAt=2026-11-11T01:00:00Z')).toEqual([recruiting.id, lfp.id].sort());
-      expect(await ids('?freeAt=2026-11-11T01:00:00Z&type=lfp')).toEqual([lfp.id]);
-      expect(await ids('?freeAt=2026-11-11T01:00:00Z&type=recruiting')).toEqual([recruiting.id]);
-      expect(await ids('?freeAt=2026-11-11T04:00:00Z&type=lfp')).toEqual([]);
-      expect(await ids(`?freeAt=2026-11-11T01:00:00Z&bossDifficultyId=${limbo}`)).toEqual([]);
-    });
-  });
-
-  it('the Free-at prefilter only returns live open posts', async () => {
-    const free = { scheduledAt: null, freeTimes: [136, 137], freeTimesZone: 'America/New_York' };
-    const live = await mk(free);
-    await mk({ ...free, status: 'closed' });
-    await mk({ ...free, status: 'full' });
-    await mk({ ...free, deletedAt: new Date() });
-    await mk({ ...free, expiresAt: new Date(Date.now() - 60_000) });
-    const now = new Date();
-    expect(await postIdsFreeAt(prisma, new Date('2026-11-11T01:00:00Z'), now)).toEqual([live.id]);
-    expect((await list('?freeAt=2026-11-11T01:00:00Z')).map((p) => p.id)).toEqual([live.id]);
-  });
-
   it('rejects invalid params', async () => {
-    for (const qs of ['?worldIds=a,b', '?type=x', '?from=nope', '?freeAt=nope', '?bossId=x', `?flexible=1&from=${new Date().toISOString()}`, `?flexible=1&to=${new Date().toISOString()}`]) {
+    for (const qs of ['?worldIds=a,b', '?type=x', '?from=nope', '?bossId=x', `?flexible=1&from=${new Date().toISOString()}`, `?flexible=1&to=${new Date().toISOString()}`]) {
       const res = await app.inject({ method: 'GET', url: `/api/posts${qs}` });
       expect(res.statusCode).toBe(400);
       expect(res.json().error.code).toBe('VALIDATION');

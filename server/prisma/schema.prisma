@@ -176,8 +176,8 @@ model Post {
   posterCharacter   Character?   @relation("PostPoster", fields: [posterCharacterId], references: [id], onDelete: SetNull)
   worldId           Int
   world             World        @relation(fields: [worldId], references: [id])
-  guildId           String
-  guild             Guild        @relation(fields: [guildId], references: [id])
+  guildId           String?
+  guild             Guild?       @relation(fields: [guildId], references: [id], onDelete: SetNull)
   /// The final time; null until the poster finalizes it.
   scheduledAt       DateTime?
   weeklyTimeZone    String?

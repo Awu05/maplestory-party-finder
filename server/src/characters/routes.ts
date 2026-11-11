@@ -16,7 +16,7 @@ const createBody = z.object({
   ign: z.string().trim().min(1),
   nexonWorldId: z.number().int(),
   combatPower: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
-  // Optional: a character can exist without a guild (it then can't post or join until one is picked).
+  // Guild membership is optional.
   guildId: z.string().min(1).nullable().optional().transform((v) => v ?? null),
 });
 
@@ -42,7 +42,6 @@ const updateBody = createBody
 const moveBody = z.object({ worldId: z.number().int(), guildId: z.string().min(1).nullable() });
 
 const listQuery = z.object({
-  guildId: z.string().min(1).optional(),
   worldId: z.coerce.number().int().optional(),
   archetype: z.enum(['warrior', 'magician', 'bowman', 'thief', 'pirate', 'xenon', 'unknown']).optional(),
   q: z.string().trim().min(1).optional(),

@@ -9,14 +9,17 @@ export async function weeklyRecipients(db: Db, postId: string): Promise<Map<stri
     include: { character: { select: { guildId: true } }, user: { select: { discordId: true, banned: true } } },
     orderBy: [{ joinedAt: 'asc' }, { id: 'asc' }],
   });
-  const guilds = await db.guild.findMany({ where: { active: true, webhookUrl: { not: null } }, select: { id: true, name: true } });
+  const post = await db.post.findUnique({ where: { id: postId }, select: { worldId: true, guildId: true } });
+  const guilds = await db.guild.findMany({ where: { active: true, webhookUrl: { not: null } }, select: { id: true, name: true, worlds: { select: { worldId: true } } }, orderBy: { id: 'asc' } });
   const ids = new Set(guilds.map((g) => g.id));
   const byName = new Map(guilds.map((g) => [g.name, g.id]));
+  const fallbackGuildId = guilds.find((guild) => guild.id === post?.guildId)?.id
+    ?? guilds.find((guild) => guild.worlds.some((world) => world.worldId === post?.worldId))?.id;
   const result = new Map<string, string[]>();
   const seen = new Set<string>();
   for (const member of members) {
     const snapshot = member.snapshot as { guildName?: unknown } | null;
-    const guildId = member.character ? member.character.guildId : member.reminderGuildId ?? (typeof snapshot?.guildName === 'string' ? byName.get(snapshot.guildName) : undefined);
+    const guildId = (member.character ? member.character.guildId : member.reminderGuildId ?? (typeof snapshot?.guildName === 'string' ? byName.get(snapshot.guildName) : undefined)) ?? fallbackGuildId;
     const discordId = member.user.discordId;
     if (!guildId || !ids.has(guildId) || !discordId || member.user.banned || seen.has(discordId)) continue;
     seen.add(discordId);

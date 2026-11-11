@@ -76,7 +76,7 @@ function PreviewBody({
           <StatusPill status={p.status} deleted={p.deleted} />
         </div>
         <p className="post-preview__meta">
-          {[p.world.name, p.guild.name].join(' · ')}
+          {[p.world.name, (p.guild?.name ?? 'No guild')].join(' · ')}
         </p>
         <WhenSection post={p} members={p.members} collapsible />
         {p.minCp !== null && <p className="post-preview__meta">{`Min CP ${formatCp(p.minCp)}`}</p>}

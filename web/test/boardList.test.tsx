@@ -425,13 +425,11 @@ describe('Board filters (menus)', () => {
     await waitFor(() => expect(postsCalls(fetchMock)).toContain('/api/posts?bossId=2'));
   });
 
-  it('the guild menu sends guildId', async () => {
-    const fetchMock = mockApi({ ...base, '/api/posts': [] });
+  it('has no guild filter', async () => {
+    mockApi({ ...base, '/api/posts': [] });
     renderBoard();
     await screen.findByText('No open posts match. Be the first to post!');
-    fireEvent.click(screen.getByRole('button', { name: /^Guild/ }));
-    fireEvent.click(await screen.findByRole('option', { name: 'Maple Guild' }));
-    await waitFor(() => expect(postsCalls(fetchMock)).toContain('/api/posts?guildId=g1'));
+    expect(screen.queryByRole('button', { name: /^Guild/ })).not.toBeInTheDocument();
   });
 
   it('groups related filters under clear accessible headings', async () => {
@@ -441,11 +439,8 @@ describe('Board filters (menus)', () => {
     expect(within(party).getByRole('radiogroup', { name: 'Type' })).toBeInTheDocument();
     const location = screen.getByRole('group', { name: 'Location' });
     expect(within(location).getByRole('group', { name: 'Worlds' })).toBeInTheDocument();
-    expect(within(location).getByRole('button', { name: /^Guild/ })).toBeInTheDocument();
     const boss = screen.getByRole('group', { name: 'Boss' });
     expect(within(boss).getByRole('button', { name: 'Difficulty' })).toBeDisabled();
-    const availability = screen.getByRole('group', { name: 'Availability' });
-    expect(within(availability).getByRole('button', { name: 'Day' })).toBeInTheDocument();
-    expect(within(availability).getByRole('button', { name: 'Time' })).toBeDisabled();
+    expect(screen.queryByRole('group', { name: 'Availability' })).not.toBeInTheDocument();
   });
 });

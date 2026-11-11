@@ -72,6 +72,17 @@ const deliveries = () => prisma.webhookDelivery.findMany({ orderBy: { createdAt:
 const content = (d: { payload: unknown }) => (d.payload as { content?: string }).content ?? '';
 
 describe('post.created', () => {
+  it('announces a guildless host in configured world channels', async () => {
+    await prisma.character.update({ where: { id: alice.id }, data: { guildId: null } });
+    const created = await call('POST', '/api/posts', u1, { type: 'recruiting', characterId: alice.id, bossDifficultyIds: [lucid], partySize: 4, note: '' });
+    expect(created.statusCode).toBe(201);
+    expect(created.json().guild).toBeNull();
+    await events.drain();
+    const ds = await deliveries();
+    expect(ds).toHaveLength(1);
+    expect(ds[0]).toMatchObject({ guildId: g1.id, eventType: 'post.created' });
+    expect(ds[0]!.payload).toMatchObject({ embeds: [{ fields: expect.arrayContaining([{ name: 'Guild', value: 'No guild', inline: true }]) }] });
+  });
   it('Kronos recruiting post -> exactly one delivery, for G1 (active, webhook, plays Kronos)', async () => {
     const res = await call('POST', '/api/posts', u1, {
       type: 'recruiting', characterId: alice.id, bossDifficultyIds: [lucid],
@@ -126,7 +137,7 @@ describe('request.created', () => {
     expect(ds[0]).toMatchObject({ guildId: g5.id, eventType: 'request.created' });
   });
 
-  it('invite to a guildless character -> notification only, no ping, no throw', async () => {
+  it('routes an invite to a guildless character through a configured world channel', async () => {
     const post = await recruiting();
     const lfp = await makePost({ type: 'lfp', partySize: null, posterCharacterId: bob.id, bossDifficultyIds: [lucid] });
     const requestId = await invite(lfp.id, post.id, u1);
@@ -138,7 +149,7 @@ describe('request.created', () => {
     events.emit({ type: 'request.created', requestId });
     await events.drain();
     expect(await notes()).toHaveLength(1);
-    expect(await deliveries()).toEqual([]);
+    expect(await deliveries()).toMatchObject([{ guildId: g1.id, eventType: 'request.created' }]);
   });
 
   it('invite -> invitee notified; ping to invitee guild mentioning invitee', async () => {

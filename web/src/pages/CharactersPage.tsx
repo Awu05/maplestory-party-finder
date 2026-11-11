@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useCharacters, useGuilds, useRarityTiers, useWorlds } from '../api/hooks';
+import { useCharacters, useRarityTiers, useWorlds } from '../api/hooks';
 import { CharacterCard } from '../components/card/CharacterCard';
 import { CardDetailModal } from '../components/card/CardDetailModal';
 import { MenuChip } from '../components/ui/Chips';
@@ -17,7 +17,6 @@ const ARCHETYPE_OPTIONS = [
 
 export function CharactersPage() {
   const navigate = useNavigate();
-  const [guildId, setGuildId] = useState('');
   const [worldId, setWorldId] = useState('');
   const [archetype, setArchetype] = useState('');
   const [search, setSearch] = useState('');
@@ -29,11 +28,9 @@ export function CharactersPage() {
     return () => clearTimeout(t);
   }, [search]);
 
-  const guilds = useGuilds();
   const worlds = useWorlds();
   const tiers = useRarityTiers();
   const characters = useCharacters({
-    guildId: guildId || undefined,
     worldId: worldId ? Number(worldId) : undefined,
     archetype: archetype || undefined,
     q: q || undefined,
@@ -46,14 +43,6 @@ export function CharactersPage() {
         <h1>Characters</h1>
       </div>
       <div className="filters">
-        <MenuChip
-          label="Guild"
-          allLabel="All guilds"
-          valueLabel={guilds.data?.find((g) => g.id === guildId)?.name ?? null}
-          value={guildId}
-          onChange={setGuildId}
-          options={(guilds.data ?? []).map((g) => ({ value: g.id, label: g.name }))}
-        />
         <MenuChip
           label="World"
           allLabel="All worlds"

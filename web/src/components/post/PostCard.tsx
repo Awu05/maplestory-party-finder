@@ -37,7 +37,7 @@ export function PostCard({ post, tiers, onOpen }: Props) {
         ))}
       </ul>
       <div className="post-card__meta">
-        {post.world.name} · {post.guild.name}
+        {post.world.name} · {(post.guild?.name ?? 'No guild')}
       </div>
       {post.type !== 'lfp' && (
         <div className="post-card__slots">

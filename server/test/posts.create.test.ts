@@ -205,16 +205,29 @@ describe('POST /api/posts', () => {
     expect((await post(body(), null)).statusCode).toBe(401);
   });
 
-  it('guildless character -> 400 NO_GUILD', async () => {
+  it.each(['recruiting', 'carrying', 'lfp'] as const)('creates a %s post without a guild', async (type) => {
     await prisma.character.update({ where: { id: lilyId }, data: { guildId: null } });
-    const res = await post(body());
-    expect(res.statusCode).toBe(400);
-    expect(res.json().error.code).toBe('NO_GUILD');
+    const res = await post(body({ type, ...(type === 'lfp' ? { partySize: undefined } : {}) }));
+    expect(res.statusCode).toBe(201);
+    expect(res.json()).toMatchObject({ type, guild: null });
+    expect((await prisma.post.findUniqueOrThrow({ where: { id: res.json().id } })).guildId).toBeNull();
+    const id = res.json().id;
+    const edited = await app.inject({ method: 'PATCH', url: `/api/posts/${id}`, headers: { cookie }, payload: { note: 'No guild needed' } });
+    expect(edited.statusCode).toBe(200);
+    if (type !== 'lfp') {
+      const finalized = await app.inject({ method: 'PUT', url: `/api/posts/${id}/final-time`, headers: { cookie }, payload: { scheduledAt: new Date(Date.now() + 86_400_000).toISOString() } });
+      expect(finalized.statusCode).toBe(200);
+      expect(finalized.json()).toMatchObject({ guild: null, recruitmentClosed: true });
+    }
+    expect((await app.inject({ method: 'POST', url: `/api/posts/${id}/close`, headers: { cookie } })).statusCode).toBe(200);
+    const reopened = await app.inject({ method: 'POST', url: `/api/posts/${id}/reopen`, headers: { cookie } });
+    expect(reopened.statusCode).toBe(200);
+    expect(reopened.json()).toMatchObject({ guild: null, status: 'open' });
   });
 
-  it('inactive guild / world -> 400', async () => {
+  it('guild activity does not block posting, but an inactive world does', async () => {
     await prisma.guild.update({ where: { id: guildId }, data: { active: false } });
-    expect((await post(body())).json().error.code).toBe('GUILD_INACTIVE');
+    expect((await post(body())).statusCode).toBe(201);
     await prisma.guild.update({ where: { id: guildId }, data: { active: true } });
     await prisma.world.updateMany({ data: { active: false } });
     const res = await post(body());

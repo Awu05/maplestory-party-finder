@@ -2,31 +2,24 @@ import { useEffect, useId, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import type { PostSummaryDTO, PostType } from '@pf/shared';
-import { useBosses, useCharacters, useGuilds, useMe, useWorlds } from '../api/hooks';
+import { useBosses, useCharacters, useMe, useWorlds } from '../api/hooks';
 import { usePosts } from '../api/postHooks';
 import { friendlyError } from '../api/errors';
 import { ChipGroup, MenuChip, ToggleChip } from '../components/ui/Chips';
-import { DAY_LABELS, halfHourLabel } from '../components/post/FreeTimeGrid';
 import { PostRow } from '../components/post/PostRow';
 import { PostPreview } from '../components/post/PostPreview';
 import { usePhone } from '../hooks/useMediaQuery';
-import { useTimeFormat } from '../lib/timeFormat';
 
 export function BoardPage() {
   const me = useMe();
   const mine = useCharacters({ mine: true }, { enabled: !!me.data });
-  const guilds = useGuilds();
   const worlds = useWorlds();
   const bosses = useBosses();
   const isPhone = usePhone();
-  const timeFormat = useTimeFormat();
 
   const [type, setType] = useState<PostType | ''>('');
   const [bossId, setBossId] = useState('');
   const [difficultyId, setDifficultyId] = useState('');
-  const [guildId, setGuildId] = useState('');
-  const [freeDay, setFreeDay] = useState('');
-  const [freeHour, setFreeHour] = useState('');
   const [pickedWorlds, setPickedWorlds] = useState<number[] | null>(null);
 
   // Wait for the session (and the viewer's characters) so the first board request already has its world default.
@@ -39,9 +32,7 @@ export function BoardPage() {
       type: type || undefined,
       bossId: bossId ? Number(bossId) : undefined,
       bossDifficultyId: difficultyId ? Number(difficultyId) : undefined,
-      guildId: guildId || undefined,
       worldIds: worldIds.length > 0 ? worldIds : undefined,
-      freeAt: freeDay !== '' && freeHour !== '' ? Number(freeDay) * 48 + Number(freeHour) : undefined,
     },
     { enabled: defaultsReady },
   );
@@ -130,46 +121,6 @@ export function BoardPage() {
           {!selectedBoss && <p className="board-filters__hint">Choose a boss to select a difficulty.</p>}
         </fieldset>
         <fieldset className="board-filters__group">
-          <legend>Availability</legend>
-          <span className="board-filters__label">Free times</span>
-          <div className="board-filters__controls">
-            {/* Both a day and a time are required to filter availability. */}
-            <MenuChip
-              label="Day"
-              allLabel="Any day"
-              valueLabel={freeDay === '' ? null : DAY_LABELS[Number(freeDay)]}
-              value={freeDay}
-              onChange={(v) => {
-                setFreeDay(v);
-                if (v === '') setFreeHour('');
-              }}
-              options={DAY_LABELS.map((d, i) => ({ value: String(i), label: d }))}
-            />
-            <MenuChip
-              label="Time"
-              allLabel="Any time"
-              valueLabel={freeHour !== '' ? halfHourLabel(Number(freeHour), timeFormat) : null}
-              value={freeHour}
-              onChange={setFreeHour}
-              disabled={freeDay === ''}
-              options={Array.from({ length: 48 }, (_, h) => ({ value: String(h), label: halfHourLabel(h, timeFormat) }))}
-            />
-            <button
-              type="button"
-              className="btn btn--secondary btn--compact"
-              aria-label="Reset free time"
-              disabled={freeDay === ''}
-              onClick={() => {
-                setFreeDay('');
-                setFreeHour('');
-              }}
-            >
-              Reset
-            </button>
-          </div>
-          <p className="board-filters__hint">Choose a day and time to match free times in your time zone.</p>
-        </fieldset>
-        <fieldset className="board-filters__group">
           <legend>Location</legend>
           <span className="board-filters__label">Worlds</span>
           <div role="group" aria-label="Worlds" className="board-filters__worlds">
@@ -179,15 +130,6 @@ export function BoardPage() {
               </ToggleChip>
             ))}
           </div>
-          <span className="board-filters__label">Guild</span>
-          <MenuChip
-            label="Guild"
-            allLabel="All guilds"
-            valueLabel={guilds.data?.find((g) => g.id === guildId)?.name ?? null}
-            value={guildId}
-            onChange={setGuildId}
-            options={(guilds.data ?? []).map((g) => ({ value: g.id, label: g.name }))}
-          />
         </fieldset>
       </section>
       {posts.isError && <p role="alert">{friendlyError(posts.error)}</p>}
