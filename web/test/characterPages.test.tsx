@@ -187,6 +187,67 @@ describe('CharacterFormPage', () => {
     for (const text of [/Bosses/, /Play times/, /Note/]) expect(screen.queryByText(text)).toBeNull();
   });
 
+  describe('pasting the Scouter screenshot', () => {
+    const paste = (target: Element | Document, files: File[]) => {
+      const event = new Event('paste', { bubbles: true, cancelable: true });
+      Object.assign(event, { clipboardData: { files, items: files.map((f) => ({ kind: 'file', type: f.type, getAsFile: () => f })) } });
+      target.dispatchEvent(event);
+    };
+
+    it('a pasted image is attached, shown, and uploaded after create', async () => {
+      const fetchMock = mockApi({
+        ...shared,
+        '/api/auth/me': { id: 'u1', discordUsername: 'lily#1', avatarUrl: null, isAdmin: false },
+        '/api/characters?mine=1': [],
+        'POST /api/characters/lookup': [preview],
+        'POST /api/characters': character,
+        'PUT /api/characters/c1/screenshot': character,
+      });
+      renderWithProviders(
+        <Routes>
+          <Route path="/me/characters/new" element={<CharacterFormPage />} />
+          <Route path="/me/characters" element={<MyCharactersPage />} />
+        </Routes>,
+        { route: '/me/characters/new' },
+      );
+      await fillAddForm();
+      const shot = new File(['png-bytes'], 'image.png', { type: 'image/png' });
+      paste(document, [shot]);
+      expect(await screen.findByText('Pasted screenshot')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Remove screenshot' })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await screen.findByRole('heading', { name: 'My characters' });
+      const put = fetchMock.mock.calls.find((c) => String(c[0]) === '/api/characters/c1/screenshot')!;
+      expect(((put[1] as RequestInit).body as FormData).get('file')).toBe(shot);
+    });
+
+    it('the paste box says how to paste and is keyboard-focusable', async () => {
+      mockApi({ ...shared, 'POST /api/characters/lookup': [preview] });
+      renderWithProviders(formRoutes(), { route: '/me/characters/new' });
+      await fillAddForm();
+      const box = screen.getByRole('button', { name: /paste a screenshot/i });
+      box.focus();
+      expect(box).toHaveFocus();
+      paste(box, [new File(['x'], 'shot.webp', { type: 'image/webp' })]);
+      expect(await screen.findByText('Pasted screenshot')).toBeInTheDocument();
+    });
+
+    it('ignores pastes with no image, rejects other image types, and Remove clears the screenshot', async () => {
+      mockApi({ ...shared, 'POST /api/characters/lookup': [preview] });
+      renderWithProviders(formRoutes(), { route: '/me/characters/new' });
+      await fillAddForm();
+      paste(document, []);
+      expect(screen.queryByText('Pasted screenshot')).toBeNull();
+      paste(document, [new File(['x'], 'anim.gif', { type: 'image/gif' })]);
+      expect(await screen.findByRole('alert')).toHaveTextContent('Paste a PNG, JPEG or WebP image.');
+      paste(document, [new File(['x'], 'shot.jpg', { type: 'image/jpeg' })]);
+      expect(await screen.findByText('Pasted screenshot')).toBeInTheDocument();
+      expect(screen.queryByRole('alert')).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Remove screenshot' }));
+      expect(screen.queryByText('Pasted screenshot')).toBeNull();
+    });
+  });
+
   it('uploads the screenshot after create and surfaces an upload failure on the list page', async () => {
     const fetchMock = mockApi({
       ...shared,

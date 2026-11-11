@@ -104,3 +104,39 @@
     flex-basis: 100%;
   }
 }
+
+/* Scouter screenshot: paste target and the chosen file. */
+.paste-box {
+  padding: var(--space-3);
+  border: 1px dashed var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.paste-box:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  color: var(--text);
+}
+.paste-box kbd {
+  padding: 0 var(--space-1);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 0.8em;
+}
+.screenshot-chosen {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+.screenshot-chosen img {
+  max-width: 160px;
+  max-height: 96px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  object-fit: contain;
+}

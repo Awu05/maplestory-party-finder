@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import type { CharacterDTO, GuildDTO, JobClassDTO, NexonCharacterPreview } from '@pf/shared';
@@ -56,13 +56,52 @@ interface FormProps {
   onSubmit: (details: Details, screenshot: File | null) => Promise<void>;
 }
 
+const SCREENSHOT_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
+
+/** A temporary URL for previewing a picked or pasted file, revoked when it changes. */
+function useObjectUrl(file: File | null): string | null {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!file || typeof URL.createObjectURL !== 'function') return setUrl(null);
+    const next = URL.createObjectURL(file);
+    setUrl(next);
+    return () => URL.revokeObjectURL(next);
+  }, [file]);
+  return url;
+}
+
 function DetailsForm({ initial, lead, validate, guilds, onSubmit }: FormProps) {
   const navigate = useNavigate();
   const [cp, setCp] = useState(initial ? String(initial.combatPower) : '');
   const [guildId, setGuildId] = useState(initial?.guild?.id ?? '');
   const [file, setFile] = useState<File | null>(null);
+  const [pasted, setPasted] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const preview = useObjectUrl(file);
+
+  // Ctrl+V / Cmd+V anywhere on the page attaches a copied screenshot.
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const image = [...(e.clipboardData?.files ?? [])].find((f) => f.type.startsWith('image/'));
+      if (!image) return;
+      e.preventDefault();
+      if (!SCREENSHOT_TYPES.includes(image.type)) return setError('Paste a PNG, JPEG or WebP image.');
+      setError('');
+      setFile(image);
+      setPasted(true);
+      if (fileInput.current) fileInput.current.value = '';
+    };
+    document.addEventListener('paste', onPaste);
+    return () => document.removeEventListener('paste', onPaste);
+  }, []);
+
+  function removeScreenshot() {
+    setFile(null);
+    setPasted(false);
+    if (fileInput.current) fileInput.current.value = '';
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -103,8 +142,34 @@ function DetailsForm({ initial, lead, validate, guilds, onSubmit }: FormProps) {
       <small id="guild-hint">Optional. You'll need a guild to make or join parties.</small>
       <label>
         Scouter screenshot
-        <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+        <input
+          ref={fileInput}
+          type="file"
+          accept={SCREENSHOT_TYPES.join(',')}
+          onChange={(e) => {
+            setFile(e.target.files?.[0] ?? null);
+            setPasted(false);
+          }}
+        />
       </label>
+      <div
+        className="paste-box"
+        role="button"
+        tabIndex={0}
+        aria-label="Paste a screenshot: click here, then press Ctrl+V"
+        onClick={(e) => e.currentTarget.focus()}
+      >
+        Or copy your Scouter screenshot, click here and press <kbd>Ctrl</kbd>+<kbd>V</kbd> (<kbd>⌘</kbd>+<kbd>V</kbd> on Mac)
+      </div>
+      {file && (
+        <div className="screenshot-chosen">
+          {preview && <img src={preview} alt="" />}
+          <span>{pasted ? 'Pasted screenshot' : file.name}</span>
+          <button type="button" className="btn btn--secondary btn--compact" aria-label="Remove screenshot" onClick={removeScreenshot}>
+            Remove
+          </button>
+        </div>
+      )}
       {error && (
         <p role="alert">
           {error}
