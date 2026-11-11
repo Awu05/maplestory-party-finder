@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { buildTestApp, loginAs, makeUser, prisma, resetDb } from './helpers.js';
-import { hashPassword, verifyPassword } from '../src/auth/passwordHash.js';
+import { DerivationQueue, hashPassword, verifyPassword } from '../src/auth/passwordHash.js';
 
 const ORIGIN = 'http://localhost:5173';
 const password = 'a long maple password';
@@ -119,9 +119,27 @@ it('does not count successful sign-ins against the failed-attempt limit', async 
   for (let i = 0; i < 12; i++) expect((await loginFrom('192.0.2.2', { email: account.email, password })).statusCode).toBe(200);
 }, 30_000);
 
-it('bounds concurrent password work and recovers capacity afterward', async () => {
-  const results = await Promise.allSettled([hashPassword(password), hashPassword(password), hashPassword(password)]);
-  expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(2);
-  expect(results.find((result) => result.status === 'rejected')).toMatchObject({ reason: { status: 429, code: 'AUTH_BUSY' } });
-  expect(await verifyPassword(password, await hashPassword(password))).toBe(true);
+it('queues concurrent password work instead of rejecting it', async () => {
+  const stored = await hashPassword(password);
+  const results = await Promise.all(Array.from({ length: 5 }, () => verifyPassword(password, stored)));
+  expect(results).toEqual([true, true, true, true, true]);
+}, 20_000);
+
+it('runs a bounded number of jobs at once and rejects only when its wait queue is full', async () => {
+  const queue = new DerivationQueue(2, 2);
+  let running = 0;
+  let peak = 0;
+  const releases: (() => void)[] = [];
+  const job = () => queue.run(() => new Promise<void>((resolve) => {
+    running++; peak = Math.max(peak, running);
+    releases.push(() => { running--; resolve(); });
+  }));
+  const accepted = [job(), job(), job(), job()];
+  await expect(job()).rejects.toMatchObject({ status: 429, code: 'AUTH_BUSY' });
+  expect(releases).toHaveLength(2);
+  // Waiters start in arrival order as running jobs finish.
+  while (releases.length) { releases.shift()!(); await new Promise((resolve) => setImmediate(resolve)); }
+  await Promise.all(accepted);
+  expect(peak).toBe(2);
+  await expect(queue.run(async () => 'ok')).resolves.toBe('ok');
 });
