@@ -155,21 +155,29 @@ it('only pings members who remain in the party at delivery time', async () => {
   expect(sender.calls[0]!.payload).not.toHaveProperty('_weekly');
 });
 
-it('can notify a member who joins another configured guild while delivery is queued', async () => {
-  const { post } = await party();
-  const guild = await makeGuild({ worldIds: [post.worldId], webhookUrl: 'https://discord.com/api/webhooks/2/test' });
+it('queues reminders only for guilds that have recipients', async () => {
+  const { guild, post } = await party();
+  await makeGuild({ worldIds: [post.worldId], webhookUrl: 'https://discord.com/api/webhooks/2/test' });
   await job.runOnce(at);
+  const deliveries = await prisma.webhookDelivery.findMany();
+  expect(deliveries.map((d) => d.guildId)).toEqual([guild.id]);
+});
+
+it('drops, without counting a failure, a queued reminder whose recipients all left', async () => {
+  const { guild, post } = await party();
+  const member = await makeCharacter({ guildId: guild.id });
+  await addMember(post.id, member.id);
+  const otherGuild = await makeGuild({ webhookUrl: 'https://discord.com/api/webhooks/2/test' });
+  const leaver = await addMember(post.id, (await makeCharacter({ guildId: otherGuild.id })).id);
+  await job.runOnce(at);
+  expect(await prisma.webhookDelivery.count()).toBe(2);
   await prisma.webhookDelivery.updateMany({ data: { createdAt: at } });
-  const character = await makeCharacter({ guildId: guild.id, worldId: post.worldId });
-  await addMember(post.id, character.id);
-  const discordId = (await prisma.user.findUniqueOrThrow({ where: { id: character.ownerId } })).discordId;
+  await prisma.postMember.delete({ where: { id: leaver.id } });
   const sender = new FakeWebhookSender();
-  const worker = new WebhookWorker({ prisma, sender, now: () => at });
-  expect((await worker.runOnce()).sent).toBe(2);
-  const call = sender.calls.find((c) => c.url.includes('/2/test'))!;
-  expect(call.payload.allowed_mentions.users).toContain(discordId);
-  expect(call.payload.content).toMatch(new RegExp(`^<@${discordId}> Weekly party reminder: `));
-  expect(call.payload.content).not.toMatch(/^\s|>\s{2}/);
+  expect(await new WebhookWorker({ prisma, sender, now: () => at }).runOnce()).toEqual({ sent: 1, retried: 0, failed: 0 });
+  expect(sender.calls.map((c) => c.url)).toEqual(['https://discord.com/api/webhooks/1/test']);
+  expect(await prisma.webhookDelivery.count({ where: { status: 'failed' } })).toBe(0);
+  expect(await prisma.webhookDelivery.count({ where: { guildId: otherGuild.id } })).toBe(0);
 });
 
 it('builds the sent message from the reminder metadata and the members at send time', async () => {

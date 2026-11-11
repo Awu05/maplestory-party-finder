@@ -48,15 +48,9 @@ export class WeeklyReminderJob {
         if (now.getTime() - row.scheduledAt!.getTime() <= MAX_LATENESS_MS) {
           const recipients = await weeklyRecipients(tx, row.id);
           const post = weeklyReminderPost(toPostSummaryDTO(row, null, storage, now));
-          // Also reserve deliveries for eligible guilds in this world: someone can join or
-          // change guilds while a reminder is waiting in the outbox. Empty deliveries are discarded.
-          const worldGuilds = await tx.guild.findMany({
-            where: { active: true, webhookUrl: { not: null }, worlds: { some: { worldId: row.worldId } } },
-            select: { id: true },
-          });
-          const guildIds = new Set([...recipients.keys(), ...worldGuilds.map((g) => g.id)]);
-          for (const guildId of guildIds) {
-            const ids = recipients.get(guildId) ?? [];
+          // One delivery per guild that has someone to ping now. The worker re-reads the members at
+          // send time (seconds later) and drops anyone who left; a guild only gained in between is missed.
+          for (const [guildId, ids] of recipients) {
             await enqueueDelivery(tx, guildId, 'post.weekly_reminder', {
               ...buildWeeklyReminder({ recipientDiscordIds: ids, post, webOrigin }),
               _weekly: { nextAt: next.nextAt.toISOString(), anchorAt: row.weeklyAnchorAt!.toISOString(), timeZone: row.weeklyTimeZone!, post, webOrigin },

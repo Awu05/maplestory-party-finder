@@ -126,8 +126,9 @@ export class WebhookWorker {
       }
       const ids = (await weeklyRecipients(this.prisma, row.postId)).get(row.guildId) ?? [];
       if (!ids.length) {
-        await upd({ status: 'failed', attempts: row.attempts + 1, lastError: 'No current recipients' });
-        counts.failed++;
+        // Everyone routed through this guild left: nothing to send and nothing went wrong, so the
+        // row is removed rather than counted as a failure on the admin webhooks page.
+        await this.prisma.webhookDelivery.deleteMany({ where: guard });
         return;
       }
       // Rebuilt for the members who are in the party now; the stored text is only a record.
