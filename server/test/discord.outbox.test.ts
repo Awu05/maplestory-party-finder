@@ -197,7 +197,7 @@ describe('WebhookWorker robustness', () => {
     expect(rows.filter((r) => r.status === 'pending')).toHaveLength(2);
   });
 
-  it('sends post.created for live posts, open or already full, skipping closed and finalized ones', async () => {
+  it('sends post.created only while recruiting, skipping closed, finalized, and full parties', async () => {
     const guild = await makeGuild({ webhookUrl: URL_, active: true });
     // The worker's clock is T0; the posts' expiry is measured against it.
     const banned = await makePost({ status: 'closed', closedReason: 'banned' });
@@ -205,38 +205,25 @@ describe('WebhookWorker robustness', () => {
     const manual = await makePost({ status: 'closed', closedReason: 'manual' });
     const charDeleted = await makePost({ status: 'closed', closedReason: 'character_deleted' });
     const expired = await makePost({ expiresAt: at(-1000) });
-    const finalized = await makePost({ status: 'closed', closedReason: 'finalized' });
-    // A post that filled before the worker got to its announcement still gets announced.
-    const full = await makePost({ status: 'full', closedReason: 'full' });
     const live = await makePost();
+    const full = await makePost({ status: 'full', closedReason: 'full' });
+    const finalized = await makePost({ status: 'closed', closedReason: 'finalized' });
     const ids: string[] = [];
-    for (const post of [banned, deleted, manual, charDeleted, expired, finalized, full, live]) {
+    for (const post of [banned, deleted, manual, charDeleted, expired, full, finalized, live]) {
       await enqueueDelivery(prisma, guild.id, 'post.created', payload, post.id);
       const row = await prisma.webhookDelivery.findFirstOrThrow({ where: { postId: post.id } });
       await prisma.webhookDelivery.update({ where: { id: row.id }, data: { nextAttemptAt: T0 } });
       ids.push(row.id);
     }
-    expect(await worker().runOnce()).toEqual({ sent: 2, retried: 0, failed: 6 });
-    expect(sender.calls).toHaveLength(2);
-    for (const id of ids.slice(0, 6)) {
+    expect(await worker().runOnce()).toEqual({ sent: 1, retried: 0, failed: 7 });
+    expect(sender.calls).toHaveLength(1);
+    for (const id of ids.slice(0, 7)) {
       const row = await get(id);
       expect(row.status).toBe('failed');
       expect(row.lastError).toBe('Post no longer available');
       expect(row.attempts).toBe(1);
     }
-    expect((await get(ids[6]!)).status).toBe('sent');
     expect((await get(ids[7]!)).status).toBe('sent');
-  });
-
-  it.each(['post.announcement', 'post.reopened'])('sends %s only while the post is open', async (eventType) => {
-    const guild = await makeGuild({ webhookUrl: URL_, active: true });
-    const full = await makePost({ status: 'full', closedReason: 'full' });
-    const live = await makePost();
-    for (const post of [full, live]) await enqueueDelivery(prisma, guild.id, eventType, payload, post.id);
-    await prisma.webhookDelivery.updateMany({ data: { nextAttemptAt: T0 } });
-    expect(await worker().runOnce()).toEqual({ sent: 1, retried: 0, failed: 1 });
-    expect((await prisma.webhookDelivery.findFirstOrThrow({ where: { postId: full.id } })).status).toBe('failed');
-    expect((await prisma.webhookDelivery.findFirstOrThrow({ where: { postId: live.id } })).status).toBe('sent');
   });
 
   it('stops sending past the lease deadline and leaves rows pending', async () => {
