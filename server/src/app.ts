@@ -42,7 +42,13 @@ declare module 'fastify' {
 }
 
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
-  const app = Fastify({ logger: deps.config.logger });
+  const { trustProxy } = deps.config;
+  const app = Fastify({
+    logger: deps.config.logger,
+    // Fastify ignores a bare hop count, so trust exactly that many hops in front of us: the socket peer
+    // (hop 0) and the next n-1 X-Forwarded-For entries; the client is the address after them.
+    trustProxy: typeof trustProxy === 'number' ? (_address: string, hop: number) => hop < trustProxy : trustProxy,
+  });
   app.decorate('deps', deps);
   registerErrorHandler(app);
 

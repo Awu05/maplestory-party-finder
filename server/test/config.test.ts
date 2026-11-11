@@ -89,3 +89,52 @@ describe('withUtcSession', () => {
     expect(withUtcSession(url)).toBe(url);
   });
 });
+
+describe('loadConfig TRUST_PROXY', () => {
+  it('defaults to one proxy hop for an https WEB_ORIGIN and off otherwise', () => {
+    expect(loadConfig(base).trustProxy).toBe(false);
+    expect(loadConfig({ ...base, WEB_ORIGIN: 'http://localhost:3000' }).trustProxy).toBe(false);
+    expect(loadConfig({ ...base, WEB_ORIGIN: 'https://pf.example.com' }).trustProxy).toBe(1);
+    expect(loadConfig({ ...base, WEB_ORIGIN: 'https://pf.example.com', TRUST_PROXY: ' ' }).trustProxy).toBe(1);
+  });
+  it.each([
+    ['false', false], ['FALSE', false], ['true', true], [' True ', true], ['1', 1], ['2', 2],
+    ['127.0.0.1', ['127.0.0.1']], ['10.0.0.0/8, 172.16.0.0/12,::1', ['10.0.0.0/8', '172.16.0.0/12', '::1']], ['fd00::/8', ['fd00::/8']],
+  ] as const)('%j -> %j', (v, expected) => {
+    expect(loadConfig({ ...base, WEB_ORIGIN: 'https://pf.example.com', TRUST_PROXY: v }).trustProxy).toEqual(expected);
+  });
+  it.each(['0', '-1', '1.5', 'yes', 'proxy.example.com', '10.0.0.0/33', '::1/129', '10.0.0.1,', '300.0.0.1', '10.0.0.0/'])('%j throws a config error', (v) => {
+    expect(() => loadConfig({ ...base, TRUST_PROXY: v })).toThrow(/TRUST_PROXY/);
+  });
+});
+
+describe('trustProxy in the app', () => {
+  const forgot = (app: Awaited<ReturnType<typeof buildTestApp>>['app'], forwardedFor: string) => app.inject({
+    method: 'POST', url: '/api/auth/password/forgot', remoteAddress: '10.0.0.5',
+    headers: { origin: 'http://localhost:5173', 'x-forwarded-for': forwardedFor }, payload: { email: 'maple@example.com' },
+  });
+
+  it('counts clients behind a trusted proxy in separate per-IP buckets', async () => {
+    const { app } = await buildTestApp({ config: testConfig({ trustProxy: 1 }) });
+    try {
+      // The forgot-password guard allows 10 requests per IP per window (503 here: no mailer configured).
+      for (let i = 0; i < 10; i++) expect((await forgot(app, '203.0.113.1')).statusCode).toBe(503);
+      expect((await forgot(app, '203.0.113.1')).statusCode).toBe(429);
+      // One trusted hop: only the address our proxy appended counts, not entries a client prepended.
+      expect((await forgot(app, '198.51.100.1, 203.0.113.1')).statusCode).toBe(429);
+      expect((await forgot(app, '203.0.113.2')).statusCode).toBe(503);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('ignores X-Forwarded-For without a trusted proxy, so spoofed values share one bucket', async () => {
+    const { app } = await buildTestApp({ config: testConfig({ trustProxy: false }) });
+    try {
+      for (let i = 0; i < 10; i++) expect((await forgot(app, `203.0.113.${i + 1}`)).statusCode).toBe(503);
+      expect((await forgot(app, '203.0.113.99')).statusCode).toBe(429);
+    } finally {
+      await app.close();
+    }
+  });
+});

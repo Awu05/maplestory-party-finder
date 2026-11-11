@@ -31,6 +31,7 @@ Copy `.env.example` to `.env` (root, used by Docker) or `server/.env` (dev).
 | `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` | Discord OAuth credentials |
 | `DISCORD_REDIRECT_URI` | Must match the redirect URI registered with Discord |
 | `WEB_ORIGIN` | Public origin of the site (https enables secure cookies) |
+| `TRUST_PROXY` | Which reverse proxies may set `X-Forwarded-For`, so sign-in and other per-IP limits see each visitor's real address. `false`, `true` (trust every hop), a hop count such as `1`, or comma-separated proxy IPs/CIDRs (e.g. `172.16.0.0/12`). Default when unset: `1` if `WEB_ORIGIN` starts with `https://` (the server only speaks plain HTTP, so an https site implies a TLS proxy in front), otherwise `false`. Invalid values fail at startup. Only use `true` or a hop count when a proxy really is in front of the server: otherwise visitors can fake `X-Forwarded-For` and dodge the limits. Proxy IPs/CIDRs are the safest choice. |
 | `SMTP_HOST` / `SMTP_FROM` | SMTP server and verified sender email for password resets; leave all SMTP settings blank to disable |
 | `SMTP_PORT` / `SMTP_SECURE` | Default 587 with required STARTTLS; use `465` / `true` for TLS from connection start. Certificate verification stays enabled. |
 | `SMTP_USER` / `SMTP_PASSWORD` | SMTP credentials; set both, or neither for a trusted relay |

@@ -1,3 +1,5 @@
+import { isIP } from 'node:net';
+
 export interface Config {
   port: number;
   databaseUrl: string;
@@ -6,6 +8,11 @@ export interface Config {
   discordClientSecret: string;
   discordRedirectUri: string;
   webOrigin: string;
+  /**
+   * Fastify `trustProxy`: which reverse proxies may set X-Forwarded-For, so `req.ip` (and every per-IP
+   * limit) sees the real client. false, true, a hop count, or a list of proxy IPs/CIDRs.
+   */
+  trustProxy: boolean | number | string[];
   adminDiscordIds: string[];
   uploadDir: string;
   /** Built web app directory; when set, the server serves it (production only). */
@@ -38,6 +45,32 @@ function parsePort(raw: string | undefined): number {
   return n;
 }
 
+/**
+ * TRUST_PROXY: unset/blank means one hop when WEB_ORIGIN is https (the server only speaks plain HTTP,
+ * so an https site must have a TLS proxy in front), else false. Otherwise `true`, `false`, a positive
+ * hop count, or comma-separated proxy IPs/CIDRs.
+ */
+function parseTrustProxy(raw: string | undefined, webOrigin: string): Config['trustProxy'] {
+  const v = (raw ?? '').trim();
+  const fail = (): never => {
+    throw new Error(`TRUST_PROXY must be true, false, a positive hop count, or comma-separated IPs/CIDRs (got ${JSON.stringify(raw)})`);
+  };
+  if (v === '') return webOrigin.startsWith('https://') ? 1 : false;
+  if (/^(true|false)$/i.test(v)) return v.toLowerCase() === 'true';
+  if (/^\d+$/.test(v)) {
+    const hops = Number(v);
+    return Number.isSafeInteger(hops) && hops > 0 ? hops : fail();
+  }
+  return v.split(',').map((entry) => {
+    const item = entry.trim();
+    const [address = '', prefix, ...rest] = item.split('/');
+    const family = isIP(address);
+    if (!family || rest.length) fail();
+    if (prefix !== undefined && (!/^\d{1,3}$/.test(prefix) || Number(prefix) > (family === 4 ? 32 : 128))) fail();
+    return item;
+  });
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv): Config {
   const required = (key: string): string => {
     const v = env[key];
@@ -46,6 +79,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
   };
   const sessionSecret = required('SESSION_SECRET');
   if (sessionSecret.length < 32) throw new Error('SESSION_SECRET must be at least 32 characters');
+  const webOrigin = env.WEB_ORIGIN ?? 'http://localhost:5173';
   return {
     port: parsePort(env.PORT),
     databaseUrl: required('DATABASE_URL'),
@@ -53,7 +87,8 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     discordClientId: env.DISCORD_CLIENT_ID ?? '',
     discordClientSecret: env.DISCORD_CLIENT_SECRET ?? '',
     discordRedirectUri: env.DISCORD_REDIRECT_URI ?? '',
-    webOrigin: env.WEB_ORIGIN ?? 'http://localhost:5173',
+    webOrigin,
+    trustProxy: parseTrustProxy(env.TRUST_PROXY, webOrigin),
     adminDiscordIds: (env.ADMIN_DISCORD_IDS ?? '')
       .split(',')
       .map((s) => s.trim())
