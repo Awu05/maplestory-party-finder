@@ -64,3 +64,27 @@ it('does not create a thread without a forum webhook or after the party is reope
   expect((await finalize(new Date(Date.now() + 86_400_000))).statusCode).toBe(200);
   expect((await new WebhookWorker({ prisma, sender }).runOnce()).sent).toBe(1);
 });
+
+it('queues a new thread on the next finalize after a delivery failed (webhook removed, then fixed)', async () => {
+  const p = await prisma.post.findUniqueOrThrow({ where: { id: postId } });
+  expect((await finalize(new Date(Date.now() + 86_400_000))).statusCode).toBe(200);
+  await prisma.guild.update({ where: { id: p.guildId }, data: { partyForumWebhookUrl: null } });
+  const sender = new FakeWebhookSender();
+  expect((await new WebhookWorker({ prisma, sender }).runOnce()).failed).toBe(1);
+  expect((await prisma.post.findUniqueOrThrow({ where: { id: postId } })).forumThreadRequested).toBe(false);
+  await prisma.guild.update({ where: { id: p.guildId }, data: { partyForumWebhookUrl: FORUM_URL } });
+  expect((await finalize(new Date(Date.now() + 2 * 86_400_000))).statusCode).toBe(200);
+  expect(await prisma.webhookDelivery.count({ where: { postId, eventType: 'post.party_thread', status: 'pending' } })).toBe(1);
+  expect((await new WebhookWorker({ prisma, sender }).runOnce()).sent).toBe(1);
+  expect(sender.calls[0]!.url).toBe(FORUM_URL);
+});
+
+it('queues a new thread on the next finalize after a delivery was rejected by Discord', async () => {
+  expect((await finalize(new Date(Date.now() + 86_400_000))).statusCode).toBe(200);
+  const failing = new FakeWebhookSender();
+  failing.queue({ ok: false, status: 404, error: 'Unknown Webhook' });
+  expect((await new WebhookWorker({ prisma, sender: failing }).runOnce()).failed).toBe(1);
+  expect((await finalize(new Date(Date.now() + 2 * 86_400_000))).statusCode).toBe(200);
+  const sender = new FakeWebhookSender();
+  expect((await new WebhookWorker({ prisma, sender }).runOnce()).sent).toBe(1);
+});

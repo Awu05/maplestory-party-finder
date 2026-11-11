@@ -85,15 +85,24 @@ export class WebhookWorker {
   private async process(row: Claimed, counts: { sent: number; retried: number; failed: number }): Promise<void> {
     const guard = { id: row.id, status: 'pending' as const };
     const upd = (data: Prisma.WebhookDeliveryUncheckedUpdateManyInput) => this.prisma.webhookDelivery.updateMany({ where: guard, data });
+    /**
+     * Ends the delivery as failed. A failed forum thread (no webhook, inactive guild, rejected,
+     * retries exhausted or the party ended) frees the post so its next finalize queues a new one.
+     */
+    const fail = async (attempts: number, lastError: string) => {
+      const { count } = await upd({ status: 'failed', attempts, lastError });
+      if (count > 0 && row.eventType === 'post.party_thread' && row.postId) {
+        await this.prisma.post.updateMany({ where: { id: row.postId }, data: { forumThreadRequested: false } });
+      }
+      counts.failed++;
+    };
     const targetWebhook = row.eventType === 'post.party_thread' ? row.partyForumWebhookUrl : row.webhookUrl;
     if (!targetWebhook || !row.active) {
-      await upd({ status: 'failed', attempts: row.attempts + 1, lastError: 'Webhook not configured' });
-      counts.failed++;
+      await fail(row.attempts + 1, 'Webhook not configured');
       return;
     }
     if (row.eventType === 'post.weekly_reminder' && this.now().getTime() - row.createdAt.getTime() > MAX_WEEKLY_REMINDER_AGE_MS) {
-      await upd({ status: 'failed', attempts: row.attempts + 1, lastError: 'Weekly reminder is no longer current' });
-      counts.failed++;
+      await fail(row.attempts + 1, 'Weekly reminder is no longer current');
       return;
     }
     if ((row.eventType === 'post.created' || row.eventType === 'post.reopened' || row.eventType === 'post.announcement' || row.eventType === 'post.weekly_reminder' || row.eventType === 'post.party_thread') && row.postId) {
@@ -103,11 +112,7 @@ export class WebhookWorker {
       const activeFinalized = (row.eventType === 'post.weekly_reminder' || row.eventType === 'post.party_thread') && post?.status === 'closed' && post.closedReason === 'finalized' && post.deletedAt === null && post.expiresAt > this.now();
       if (!post || (effectivePostStatus(post, this.now()) === 'closed' && !activeFinalized) || (row.eventType === 'post.announcement' && effectivePostStatus(post, this.now()) !== 'open') || (row.eventType === 'post.party_thread' && !activeFinalized) || (row.eventType === 'post.weekly_reminder' &&
         (!weekly || post.weeklyTimeZone !== weekly.timeZone || post.weeklyAnchorAt?.toISOString() !== weekly.anchorAt || post.scheduledAt?.toISOString() !== weekly.nextAt))) {
-        await upd({ status: 'failed', attempts: row.attempts + 1, lastError: 'Post no longer available' });
-        if (row.eventType === 'post.party_thread' && post && !activeFinalized) {
-          await this.prisma.post.updateMany({ where: { id: row.postId, OR: [{ status: { not: 'closed' } }, { closedReason: { not: 'finalized' } }, { deletedAt: { not: null } }, { expiresAt: { lte: this.now() } }] }, data: { forumThreadRequested: false } });
-        }
-        counts.failed++;
+        await fail(row.attempts + 1, 'Post no longer available');
         return;
       }
     }
@@ -132,8 +137,7 @@ export class WebhookWorker {
       await upd({ status: 'sent', sentAt: this.now(), lastError: null });
       counts.sent++;
     } else if (res.status === 404 || res.status === 401) {
-      await upd({ status: 'failed', attempts: row.attempts + 1, lastError: res.error });
-      counts.failed++;
+      await fail(row.attempts + 1, res.error);
     } else {
       // A 429 counts as an attempt too (else a webhook that is always rate-limited retries forever),
       // but waits as long as Discord asked rather than the backoff.
@@ -143,8 +147,7 @@ export class WebhookWorker {
           ? Math.min(Math.max(res.retryAfterMs ?? DEFAULT_RETRY_AFTER_MS, MIN_RETRY_AFTER_MS), MAX_RETRY_AFTER_MS)
           : BACKOFF[attempts - 1]!;
       if (attempts >= MAX_ATTEMPTS) {
-        await upd({ status: 'failed', attempts, lastError: res.error });
-        counts.failed++;
+        await fail(attempts, res.error);
       } else {
         await upd({ attempts, nextAttemptAt: new Date(this.now().getTime() + wait), lastError: res.error });
         counts.retried++;
