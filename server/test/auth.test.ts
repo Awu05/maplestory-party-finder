@@ -15,7 +15,11 @@ afterEach(async () => {
 
 describe('auth', () => {
   it('login flow', async () => {
-    const cookie = await loginAs(app, 'u-1', 'andy');
+    const start = await startLogin();
+    const loggedIn = await callback(`code=fake:u-1:andy&state=${start.state}`, start.cookie);
+    expect(loggedIn.statusCode).toBe(302);
+    expect(loggedIn.headers.location).toBe('http://localhost:5173/me/characters');
+    const cookie = String(loggedIn.headers['set-cookie']).split(';')[0]!;
     const me = await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie } });
     expect(me.json()).toMatchObject({ discordUsername: 'andy', isAdmin: false });
     expect(await prisma.user.count()).toBe(1);

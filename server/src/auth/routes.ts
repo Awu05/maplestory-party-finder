@@ -52,7 +52,7 @@ export async function authRoutes(api: FastifyInstance): Promise<void> {
     });
     if (user.banned) return reply.redirect(`${config.webOrigin}/?login=banned`);
     req.session.set('userId', user.id);
-    return reply.redirect(config.webOrigin);
+    return reply.redirect(`${config.webOrigin}/me/characters`);
   });
 
   api.get('/auth/me', async (req): Promise<MeDTO> => {
