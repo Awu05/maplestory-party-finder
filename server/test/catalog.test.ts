@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { buildTestApp, loginAs, makeBossDifficulty, makeCharacter, makeGuild, makeJobClass, makeWorld, prisma, resetDb } from './helpers.js';
+import { buildTestApp, loginAs, makeBossDifficulty, makeGuild, makeJobClass, makeWorld, prisma, resetDb } from './helpers.js';
 
 let app: FastifyInstance;
 let admin: string;

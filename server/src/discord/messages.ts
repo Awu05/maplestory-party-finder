@@ -9,6 +9,7 @@ export type WebhookPayload = {
   thread_name?: string;
   /** Stored with a queued weekly reminder (stripped before sending) to check it and rebuild its message. */
   _weekly?: WeeklyReminderMeta;
+  _forum?: { webOrigin: string };
 };
 
 /** The parts of a post a weekly reminder shows. */
@@ -134,7 +135,7 @@ export function buildTestMessage(guildName: string): WebhookPayload {
 }
 
 /** Thread title and opening message for a finalized party. */
-export function buildPartyThread(post: PostSummaryDTO, webOrigin: string, members: { ign: string; discordId: string }[] = []): { name: string; message: WebhookPayload } {
+export function buildPartyThread(post: WeeklyReminderPost & { world: { name: string }; poster: { snapshot: { ign: string } } }, webOrigin: string, members: { ign: string; discordId: string }[] = []): { name: string; message: WebhookPayload } {
   const bosses = clip(neutralize(bossesLabel(post)), 700);
   const poster = clip(neutralize(post.poster.snapshot.ign), 100);
   const roster = members.filter((member) => /^[1-9]\d{16,19}$/.test(member.discordId))

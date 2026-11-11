@@ -1,5 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { DAY_MS, nextOccurrence, SCHEDULED_GRACE_MS, type MyRequestsDTO, type PostDetailDTO, type PostSummaryDTO, type PostType, type RequestDTO } from '@pf/shared';
+import { useEffect, useReducer } from 'react';
+import { nextOccurrence, type MyRequestsDTO, type PostDetailDTO, type PostSummaryDTO, type PostType, type RequestDTO } from '@pf/shared';
 import { api } from './client';
 import { useMe } from './hooks';
 import { browserTimeZone } from '../lib/timeZone';
@@ -10,7 +11,6 @@ export interface PostFilters {
   bossDifficultyId?: number;
   guildId?: string;
   worldIds?: number[];
-  when?: 'any' | '24h' | '7d' | 'flexible';
   /** Viewer-local half-hour slot (day * 48 + slot, 0 = Sunday). */
   freeAt?: number;
 }
@@ -22,13 +22,6 @@ export function boardQueryString(f: PostFilters, now: Date = new Date()): string
   if (f.bossDifficultyId !== undefined) p.set('bossDifficultyId', String(f.bossDifficultyId));
   if (f.guildId) p.set('guildId', f.guildId);
   if (f.worldIds && f.worldIds.length > 0) p.set('worldIds', f.worldIds.join(','));
-  if (f.when === '24h' || f.when === '7d') {
-    // A run stays on the board for the grace period after its start, so include runs that just started.
-    p.set('from', new Date(now.getTime() - SCHEDULED_GRACE_MS).toISOString());
-    p.set('to', new Date(now.getTime() + (f.when === '24h' ? DAY_MS : 7 * DAY_MS)).toISOString());
-  } else if (f.when === 'flexible') {
-    p.set('flexible', '1');
-  }
   if (f.freeAt !== undefined) {
     p.set('freeAt', freeAtInstant(f.freeAt, now));
     p.set('freeFor', '30');
@@ -36,9 +29,7 @@ export function boardQueryString(f: PostFilters, now: Date = new Date()): string
   return p.toString();
 }
 
-/**
- * The instant sent as `freeAt` for a viewer-local half-hour slot: its start.
- */
+/** Start of the next viewer-local half-hour slot. */
 export function freeAtInstant(slotOfWeek: number, now: Date = new Date()): string {
   const start = nextOccurrence(slotOfWeek, browserTimeZone(), now);
   return start.toISOString();
@@ -47,9 +38,20 @@ export function freeAtInstant(slotOfWeek: number, now: Date = new Date()): strin
 export const BOARD_POLL_MS = 30_000;
 
 export function usePosts(filters: PostFilters, opts: { enabled?: boolean } = {}) {
-  // The key holds the freeAt instant, not just the half-hour slot, so a cached result never answers for
-  // an occurrence that has passed.
-  // One clock read feeds both the key and the request, so they can't disagree at a slot boundary.
+  const [, refreshClock] = useReducer((tick: number) => tick + 1, 0);
+  const trackClock = filters.freeAt !== undefined && (opts.enabled ?? true);
+  useEffect(() => {
+    if (!trackClock) return;
+    const timer = window.setInterval(refreshClock, BOARD_POLL_MS);
+    window.addEventListener('focus', refreshClock);
+    document.addEventListener('visibilitychange', refreshClock);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refreshClock);
+      document.removeEventListener('visibilitychange', refreshClock);
+    };
+  }, [trackClock]);
+  // Share one clock read between the cache key and request.
   const now = new Date();
   const freeAt = filters.freeAt !== undefined ? freeAtInstant(filters.freeAt, now) : undefined;
   return useQuery({

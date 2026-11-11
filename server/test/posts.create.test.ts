@@ -40,6 +40,16 @@ const body = (over: Record<string, unknown> = {}) => ({
 });
 
 describe('POST /api/posts', () => {
+  it('accepts more than ten boss difficulties when creating and editing a post', async () => {
+    const difficulties = await Promise.all(Array.from({ length: 12 }, () => makeBossDifficulty({ partyCap: 6 })));
+    const ids = difficulties.map((difficulty) => difficulty.id);
+    const created = await post(body({ bossDifficultyIds: ids.slice(0, 11) }));
+    expect(created.statusCode).toBe(201);
+    expect(created.json().bosses).toHaveLength(11);
+    const edited = await app.inject({ method: 'PATCH', url: `/api/posts/${created.json().id}`, headers: { cookie }, payload: { bossDifficultyIds: ids } });
+    expect(edited.statusCode).toBe(200);
+    expect(edited.json().bosses).toHaveLength(12);
+  });
   it('rejects availability from a stale browser tab', async () => {
     const res = await app.inject({ method: 'POST', url: '/api/posts', headers: { cookie }, payload: body({ freeTimes: [68], freeTimesZone: 'UTC' }) });
     expect(res.statusCode).toBe(409);

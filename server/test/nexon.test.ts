@@ -120,3 +120,32 @@ describe('HttpNexonClient fresh option', () => {
     expect(fetchStub).toHaveBeenCalledTimes(2);
   });
 });
+
+it('evicts the least recently used lookup when the cache is full', async () => {
+  const fetch = stub(JSON.stringify({ ranks: [] }));
+  const client = new HttpNexonClient({ fetch, maxCacheEntries: 2 });
+  await client.findByName('one');
+  await client.findByName('two');
+  await client.findByName('ONE');
+  await client.findByName('three');
+  await client.findByName('one');
+  expect(fetch).toHaveBeenCalledTimes(3);
+  await client.findByName('two');
+  expect(fetch).toHaveBeenCalledTimes(4);
+});
+
+it('expires an entry even when it was recently accessed', async () => {
+  let now = 0;
+  const fetch = stub(JSON.stringify({ ranks: [] }));
+  const client = new HttpNexonClient({ fetch, cacheTtlMs: 100, now: () => now, maxCacheEntries: 2 });
+  await client.findByName('one');
+  now = 50;
+  await client.findByName('two');
+  await client.findByName('one');
+  now = 101;
+  await client.findByName('three');
+  await client.findByName('two');
+  expect(fetch).toHaveBeenCalledTimes(3);
+  await client.findByName('one');
+  expect(fetch).toHaveBeenCalledTimes(4);
+});

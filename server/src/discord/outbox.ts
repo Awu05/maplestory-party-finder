@@ -1,9 +1,11 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { effectivePostStatus } from '@pf/shared';
-import { buildWeeklyReminder, type WebhookPayload } from './messages.js';
+import { buildPartyThread, buildWeeklyReminder, type WebhookPayload } from './messages.js';
 import { SEND_TIMEOUT_MS, type SendResult, type WebhookSender } from './sender.js';
 import { errName, type Logger } from '../log.js';
 import { weeklyRecipients } from './weeklyRecipients.js';
+import { parseSnapshot } from '../posts/snapshot.js';
+import { toBossDTOs } from '../posts/serialize.js';
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -42,12 +44,7 @@ export class WebhookWorker {
     this.batchSize = opts.batchSize ?? 10;
   }
 
-  /**
-   * Claims due rows in a short transaction (FOR UPDATE SKIP LOCKED), sends outside it so no row
-   * locks are held during HTTP, then records each outcome with a guarded update. Inside the claim
-   * transaction nextAttemptAt is bumped to now + a lease of batchSize x send timeout + 30s (a lease), so a concurrent worker won't pick
-   * the same rows while we send; every outcome update overwrites nextAttemptAt (or ends pending).
-   */
+  /** Lease due deliveries, then release database locks before HTTP. */
   async runOnce(): Promise<{ sent: number; retried: number; failed: number }> {
     const now = this.now();
     const leaseMs = this.batchSize * SEND_TIMEOUT_MS + LEASE_MARGIN_MS;
@@ -85,10 +82,7 @@ export class WebhookWorker {
   private async process(row: Claimed, counts: { sent: number; retried: number; failed: number }): Promise<void> {
     const guard = { id: row.id, status: 'pending' as const };
     const upd = (data: Prisma.WebhookDeliveryUncheckedUpdateManyInput) => this.prisma.webhookDelivery.updateMany({ where: guard, data });
-    /**
-     * Ends the delivery as failed. A failed forum thread (no webhook, inactive guild, rejected,
-     * retries exhausted or the party ended) frees the post so its next finalize queues a new one.
-     */
+    // A failed thread may be queued again on the next finalize.
     const fail = async (attempts: number, lastError: string) => {
       const { count } = await upd({ status: 'failed', attempts, lastError });
       if (count > 0 && row.eventType === 'post.party_thread' && row.postId) {
@@ -106,8 +100,7 @@ export class WebhookWorker {
       return;
     }
     if ((row.eventType === 'post.created' || row.eventType === 'post.reopened' || row.eventType === 'post.announcement' || row.eventType === 'post.weekly_reminder' || row.eventType === 'post.party_thread') && row.postId) {
-      // Announce only a post that is still live (open or full): not deleted, closed for any reason, or expired.
-      // A manual announcement or a reopen announcement also needs it to still be recruiting (open, not full).
+      // Forum threads and weekly reminders also support active finalized parties.
       const post = await this.prisma.post.findUnique({ where: { id: row.postId }, select: { status: true, closedReason: true, expiresAt: true, deletedAt: true, weeklyTimeZone: true, weeklyAnchorAt: true, scheduledAt: true } });
       const weekly = row.payload._weekly;
       const activeFinalized = (row.eventType === 'post.weekly_reminder' || row.eventType === 'post.party_thread') && post?.status === 'closed' && post.closedReason === 'finalized' && post.deletedAt === null && post.expiresAt > this.now();
@@ -118,6 +111,30 @@ export class WebhookWorker {
       }
     }
     let payload = row.payload;
+    if (row.eventType === 'post.party_thread' && row.postId) {
+      const post = await this.prisma.post.findUnique({ where: { id: row.postId }, include: {
+        world: { select: { name: true } },
+        bosses: { include: { bossDifficulty: { include: { boss: true } } } },
+        members: { include: { user: { select: { discordId: true } } }, orderBy: { joinedAt: 'asc' } },
+      } });
+      const poster = post?.members.find((member) => member.role === 'poster');
+      if (!post || !poster || post.status !== 'closed' || post.closedReason !== 'finalized' || post.deletedAt || post.expiresAt <= this.now()) {
+        await fail(row.attempts + 1, 'Post no longer available');
+        return;
+      }
+      // Older queued rows keep their existing public link.
+      const webOrigin = row.payload._forum?.webOrigin ?? row.payload.content?.match(/Party details: (https?:\/\/\S+)\/posts\/[^\s]+/)?.[1];
+      if (!webOrigin) {
+        await fail(row.attempts + 1, 'Party link unavailable');
+        return;
+      }
+      const thread = buildPartyThread({
+        id: post.id, scheduledAt: post.scheduledAt?.toISOString() ?? null, world: post.world,
+        poster: { snapshot: parseSnapshot(poster.snapshot) },
+        bosses: toBossDTOs(post),
+      }, webOrigin, post.members.map((member) => ({ ign: parseSnapshot(member.snapshot).ign, discordId: member.user.discordId })));
+      payload = { ...thread.message, thread_name: thread.name };
+    }
     if (row.eventType === 'post.weekly_reminder' && row.postId) {
       const weekly = row.payload._weekly;
       if (!weekly?.post || !weekly.webOrigin) {
@@ -126,8 +143,7 @@ export class WebhookWorker {
       }
       const ids = (await weeklyRecipients(this.prisma, row.postId)).get(row.guildId) ?? [];
       if (!ids.length) {
-        // Everyone routed through this guild left: nothing to send and nothing went wrong, so the
-        // row is removed rather than counted as a failure on the admin webhooks page.
+        // No remaining recipients is not a delivery failure.
         await this.prisma.webhookDelivery.deleteMany({ where: guard });
         return;
       }

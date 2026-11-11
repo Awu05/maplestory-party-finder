@@ -9,6 +9,7 @@ import { errName, type Logger } from '../log.js';
 
 const MAX_LATENESS_MS = 15 * 60_000;
 const WEEK_MS = 7 * 86_400_000;
+type Occurrence = { id: string; scheduledAt: Date; weeklyAnchorAt: Date; weeklyTimeZone: string };
 
 /** Claims each occurrence and enqueues its reminders in the same transaction. */
 export class WeeklyReminderJob {
@@ -22,22 +23,21 @@ export class WeeklyReminderJob {
     const { prisma, storage, webOrigin } = this.opts;
     let processed = 0;
     for (let attempt = 0; !this.stopping && attempt < 100; attempt++) {
-      const claim: { id: string | null } = { id: null };
+      const claim: { occurrence: Occurrence | null } = { occurrence: null };
       let claimed: boolean;
       try {
         claimed = await prisma.$transaction(async (tx) => {
-          const [due] = await tx.$queryRaw<{ id: string }[]>`
-            SELECT p.id FROM "Post" p
+          const [due] = await tx.$queryRaw<Occurrence[]>`
+            SELECT p.id, p."scheduledAt", p."weeklyAnchorAt", p."weeklyTimeZone" FROM "Post" p
             WHERE p."weeklyTimeZone" IS NOT NULL AND p."weeklyAnchorAt" IS NOT NULL
               AND p."scheduledAt" <= ${now} AND p.type = 'recruiting'
               AND (p.status IN ('open', 'full') OR (p.status = 'closed' AND p."closedReason" = 'finalized')) AND p."deletedAt" IS NULL
               AND EXISTS (SELECT 1 FROM "User" u WHERE u.id = p."posterUserId" AND NOT u.banned)
             ORDER BY p."scheduledAt", p.id LIMIT 1 FOR UPDATE OF p SKIP LOCKED`;
           if (!due) return false;
-          claim.id = due.id;
+          claim.occurrence = due;
           const row = await tx.post.findUniqueOrThrow({ where: { id: due.id }, include: postSummaryInclude });
-          // Calendar weeks in the saved zone, rather than 168 elapsed hours. Keep the original
-          // anchor so a DST gap never permanently changes the chosen wall-clock time.
+          // Keep the original local-time anchor across DST transitions.
           const [next] = await tx.$queryRaw<{ nextAt: Date }[]>`
             WITH local_times AS (
               SELECT ("weeklyAnchorAt" AT TIME ZONE 'UTC') AT TIME ZONE "weeklyTimeZone" AS anchor,
@@ -53,8 +53,7 @@ export class WeeklyReminderJob {
           if (now.getTime() - row.scheduledAt!.getTime() <= MAX_LATENESS_MS) {
             const recipients = await weeklyRecipients(tx, row.id);
             const post = weeklyReminderPost(toPostSummaryDTO(row, null, storage, now));
-            // One delivery per guild that has someone to ping now. The worker re-reads the members at
-            // send time (seconds later) and drops anyone who left; a guild only gained in between is missed.
+            // Recipients are checked again at delivery.
             for (const [guildId, ids] of recipients) {
               await enqueueDelivery(tx, guildId, 'post.weekly_reminder', {
                 ...buildWeeklyReminder({ recipientDiscordIds: ids, post, webOrigin }),
@@ -70,12 +69,10 @@ export class WeeklyReminderJob {
           return true;
         });
       } catch (error) {
-        // Claiming itself failed: nothing post-specific to skip.
-        if (claim.id === null) throw error;
-        // One broken post (e.g. a zone Postgres rejects) must not block every other reminder: it
-        // would be the oldest due row on every tick. Log it and push it a week on; it is retried then.
-        this.opts.log?.error({ postId: claim.id, errName: errName(error) }, 'weekly reminder for post failed; skipped a week');
-        await this.skipFailedPost(claim.id, now);
+        if (claim.occurrence === null) throw error;
+        // Skip a broken occurrence so other parties can still be processed.
+        this.opts.log?.error({ postId: claim.occurrence.id, errName: errName(error) }, 'weekly reminder for post failed; skipped a week');
+        await this.skipFailedPost(claim.occurrence, now);
         continue;
       }
       if (!claimed) break;
@@ -84,19 +81,13 @@ export class WeeklyReminderJob {
     return processed;
   }
 
-  /**
-   * Moves a post whose reminder failed to its first slot after `now` in whole 7-day steps (elapsed
-   * time, not calendar weeks: its zone may be what failed), keeping expiresAt in step as a normal
-   * advance does. Guarded on the old time so a concurrent change wins.
-   */
-  private async skipFailedPost(id: string, now: Date): Promise<void> {
+  /** Fall back to elapsed weeks only if the claimed schedule is unchanged. */
+  private async skipFailedPost(occurrence: Occurrence, now: Date): Promise<void> {
     const { prisma } = this.opts;
-    const post = await prisma.post.findUnique({ where: { id }, select: { scheduledAt: true } });
-    if (!post?.scheduledAt) return;
-    const behind = now.getTime() - post.scheduledAt.getTime();
-    const next = new Date(post.scheduledAt.getTime() + WEEK_MS * Math.max(1, Math.floor(behind / WEEK_MS) + 1));
+    const behind = now.getTime() - occurrence.scheduledAt.getTime();
+    const next = new Date(occurrence.scheduledAt.getTime() + WEEK_MS * (Math.floor(behind / WEEK_MS) + 1));
     await prisma.post.updateMany({
-      where: { id, scheduledAt: post.scheduledAt },
+      where: { ...occurrence, deletedAt: null, OR: [{ status: { in: ['open', 'full'] } }, { status: 'closed', closedReason: 'finalized' }] },
       data: { scheduledAt: next, expiresAt: postExpiresAt(next, now) },
     });
   }

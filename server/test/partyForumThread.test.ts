@@ -25,6 +25,31 @@ afterEach(async () => { await app.close(); });
 
 const finalize = (at: Date) => app.inject({ method: 'PUT', url: `/api/posts/${postId}/final-time`, headers: { cookie }, payload: { scheduledAt: at.toISOString() } });
 
+it('refreshes the time and roster before retrying a rate-limited thread', async () => {
+  const post = await prisma.post.findUniqueOrThrow({ where: { id: postId } });
+  const user = await makeUser({ discordId: MEMBER_DISCORD_ID });
+  const member = await addMember(postId, (await makeCharacter({ ownerId: user.id, guildId: post.guildId })).id);
+  const first = new Date(Date.now() + 86_400_000);
+  const second = new Date(first.getTime() + 86_400_000);
+  expect((await finalize(first)).statusCode).toBe(200);
+  let now = new Date();
+  const sender = new FakeWebhookSender();
+  sender.queue({ ok: false, status: 429, retryAfterMs: 1000, error: 'rate limited' });
+  const worker = new WebhookWorker({ prisma, sender, now: () => now });
+  expect((await worker.runOnce()).retried).toBe(1);
+  expect((await finalize(second)).statusCode).toBe(200);
+  await prisma.postMember.delete({ where: { id: member.id } });
+  now = new Date(now.getTime() + 60_000);
+  expect((await worker.runOnce()).sent).toBe(1);
+  const sent = sender.calls[1]!.payload;
+  expect(sent.content).toContain(`<t:${Math.floor(second.getTime() / 1000)}:F>`);
+  expect(sent.content).not.toContain(`<t:${Math.floor(first.getTime() / 1000)}:F>`);
+  expect(sent.content).toContain(OWNER_DISCORD_ID);
+  expect(sent.content).not.toContain(MEMBER_DISCORD_ID);
+  expect(sent).not.toHaveProperty('_forum');
+  expect(await prisma.webhookDelivery.count({ where: { postId, eventType: 'post.party_thread' } })).toBe(1);
+});
+
 it('queues and delivers exactly one forum thread for the host guild', async () => {
   const post = await prisma.post.findUniqueOrThrow({ where: { id: postId } });
   const member = await makeUser({ discordId: MEMBER_DISCORD_ID });
