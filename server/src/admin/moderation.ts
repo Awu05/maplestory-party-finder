@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { Prisma, PrismaClient, User } from '@prisma/client';
 import { z } from 'zod';
 import type { AdminPostDTO, AdminUserDTO } from '@pf/shared';
-import { requireAdmin } from '../auth/guards.js';
+import { isAdminUser, requireAdmin } from '../auth/guards.js';
 import { toCharacterDTO } from '../characters/serialize.js';
 import { deleteCharacter, getCharacter, listCharacters } from '../characters/service.js';
 import { AppError } from '../http/errors.js';
@@ -60,7 +60,7 @@ export async function adminModerationRoutes(app: FastifyInstance): Promise<void>
     displayName: u.displayName,
     avatarUrl: u.avatar,
     banned: u.banned,
-    isAdmin: u.discordId !== null && config.adminDiscordIds.includes(u.discordId),
+    isAdmin: isAdminUser(u, config),
     createdAt: u.createdAt.toISOString(),
     characterCount: u._count.characters,
   });
@@ -86,7 +86,7 @@ export async function adminModerationRoutes(app: FastifyInstance): Promise<void>
     const { banned } = banBody.parse(req.body);
     const user = await prisma.user.findUnique({ where: { id } });
     if (!user) throw new AppError(404, 'NOT_FOUND');
-    if (banned && (user.id === admin.user.id || (user.discordId !== null && config.adminDiscordIds.includes(user.discordId)))) {
+    if (banned && (user.id === admin.user.id || isAdminUser(user, config))) {
       throw new AppError(400, 'CANNOT_BAN_ADMIN', 'Admins cannot be banned');
     }
     if (banned && !user.banned) {

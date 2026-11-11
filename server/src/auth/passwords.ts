@@ -5,6 +5,7 @@ import { AppError } from '../http/errors.js';
 import { AttemptLimiter, createAuthRequestGuard, signupBody } from './localAuth.js';
 import { hashPassword, verifyPassword } from './passwordHash.js';
 import { toMeDTO } from './serialize.js';
+import { isAdminUser, startSession } from './guards.js';
 
 export const email = z.string().trim().toLowerCase().pipe(z.email().max(254));
 export const password = z.string().min(15).max(128);
@@ -22,12 +23,8 @@ export async function passwordRoutes(api: FastifyInstance): Promise<void> {
 ${address}`;
 
   async function complete(req: FastifyRequest, user: Parameters<typeof toMeDTO>[0]['user']) {
-    const challengeId = req.session.get('passkeyChallengeId');
-    if (challengeId) await prisma.passkeyChallenge.deleteMany({ where: { id: challengeId } });
-    req.session.regenerate();
-    req.session.set('userId', user.id);
-    req.session.set('sessionVersion', user.sessionVersion);
-    return toMeDTO({ user, isAdmin: user.discordId !== null && config.adminDiscordIds.includes(user.discordId) });
+    await startSession(req, user);
+    return toMeDTO({ user, isAdmin: isAdminUser(user, config) });
   }
 
   api.post('/auth/password/register', { bodyLimit: 4096 }, async (req) => {

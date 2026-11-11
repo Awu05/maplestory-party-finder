@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import type { MeDTO } from '@pf/shared';
 import { z } from 'zod';
-import { getViewer, requireUser } from './guards.js';
+import { getViewer, requireUser, startSession } from './guards.js';
 import { passkeyRoutes } from './passkeys.js';
 import { passwordRoutes } from './passwords.js';
 import { passwordResetRoutes } from './passwordReset.js';
@@ -58,8 +58,7 @@ export async function authRoutes(api: FastifyInstance): Promise<void> {
       update: { username: profile.username, avatar: profile.avatarUrl },
     });
     if (user.banned) return reply.redirect(`${config.webOrigin}/?login=banned`);
-    req.session.set('userId', user.id);
-    req.session.set('sessionVersion', user.sessionVersion);
+    await startSession(req, user);
     return reply.redirect(`${config.webOrigin}/me/characters`);
   });
 

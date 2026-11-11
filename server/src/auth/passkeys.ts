@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { AppError } from '../http/errors.js';
 import { toMeDTO } from './serialize.js';
 import { createAuthRequestGuard, signupBody } from './localAuth.js';
+import { isAdminUser, startSession } from './guards.js';
 
 const encoded = z.string().min(1).max(65_536).regex(/^[A-Za-z0-9_-]+$/);
 const credential = z.object({ id: encoded.max(2048), rawId: encoded.max(2048), type: z.literal('public-key'), clientExtensionResults: z.record(z.string(), z.unknown()).default({}), authenticatorAttachment: z.enum(['platform', 'cross-platform']).optional() });
@@ -79,10 +80,8 @@ export async function passkeyRoutes(api: FastifyInstance): Promise<void> {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') throw invalid();
       throw error;
     }
-    req.session.set('oauthState', undefined);
-    req.session.set('userId', user.id);
-    req.session.set('sessionVersion', user.sessionVersion);
-    return toMeDTO({ user, isAdmin: false });
+    await startSession(req, user);
+    return toMeDTO({ user, isAdmin: isAdminUser(user, config) });
   });
 
   api.post('/auth/passkeys/login/options', async (req) => {
@@ -108,9 +107,7 @@ export async function passkeyRoutes(api: FastifyInstance): Promise<void> {
     if (!verification.verified) throw invalid();
     const updated = await prisma.passkey.updateMany({ where: { id: key.id, counter: key.counter, user: { banned: false } }, data: { counter: BigInt(verification.authenticationInfo.newCounter), backedUp: verification.authenticationInfo.credentialBackedUp } });
     if (updated.count !== 1) throw invalid();
-    req.session.set('oauthState', undefined);
-    req.session.set('userId', key.userId);
-    req.session.set('sessionVersion', key.user.sessionVersion);
-    return toMeDTO({ user: key.user, isAdmin: key.user.discordId !== null && config.adminDiscordIds.includes(key.user.discordId) });
+    await startSession(req, key.user);
+    return toMeDTO({ user: key.user, isAdmin: isAdminUser(key.user, config) });
   });
 }

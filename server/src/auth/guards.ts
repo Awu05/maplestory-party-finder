@@ -1,6 +1,7 @@
 import type { FastifyRequest } from 'fastify';
 import type { User } from '@prisma/client';
 import { AppError } from '../http/errors.js';
+import type { Config } from '../config.js';
 
 declare module '@fastify/secure-session' {
   interface SessionData {
@@ -16,8 +17,26 @@ export interface Viewer {
   isAdmin: boolean;
 }
 
+/** Admin rights come only from a Discord-linked account whose ID is on ADMIN_DISCORD_IDS. */
+export function isAdminUser(user: Pick<User, 'discordId'>, config: Pick<Config, 'adminDiscordIds'>): boolean {
+  return user.discordId !== null && config.adminDiscordIds.includes(user.discordId);
+}
+
 function toViewer(req: FastifyRequest, user: User): Viewer {
-  return { user, isAdmin: user.discordId !== null && req.server.deps.config.adminDiscordIds.includes(user.discordId) };
+  return { user, isAdmin: isAdminUser(user, req.server.deps.config) };
+}
+
+/**
+ * Signs `user` in, the same way for every login method: drops any unfinished passkey ceremony
+ * (database row and cookie field), starts a fresh session so nothing from before login carries over,
+ * and records the user and their session version.
+ */
+export async function startSession(req: FastifyRequest, user: Pick<User, 'id' | 'sessionVersion'>): Promise<void> {
+  const challengeId = req.session.get('passkeyChallengeId');
+  if (challengeId) await req.server.deps.prisma.passkeyChallenge.deleteMany({ where: { id: challengeId } });
+  req.session.regenerate();
+  req.session.set('userId', user.id);
+  req.session.set('sessionVersion', user.sessionVersion);
 }
 
 /** Current viewer, or null when logged out, unknown, or banned. */
