@@ -5,7 +5,9 @@ import { SlidingWindowLimiter } from '../http/slidingWindowLimiter.js';
 import { getViewer } from './guards.js';
 
 const name = z.string().transform((value) => value.replace(/[\p{Cc}\p{Cf}]/gu, '').trim()).pipe(z.string().min(1).max(50));
-export const signupBody = z.object({ discordUsername: name.transform((value) => value.replace(/^@/, '')).pipe(z.string().min(1)), displayName: name }).strict();
+/** A typed Discord username: the name rules above, minus a leading @. */
+export const discordUsernameField = name.transform((value) => value.replace(/^@/, '')).pipe(z.string().min(1));
+export const signupBody = z.object({ discordUsername: discordUsernameField, displayName: name }).strict();
 
 export interface AttemptLimiterOptions {
   windowMs?: number;

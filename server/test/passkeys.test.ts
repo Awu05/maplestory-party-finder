@@ -84,7 +84,8 @@ it('consumes registration challenges once, including when an old signed cookie i
 
 it('rejects re-registering an existing credential and rolls back the new account', async () => {
   const { key } = await registered();
-  const pending = await registration();
+  // A different name, so only the reused credential conflicts.
+  const pending = await registration({ ...account, discordUsername: 'second_user' });
   expect((await post('register/verify', key.register(pending.options), pending.cookie)).statusCode).toBe(400);
   expect(await prisma.user.count()).toBe(1);
   expect(await prisma.passkey.count()).toBe(1);

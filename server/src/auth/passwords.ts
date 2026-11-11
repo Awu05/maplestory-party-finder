@@ -6,6 +6,7 @@ import { AttemptLimiter, createAuthRequestGuard, signupBody } from './localAuth.
 import { hashPassword, verifyPassword } from './passwordHash.js';
 import { toMeDTO } from './serialize.js';
 import { isAdminUser, startSession } from './guards.js';
+import { ensureUsernameAvailable, isUsernameConflict, usernameKey, usernameTaken } from './usernames.js';
 
 export const email = z.string().trim().toLowerCase().pipe(z.email().max(254));
 export const password = z.string().min(15).max(128);
@@ -31,14 +32,16 @@ ${address}`;
     await checkRequest(req);
     const input = registration.parse(req.body);
     registrations.check(attemptKey(req, input.email));
+    await ensureUsernameAvailable(prisma, input.discordUsername);
     const passwordHash = await hashPassword(input.password);
     let user;
     try {
       user = await prisma.user.create({ data: {
-        username: input.discordUsername, displayName: input.displayName,
+        username: input.discordUsername, usernameKey: usernameKey(input.discordUsername), displayName: input.displayName,
         passwordCredential: { create: { email: input.email, passwordHash } },
       } });
     } catch (error) {
+      if (isUsernameConflict(error)) throw usernameTaken();
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         throw new AppError(400, 'ACCOUNT_UNAVAILABLE', 'Could not create an account with these details. Try signing in or use a different email.');
       }

@@ -7,6 +7,8 @@ declare module '@fastify/secure-session' {
   interface SessionData {
     userId: string;
     oauthState: string;
+    /** Set by GET /auth/discord/link: the signed-in user the next Discord callback links. Single-use. */
+    linkUserId: string;
     passkeyChallengeId: string;
     sessionVersion: number;
   }
