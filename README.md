@@ -22,7 +22,7 @@ Copy `.env.example` to `.env` (root, used by Docker) or `server/.env` (dev).
 | `DISCORD_REDIRECT_URI` | Must match the redirect URI registered with Discord |
 | `WEB_ORIGIN` | Public origin of the site (https enables secure cookies) |
 | `ADMIN_DISCORD_IDS` | Comma-separated Discord IDs granted admin |
-| `UPLOAD_DIR` | Where screenshots are stored |
+| `UPLOAD_DIR` | Where screenshots are stored. Every upload (PNG, JPEG or WebP, up to 5 MB) is decoded and redrawn as a fresh WebP of at most 2560 px, so hidden data and metadata (such as photo GPS) are thrown away. Images larger than about 40 megapixels are refused, and each user can upload 10 screenshots per 10 minutes. |
 | `JOBS_ENABLED` | Run the webhook worker, daily sync and weekly party reminders in this process (default `true`; `false` or `0` disables, e.g. on a second instance) |
 | `WEB_DIST` | Built web app dir; when set the server serves it (set automatically in the Docker image) |
 
