@@ -24,6 +24,8 @@ export function isScouterText(text: string): boolean {
 }
 
 type Job = { resolve: (text: string) => void; reject: (error: Error) => void };
+/** Where the worker reports crashes and restarts. Never receives image data or recognized text. */
+export type OcrLog = { warn(obj: object, msg: string): void };
 
 /**
  * One long-lived OCR child process (see scouterOcr.ts), started on first use and reused, so the
@@ -37,10 +39,14 @@ export class OcrWorker {
   private nextId = 1;
   private readonly spawn: () => ChildProcess;
   private readonly startupTimeoutMs: number;
+  private readonly log: OcrLog | undefined;
+  /** Processes we killed on purpose (shutdown, timeout); their exit is not a crash. */
+  private readonly stopped = new WeakSet<ChildProcess>();
 
-  constructor(options: { spawn?: () => ChildProcess; startupTimeoutMs?: number } = {}) {
+  constructor(options: { spawn?: () => ChildProcess; startupTimeoutMs?: number; log?: OcrLog } = {}) {
     this.spawn = options.spawn ?? spawnOcrProcess;
     this.startupTimeoutMs = options.startupTimeoutMs ?? 60_000;
+    this.log = options.log;
   }
 
   /** Resolves once the process is up and its model is loaded, starting it if needed. */
@@ -57,6 +63,7 @@ export class OcrWorker {
         if (!this.jobs.has(id)) return;
         this.fail(id, new Error('OCR job abandoned'));
         // It may still be working on this job: replace it rather than queue the next job behind it.
+        this.log?.warn({}, 'OCR job timed out or was cancelled; restarting the OCR worker');
         this.stop(child);
       };
       this.jobs.set(id, {
@@ -83,6 +90,7 @@ export class OcrWorker {
     const starting = new Promise<ChildProcess>((resolve, reject) => {
       const timer = setTimeout(() => {
         reject(new Error('OCR worker did not start in time'));
+        this.log?.warn({ startupTimeoutMs: this.startupTimeoutMs }, 'OCR worker did not start in time; it will be restarted on the next upload');
         this.stop(child);
       }, this.startupTimeoutMs);
       child.on('message', (message: unknown) => {
@@ -98,14 +106,18 @@ export class OcrWorker {
         if (typeof text === 'string') job?.resolve(text);
         else job?.reject(new Error('OCR failed'));
       });
-      const gone = () => {
+      const gone = (detail: object) => {
         clearTimeout(timer);
         reject(new Error('OCR worker exited'));
+        if (!this.stopped.has(child)) {
+          this.stopped.add(child); // exit and error can both fire; report once
+          this.log?.warn(detail, 'OCR worker exited unexpectedly; it will be restarted on the next upload');
+        }
         this.forget(child);
       };
-      child.once('exit', gone);
-      child.once('error', () => {
-        gone();
+      child.once('exit', (code, signal) => gone({ code, signal }));
+      child.once('error', (err) => {
+        gone({ errName: err.name });
         child.kill('SIGKILL');
       });
     });
@@ -129,6 +141,7 @@ export class OcrWorker {
   }
 
   private stop(child: ChildProcess): void {
+    this.stopped.add(child);
     this.forget(child);
     child.kill('SIGKILL');
   }

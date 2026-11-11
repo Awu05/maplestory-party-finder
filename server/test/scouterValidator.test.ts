@@ -129,6 +129,20 @@ it('replaces a crashed OCR worker on the next check', async () => {
   await validator.close();
 });
 
+it('logs when the OCR worker crashes, but not when it is closed on purpose', async () => {
+  const { spawn, children } = fakeSpawner();
+  const warn = vi.fn();
+  const validator = new LocalScouterValidator({ worker: new OcrWorker({ spawn, log: { warn } }) });
+  const buf = await image();
+  await expect(validator.validate(buf)).resolves.toBeUndefined();
+  children[0]!.crash();
+  expect(warn).toHaveBeenCalledTimes(1);
+  expect(warn.mock.calls[0]![1]).toMatch(/OCR worker exited unexpectedly/);
+  await expect(validator.validate(buf)).resolves.toBeUndefined();
+  await validator.close();
+  expect(warn).toHaveBeenCalledTimes(1);
+});
+
 it('fails a check whose worker dies mid-job, then recovers', async () => {
   const { spawn, children } = fakeSpawner({ reply: () => null });
   const validator = new LocalScouterValidator({ worker: new OcrWorker({ spawn }) });

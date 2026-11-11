@@ -70,6 +70,15 @@ describe('buildNewPostMessage', () => {
     expect(ping.content).toContain('<@123>');
     expect(ping.allowed_mentions).toEqual({ parse: [], users: ['123'] });
   });
+  it('treats a post stored before accounts could be unlinked (no discordLinked field) as Discord-linked', () => {
+    const post = makePost();
+    // Messages queued by an older version carry no discordLinked; every account was a Discord account then.
+    delete (post.poster.character!.owner as { discordLinked?: boolean }).discordLinked;
+    expect(fields(buildNewPostMessage(post, ORIGIN)).Discord).toBe('alice');
+    post.poster.character!.owner.displayName = 'Maple';
+    expect(fields(buildNewPostMessage(post, ORIGIN)).Discord).toBe('Maple (@alice)');
+  });
+
   it('marks a typed Discord name from a password or passkey account as unverified, without an @', () => {
     const post = makePost();
     post.poster.character!.owner = { discordUsername: '@everyone', displayName: null, discordLinked: false };
