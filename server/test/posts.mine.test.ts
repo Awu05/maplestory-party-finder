@@ -57,6 +57,25 @@ describe('GET /api/me/parties', () => {
   });
 });
 
+describe('GET /api/me/parties cap', () => {
+  it('returns at most the 100 latest parties, in order', async () => {
+    const character = await makeCharacter({ ownerId: userId });
+    const base = Date.now() + 86_400_000;
+    const posts = await prisma.post.createManyAndReturn({
+      data: Array.from({ length: 101 }, (_, i) => ({
+        type: 'recruiting' as const, partySize: 4, status: 'closed' as const, closedReason: 'finalized' as const,
+        posterUserId: userId, posterCharacterId: character.id, worldId: character.worldId, guildId: character.guildId!,
+        scheduledAt: new Date(base + i * 60_000), expiresAt: new Date(base + i * 60_000 + 3 * 3_600_000),
+      })),
+      select: { id: true, scheduledAt: true },
+    });
+    await prisma.postMember.createMany({ data: posts.map((p) => ({ postId: p.id, characterId: character.id, userId, role: 'poster' as const, cpAtJoin: character.combatPower, snapshot: { ign: character.ign, jobName: character.jobName, level: character.level, imageUrl: character.imageUrl, worldName: 'w', guildName: 'g' } })) });
+    const result = ids(await get('/api/me/parties'));
+    const expected = [...posts].sort((a, b) => b.scheduledAt!.getTime() - a.scheduledAt!.getTime()).slice(0, 100).map((p) => p.id);
+    expect(result).toEqual(expected);
+  });
+});
+
 describe('GET /api/me/posts', () => {
   it('lists my closed post but not my deleted one, newest first', async () => {
     const older = await makePost({ posterUserId: userId, status: 'closed', closedReason: 'manual', createdAt: new Date(Date.now() - 5000) });

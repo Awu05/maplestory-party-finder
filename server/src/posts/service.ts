@@ -197,7 +197,8 @@ export async function listMyParties(prisma: PrismaClient, userId: string): Promi
     WHERE EXISTS (SELECT 1 FROM "PostMember" m WHERE m."postId" = p.id AND m."userId" = ${userId})
       AND ((p.type = 'recruiting' AND p."scheduledAt" IS NOT NULL)
         OR (SELECT count(*) FROM "PostMember" m2 WHERE m2."postId" = p.id) >= 2)
-    ORDER BY p."scheduledAt" DESC NULLS LAST, p."createdAt" DESC, p.id DESC`;
+    ORDER BY p."scheduledAt" DESC NULLS LAST, p."createdAt" DESC, p.id DESC
+    LIMIT 100`;
   const rows = await prisma.post.findMany({ where: { id: { in: ids.map((r) => r.id) } }, include: postInclude });
   const byId = new Map(rows.map((r) => [r.id, r]));
   return ids.map((r) => byId.get(r.id)).filter((r): r is PostRow => r !== undefined);
