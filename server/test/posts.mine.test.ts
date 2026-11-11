@@ -30,8 +30,8 @@ describe('GET /api/me/parties', () => {
     expect((await app.inject({ method: 'GET', url: '/api/me/parties' })).statusCode).toBe(401);
   });
 
-  it('includes solo finalized parties, including past runs, but not other users\' parties', async () => {
-    const solo = await makePost({ posterUserId: userId, scheduledAt: null });
+  it.each(['recruiting', 'carrying'] as const)('includes solo finalized %s parties and past runs, but not other users\' parties', async (type) => {
+    const solo = await makePost({ type, posterUserId: userId, scheduledAt: null });
     const at = new Date(Date.now() + 86_400_000).toISOString();
     const finalized = await app.inject({ method: 'PUT', url: `/api/posts/${solo.id}/final-time`, headers: { cookie }, payload: { scheduledAt: at } });
     expect(finalized.statusCode).toBe(200);

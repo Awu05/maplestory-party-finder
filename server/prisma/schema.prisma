@@ -141,6 +141,7 @@ model RarityTier {
 enum PostType {
   lfp
   recruiting
+  carrying
 }
 
 enum PostStatus {

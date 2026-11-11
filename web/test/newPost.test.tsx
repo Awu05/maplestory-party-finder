@@ -101,6 +101,20 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe('NewPostPage (create)', () => {
+  it('submits a carrying post with party controls and shows its finalization controls', async () => {
+    const carrying = makePost({ type: 'carrying', scheduledAt: null });
+    const fetch = mockApi({ ...base, '/api/posts/p1': carrying, 'POST /api/posts': carrying });
+    renderWithProviders(<App />, { route: '/posts/new' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Carrying' }));
+    await pickCharacter();
+    await pickBoss('Hard Lucid');
+    fireEvent.change(screen.getByLabelText('Party size'), { target: { value: '4' } });
+    save();
+    await screen.findByRole('heading', { name: 'Lineup' });
+    expect(body(writes(fetch)[0])).toMatchObject({ type: 'carrying', partySize: 4, bossDifficultyIds: [7] });
+    expect(screen.getByRole('button', { name: 'Finalize time' })).toBeInTheDocument();
+    expect(screen.getByText('Carrying')).toBeInTheDocument();
+  });
   it('explains when new posts expire and how renewal works', async () => {
     mockApi(base);
     renderWithProviders(<App />, { route: '/posts/new' });

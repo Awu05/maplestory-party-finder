@@ -30,7 +30,7 @@ export class WeeklyReminderJob {
           const [due] = await tx.$queryRaw<Occurrence[]>`
             SELECT p.id, p."scheduledAt", p."weeklyAnchorAt", p."weeklyTimeZone" FROM "Post" p
             WHERE p."weeklyTimeZone" IS NOT NULL AND p."weeklyAnchorAt" IS NOT NULL
-              AND p."scheduledAt" <= ${now} AND p.type = 'recruiting'
+              AND p."scheduledAt" <= ${now} AND p.type IN ('recruiting', 'carrying')
               AND (p.status IN ('open', 'full') OR (p.status = 'closed' AND p."closedReason" = 'finalized')) AND p."deletedAt" IS NULL
               AND EXISTS (SELECT 1 FROM "User" u WHERE u.id = p."posterUserId" AND NOT u.banned)
             ORDER BY p."scheduledAt", p.id LIMIT 1 FOR UPDATE OF p SKIP LOCKED`;

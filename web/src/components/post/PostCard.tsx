@@ -39,7 +39,7 @@ export function PostCard({ post, tiers, onOpen }: Props) {
       <div className="post-card__meta">
         {post.world.name} · {post.guild.name}
       </div>
-      {post.type === 'recruiting' && (
+      {post.type !== 'lfp' && (
         <div className="post-card__slots">
           <span>{`${post.memberCount}/${post.partySize}`}</span>
           {post.minCp !== null && <span>{` · Min CP ${formatCp(post.minCp)}`}</span>}

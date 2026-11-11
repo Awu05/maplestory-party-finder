@@ -63,7 +63,7 @@ function validateRecruitingFields(
 ): void {
   if (type === 'lfp') {
     if ((partySize !== undefined && partySize !== null) || (minCp !== undefined && minCp !== null)) {
-      throw new AppError(400, 'VALIDATION', 'partySize and minCp are only for recruiting posts');
+      throw new AppError(400, 'VALIDATION', 'partySize and minCp are only for recruiting and carrying posts');
     }
     return;
   }
@@ -198,7 +198,7 @@ export async function listMyParties(prisma: PrismaClient, userId: string): Promi
   const ids = await prisma.$queryRaw<{ id: string }[]>`
     SELECT p.id FROM "Post" p
     WHERE EXISTS (SELECT 1 FROM "PostMember" m WHERE m."postId" = p.id AND m."userId" = ${userId})
-      AND ((p.type = 'recruiting' AND p."scheduledAt" IS NOT NULL)
+      AND ((p.type IN ('recruiting', 'carrying') AND p."scheduledAt" IS NOT NULL)
         OR (SELECT count(*) FROM "PostMember" m2 WHERE m2."postId" = p.id) >= 2)
     ORDER BY p."scheduledAt" DESC NULLS LAST, p."createdAt" DESC, p.id DESC`;
   const rows = await prisma.post.findMany({ where: { id: { in: ids.map((r) => r.id) } }, include: postInclude });
@@ -353,7 +353,7 @@ export async function reopenPost(prisma: PrismaClient, viewer: Viewer, id: strin
       throw new AppError(409, 'IN_PARTY', 'Leave your current party before reopening this post.');
     }
     const declinedRequestIds = await autoDeclinePending(tx, postRequests(id));
-    const full = row.type === 'recruiting' && row.partySize !== null && row.members.length >= row.partySize;
+    const full = row.type !== 'lfp' && row.partySize !== null && row.members.length >= row.partySize;
     let post = await tx.post.update({ where: { id }, data: {
       status: full ? 'full' : 'open', closedReason: full ? 'full' : null,
       scheduledAt: null, weeklyTimeZone: null, weeklyAnchorAt: null,
@@ -373,7 +373,7 @@ export async function finalizePostTime(prisma: PrismaClient, viewer: Viewer, id:
   return prisma.$transaction(async (tx) => {
     const row = await loadPostForUpdate(tx, id);
     assertPoster(row, viewer);
-    if (row.type !== 'recruiting') throw new AppError(409, 'WRONG_POST_TYPE', 'Only recruiting posts have a final time');
+    if (row.type === 'lfp') throw new AppError(409, 'WRONG_POST_TYPE', 'Only recruiting and carrying posts have a final time');
     if (effectivePostStatus(row, now) === 'closed' && !isActiveFinalized(row, now)) throw new AppError(409, 'POST_CLOSED', 'Post is closed');
     assertScheduleWindow(scheduledAt, now);
     const declinedRequestIds = await autoDeclinePending(tx, postRequests(id));
@@ -545,9 +545,9 @@ export async function editPost(prisma: PrismaClient, viewer: Viewer, id: string,
       minCp = input.minCp === undefined ? row.minCp : input.minCp === null ? null : BigInt(input.minCp);
     }
 
-    const becameFull = type === 'recruiting' && row.status === 'open' && partySize === memberCount;
+    const becameFull = type !== 'lfp' && row.status === 'open' && partySize === memberCount;
     // Not expired: closed posts were refused above.
-    const reopened = type === 'recruiting' && row.status === 'full' && partySize !== null && memberCount < partySize;
+    const reopened = type !== 'lfp' && row.status === 'full' && partySize !== null && memberCount < partySize;
 
     // Type or world changes void everything tied to the post; an LFP post's invites name its character,
     // so a new character voids them too; filling it only voids its own requests.

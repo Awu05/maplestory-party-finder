@@ -138,7 +138,7 @@ export function PostDetailPage() {
         ))}
       </ul>
       <WhenSection post={p} members={p.members} allowAvailabilityEdit />
-      {p.type === 'recruiting' && (
+      {p.type !== 'lfp' && (
         <div className="post-card__slots">
           <span>{`${p.memberCount}/${p.partySize}`}</span>
           {p.minCp !== null && <span>{` · Min CP ${formatCp(p.minCp)}`}</span>}
@@ -156,7 +156,7 @@ export function PostDetailPage() {
               Edit
             </Link>
           )}
-          {posterActive && p.type === 'recruiting' && (
+          {posterActive && p.type !== 'lfp' && (
             <button
               ref={finalizeRef}
               type="button"
@@ -197,7 +197,7 @@ export function PostDetailPage() {
         </div>
       )}
       {announce.isSuccess && <p role="status" className="when-section__caption">Discord notification queued.</p>}
-      {posterCanManage && closed && <p className="when-section__caption">Reopening keeps the lineup, clears the final time and weekly reminders, and opens recruitment for seven days.{p.type === 'recruiting' && p.partySize !== null && p.memberCount >= p.partySize ? ' The party is full; remove a member to show it on the board.' : ''}</p>}
+      {posterCanManage && closed && <p className="when-section__caption">Reopening keeps the lineup, clears the final time and weekly reminders, and opens recruitment for seven days.{p.type !== 'lfp' && p.partySize !== null && p.memberCount >= p.partySize ? ' The party is full; remove a member to show it on the board.' : ''}</p>}
 
       {!closed && !p.deleted && (
         <section className="post-expiry" aria-labelledby="post-expiry-title">

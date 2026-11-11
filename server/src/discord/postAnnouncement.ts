@@ -2,7 +2,7 @@ import type { Prisma, PrismaClient } from '@prisma/client';
 import type { PostSummaryRow } from '../posts/serialize.js';
 import { toPostSummaryDTO } from '../posts/serialize.js';
 import type { Storage } from '../storage/storage.js';
-import { buildNewPostMessage } from './messages.js';
+import { buildNewPostMessage, buildPostClosedMessage } from './messages.js';
 
 /** Queue the same world-scoped announcement and configured boss-role pings used for new posts. */
 export async function enqueuePostAnnouncement(db: PrismaClient | Prisma.TransactionClient, row: PostSummaryRow, storage: Storage, webOrigin: string, now: Date, eventType: 'post.created' | 'post.announcement' | 'post.reopened' = 'post.created'): Promise<number> {
@@ -20,4 +20,16 @@ export async function enqueuePostAnnouncement(db: PrismaClient | Prisma.Transact
     return { guildId: guild.id, eventType, payload: payload as unknown as Prisma.InputJsonValue, postId: row.id };
   }) });
   return guilds.length;
+}
+
+export async function enqueuePostClosure(db: PrismaClient, row: PostSummaryRow, storage: Storage, webOrigin: string, reason: string): Promise<void> {
+  const guilds = await db.guild.findMany({
+    where: { active: true, webhookUrl: { not: null }, worlds: { some: { worldId: row.worldId } } },
+    select: { id: true },
+  });
+  if (!guilds.length) return;
+  const payload = buildPostClosedMessage(toPostSummaryDTO(row, null, storage, new Date()), webOrigin, reason);
+  await db.webhookDelivery.createMany({ data: guilds.map((guild) => ({
+    guildId: guild.id, eventType: 'post.closed', postId: row.id, payload: payload as unknown as Prisma.InputJsonValue,
+  })) });
 }

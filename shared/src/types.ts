@@ -62,12 +62,12 @@ export type RarityTierDTO = { id: number; name: string; minCp: number; sortOrder
 
 export type MeDTO = { id: string; discordUsername: string; displayName: string | null; avatarUrl: string | null; isAdmin: boolean } | null;
 
-export type PostType = 'lfp' | 'recruiting';
+export type PostType = 'lfp' | 'recruiting' | 'carrying';
 export type PostStatus = 'open' | 'full' | 'closed';
 export type RequestKind = 'join_request' | 'invite';
 export type RequestStatus = 'pending' | 'accepted' | 'declined' | 'cancelled';
 
-export const POST_TYPE_LABELS: Record<PostType, string> = { lfp: 'Looking for party', recruiting: 'Recruiting' };
+export const POST_TYPE_LABELS: Record<PostType, string> = { lfp: 'Looking for party', recruiting: 'Recruiting', carrying: 'Carrying' };
 
 export interface PostBossDTO { bossDifficultyId: number; bossName: string; difficulty: string }
 

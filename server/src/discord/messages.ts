@@ -53,7 +53,7 @@ export function discordTime(iso: string | null): string {
 
 export function buildNewPostMessage(post: PostSummaryDTO, webOrigin: string, bossRoleIds: string[] = []): WebhookPayload {
   const roles = [...new Set(bossRoleIds.filter((id) => /^[1-9]\d{16,19}$/.test(id)))];
-  const recruiting = post.type === 'recruiting';
+  const recruiting = post.type !== 'lfp';
   const snap = post.poster.snapshot;
   const field = (name: string, value: string) => ({ name, value: clip(neutralize(value), FIELD_MAX), inline: true });
 
@@ -115,18 +115,10 @@ export function buildAcceptPing(args: {
   };
 }
 
-export function buildTimeSetPing(args: {
-  recipientDiscordId: string;
-  posterIgn: string;
-  post: PostSummaryDTO;
-  scheduledAt: string;
-  webOrigin: string;
-}): WebhookPayload {
-  const { recipientDiscordId: id, post } = args;
-  const unix = Math.floor(Date.parse(args.scheduledAt) / 1000);
+export function buildPostClosedMessage(post: PostSummaryDTO, webOrigin: string, reason: string): WebhookPayload {
   return {
-    content: `<@${id}> ${neutralize(args.posterIgn)} set the time for ${neutralize(bossesLabel(post))}: <t:${unix}:F> → ${postLink(post, args.webOrigin)}`,
-    allowed_mentions: { parse: [], users: [id] },
+    content: `Post closed (${neutralize(reason)}): ${clip(neutralize(bossesLabel(post)), 1000)}${post.scheduledAt ? ` · ${discordTime(post.scheduledAt)}` : ''} → ${postLink(post, webOrigin)}`,
+    allowed_mentions: { parse: [] },
   };
 }
 

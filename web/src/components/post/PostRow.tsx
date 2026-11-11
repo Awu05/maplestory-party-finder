@@ -25,7 +25,7 @@ export const PostRow = forwardRef<HTMLAnchorElement, Props>(function PostRow(
   const { poster } = post;
   const ign = poster.character?.ign ?? poster.snapshot.ign;
   const sprite = poster.character?.imageUrl ?? poster.snapshot.imageUrl;
-  const slots = post.type === 'recruiting' && post.partySize ? { have: post.memberCount, of: post.partySize } : null;
+  const slots = post.type !== 'lfp' && post.partySize ? { have: post.memberCount, of: post.partySize } : null;
 
   const optionProps = asLink
     ? {}

@@ -225,11 +225,11 @@ describe('invite', () => {
     ...over,
   });
 
-  it('LFP post Invite lists my open recruiting posts on same world and posts {recruitingPostId}', async () => {
+  it.each(['recruiting', 'carrying'] as const)('LFP post Invite offers my open %s parties on the same world', async (type) => {
     const fetchMock = renderPage({
       '/api/posts/p1': lfp(),
       '/api/me/posts': [
-        summary('mine1'),
+        summary('mine1', { type }),
         summary('other-world', { world: scania }),
         summary('lfp-post', { type: 'lfp' }),
         summary('closed-one', { status: 'closed' }),
@@ -238,7 +238,7 @@ describe('invite', () => {
     });
     fireEvent.click(await screen.findByRole('button', { name: 'Invite' }));
     const list = await screen.findByRole('list', {
-      name: 'Your open recruiting posts',
+      name: 'Your open parties',
     });
     expect(within(list).getAllByRole('button')).toHaveLength(1);
     fireEvent.click(within(list).getByRole('button'));
@@ -249,10 +249,10 @@ describe('invite', () => {
     });
   });
 
-  it('shows an empty state when I have no open recruiting posts', async () => {
+  it('shows an empty state when I have no open parties', async () => {
     renderPage({ '/api/posts/p1': lfp() });
     fireEvent.click(await screen.findByRole('button', { name: 'Invite' }));
-    expect(await screen.findByText(/no open recruiting posts/i)).toBeInTheDocument();
+    expect(await screen.findByText(/no open parties/i)).toBeInTheDocument();
   });
 });
 
@@ -423,7 +423,7 @@ describe('invites on the post page', () => {
     const actions = await screen.findByRole('region', { name: 'Your actions' });
     expect(await within(actions).findByText(/Invite sent from Hard Will/)).toBeInTheDocument();
     fireEvent.click(within(actions).getByRole('button', { name: 'Invite' }));
-    const list = await screen.findByRole('list', { name: 'Your open recruiting posts' });
+    const list = await screen.findByRole('list', { name: 'Your open parties' });
     expect(within(list).getAllByRole('button')).toHaveLength(1);
     expect(within(list).getByRole('button')).toHaveTextContent('Chaos Gloom');
     fireEvent.click(within(actions).getByRole('button', { name: 'Cancel' }));

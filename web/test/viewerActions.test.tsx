@@ -71,7 +71,7 @@ const recruitingPost: PostDetailDTO = {
 afterEach(() => vi.restoreAllMocks());
 
 describe('ViewerActions', () => {
-  it('Request to join then picking a character posts {characterId}', async () => {
+  it.each(['recruiting', 'carrying'] as const)('Request to join a %s party posts the chosen character', async (type) => {
     const fetchMock = mockApi({
       '/api/auth/me': {
         id: 'u1',
@@ -84,7 +84,7 @@ describe('ViewerActions', () => {
       '/api/characters?mine=1': [character('k1', 'KronosMain')],
       'POST /api/posts/p1/requests': {},
     });
-    renderWithProviders(<ViewerActions post={recruitingPost} />);
+    renderWithProviders(<ViewerActions post={{ ...recruitingPost, type }} />);
     fireEvent.click(
       await screen.findByRole('button', { name: 'Request to join' }),
     );

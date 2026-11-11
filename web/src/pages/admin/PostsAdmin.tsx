@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { POST_TYPE_LABELS } from '@pf/shared';
 import { Link } from 'react-router-dom';
 import { useAdminDeletePost, useAdminPosts, useDebouncedValue } from '../../api/hooks';
 import { friendlyError } from '../../api/errors';
@@ -39,7 +40,7 @@ export function PostsAdmin() {
             const ign = p.poster.snapshot.ign;
             return (
               <tr key={p.id}>
-                <td data-label="Type">{p.type === 'recruiting' ? 'Recruiting' : 'Looking for party'}</td>
+                <td data-label="Type">{POST_TYPE_LABELS[p.type]}</td>
                 <td data-label="Bosses">{p.bosses.map(bossLabel).join(', ')}</td>
                 <td data-label="Poster">{ign} ({p.posterDiscordUsername})</td>
                 <td data-label="World">{p.world.name}</td>

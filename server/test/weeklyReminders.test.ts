@@ -49,6 +49,13 @@ async function party(over: Parameters<typeof makePost>[0] = {}) {
   return { guild, character, post };
 }
 
+it('advances and queues weekly reminders for finalized carrying parties', async () => {
+  const { post } = await party({ type: 'carrying', status: 'closed', closedReason: 'finalized' });
+  expect(await job.runOnce(at)).toBe(1);
+  expect(await prisma.webhookDelivery.count({ where: { postId: post.id, eventType: 'post.weekly_reminder' } })).toBe(1);
+  expect((await prisma.post.findUniqueOrThrow({ where: { id: post.id } })).scheduledAt).toEqual(new Date('2027-03-14T23:30:00.000Z'));
+});
+
 it('pings current members including the owner, advances to the same local time across DST, and claims once', async () => {
   const { guild, character, post } = await party();
   const member = await makeCharacter({ guildId: guild.id });

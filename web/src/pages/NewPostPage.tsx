@@ -61,10 +61,10 @@ function changedFields(v: Values, orig: Values, editingZone: string): UpdatePost
   if (v.type !== orig.type) out.type = v.type;
   if (v.characterId !== orig.characterId) out.characterId = v.characterId;
   if (!sameSet(v.bossIds, orig.bossIds)) out.bossDifficultyIds = v.bossIds;
-  if (v.type === 'recruiting') {
+  if (v.type !== 'lfp') {
     const cp = parseCp(v.minCp);
     if (v.type !== orig.type) {
-      // Switching to recruiting: the server requires partySize.
+      // Party posts require a size.
       out.partySize = v.partySize;
       if (cp !== null) out.minCp = cp;
     } else {
@@ -131,7 +131,7 @@ function PostForm({ characters, bosses, post }: FormProps) {
     // A deleted poster character (blank on edit) stays blank unless the user picks another.
     if (!v.characterId && !(post && orig.characterId === '')) return setError('Pick a character.');
     if (v.bossIds.length === 0) return setError('Pick at least one boss.');
-    const cp = v.type === 'recruiting' ? parseCp(v.minCp) : null;
+    const cp = v.type !== 'lfp' ? parseCp(v.minCp) : null;
     if (cp !== null && (Number.isNaN(cp) || cp <= 0)) return setError('Enter the minimum combat power as a number.');
 
     setSaving(true);
@@ -151,7 +151,7 @@ function PostForm({ characters, bosses, post }: FormProps) {
           bossDifficultyIds: v.bossIds,
           freeTimes: v.freeTimes,
           freeTimesZone: v.freeTimes.length > 0 ? browserTimeZone() : null,
-          ...(v.type === 'recruiting' ? { partySize: v.partySize, ...(cp !== null ? { minCp: cp } : {}) } : {}),
+          ...(v.type !== 'lfp' ? { partySize: v.partySize, ...(cp !== null ? { minCp: cp } : {}) } : {}),
           note: v.note,
         });
         navigate(`/posts/${created.id}`);
@@ -167,7 +167,7 @@ function PostForm({ characters, bosses, post }: FormProps) {
       {!post && <p className="post-form__expiry">Posts without a finalized time expire 7 days after creation. You can renew your post for 7 days from the time you renew it.</p>}
       <div>
         <div role="group" aria-label="Post type" className="actions">
-          {(['recruiting', 'lfp'] as const).map((t) => (
+          {(['recruiting', 'carrying', 'lfp'] as const).map((t) => (
             <button key={t} type="button" className="chip" aria-pressed={v.type === t} disabled={locked} onClick={() => set({ type: t })}>
               {POST_TYPE_LABELS[t]}
             </button>
@@ -199,7 +199,7 @@ function PostForm({ characters, bosses, post }: FormProps) {
           onChange={(freeTimes) => set({ freeTimes })}
         />
       </div>
-      {v.type === 'recruiting' && (
+      {v.type !== 'lfp' && (
         <>
           <label>
             Party size

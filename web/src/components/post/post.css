@@ -91,7 +91,8 @@ a.post-card:hover {
   color: #b3a9ff;
   font-size: 0.8rem;
 }
-.post-badge--recruiting {
+.post-badge--recruiting,
+.post-badge--carrying {
   background: color-mix(in srgb, var(--accent-2) 18%, transparent);
   color: var(--accent-2);
 }
