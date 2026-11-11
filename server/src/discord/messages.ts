@@ -7,7 +7,20 @@ export type WebhookPayload = {
   allowed_mentions: { parse: string[]; users?: string[]; roles?: string[] };
   username?: string;
   thread_name?: string;
-  _weekly?: { nextAt: string; anchorAt: string; timeZone: string };
+  /** Stored with a queued weekly reminder (stripped before sending) to check it and rebuild its message. */
+  _weekly?: WeeklyReminderMeta;
+};
+
+/** The parts of a post a weekly reminder shows. */
+export type WeeklyReminderPost = Pick<PostSummaryDTO, 'id' | 'scheduledAt'> & { bosses: Pick<PostBossDTO, 'bossName' | 'difficulty'>[] };
+
+export type WeeklyReminderMeta = {
+  nextAt: string;
+  anchorAt: string;
+  timeZone: string;
+  /** Absent on rows queued before the message was rebuilt at send time. */
+  post?: WeeklyReminderPost;
+  webOrigin?: string;
 };
 
 const ZWSP = '​';
@@ -27,9 +40,9 @@ export function neutralize(text: string): string {
 
 const clip = (s: string, max: number): string => (s.length > max ? s.slice(0, max - 1) + '…' : s);
 
-export const bossLabel = (b: PostBossDTO): string => `${b.difficulty} ${b.bossName}`;
-const bossesLabel = (post: PostSummaryDTO): string => post.bosses.map(bossLabel).join(' + ');
-const postLink = (post: PostSummaryDTO, webOrigin: string): string => `${webOrigin}/posts/${post.id}`;
+export const bossLabel = (b: Pick<PostBossDTO, 'bossName' | 'difficulty'>): string => `${b.difficulty} ${b.bossName}`;
+const bossesLabel = (post: Pick<WeeklyReminderPost, 'bosses'>): string => post.bosses.map(bossLabel).join(' + ');
+const postLink = (post: Pick<PostSummaryDTO, 'id'>, webOrigin: string): string => `${webOrigin}/posts/${post.id}`;
 
 export function discordTime(iso: string | null): string {
   if (!iso) return 'Flexible';
@@ -135,14 +148,20 @@ export function buildPartyThread(post: PostSummaryDTO, webOrigin: string, member
   };
 }
 
+/** Just what a weekly reminder needs from the post, so the outbox can rebuild it at send time. */
+export function weeklyReminderPost(post: PostSummaryDTO): WeeklyReminderPost {
+  return { id: post.id, scheduledAt: post.scheduledAt, bosses: post.bosses.map((b) => ({ bossName: b.bossName, difficulty: b.difficulty })) };
+}
+
 export function buildWeeklyReminder(args: {
   recipientDiscordIds: string[];
-  post: PostSummaryDTO;
+  post: WeeklyReminderPost;
   webOrigin: string;
 }): WebhookPayload {
   const users = [...new Set(args.recipientDiscordIds)];
+  const text = `Weekly party reminder: ${neutralize(bossesLabel(args.post))} is starting now (${discordTime(args.post.scheduledAt)}) → ${postLink(args.post, args.webOrigin)}`;
   return {
-    content: `${users.map((id) => `<@${id}>`).join(' ')} Weekly party reminder: ${neutralize(bossesLabel(args.post))} is starting now (${discordTime(args.post.scheduledAt)}) → ${postLink(args.post, args.webOrigin)}`,
+    content: [...users.map((id) => `<@${id}>`), text].join(' '),
     allowed_mentions: { parse: [], users },
   };
 }

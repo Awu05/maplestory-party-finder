@@ -1,6 +1,6 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { effectivePostStatus } from '@pf/shared';
-import type { WebhookPayload } from './messages.js';
+import { buildWeeklyReminder, type WebhookPayload } from './messages.js';
 import { SEND_TIMEOUT_MS, type SendResult, type WebhookSender } from './sender.js';
 import { errName, type Logger } from '../log.js';
 import { weeklyRecipients } from './weeklyRecipients.js';
@@ -119,14 +119,19 @@ export class WebhookWorker {
     }
     let payload = row.payload;
     if (row.eventType === 'post.weekly_reminder' && row.postId) {
+      const weekly = row.payload._weekly;
+      if (!weekly?.post || !weekly.webOrigin) {
+        await fail(row.attempts + 1, 'Weekly reminder is no longer current');
+        return;
+      }
       const ids = (await weeklyRecipients(this.prisma, row.postId)).get(row.guildId) ?? [];
       if (!ids.length) {
         await upd({ status: 'failed', attempts: row.attempts + 1, lastError: 'No current recipients' });
         counts.failed++;
         return;
       }
-      const { _weekly, ...message } = row.payload;
-      payload = { ...message, content: (message.content ?? '').replace(/^(?:<@[^>]+>\s*)*/, `${ids.map((id) => `<@${id}>`).join(' ')} `), allowed_mentions: { parse: [], users: ids } };
+      // Rebuilt for the members who are in the party now; the stored text is only a record.
+      payload = buildWeeklyReminder({ recipientDiscordIds: ids, post: weekly.post, webOrigin: weekly.webOrigin });
     }
     let res: SendResult;
     try {

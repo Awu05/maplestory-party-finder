@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PostSummaryDTO } from '@pf/shared';
 import {
-  bossLabel, buildAcceptPing, buildNewPostMessage, buildPartyThread, buildRequestPing, buildTestMessage, buildTimeSetPing, discordTime, neutralize,
+  bossLabel, buildAcceptPing, buildNewPostMessage, buildPartyThread, buildRequestPing, buildTestMessage, buildTimeSetPing, buildWeeklyReminder, discordTime, neutralize, weeklyReminderPost,
 } from '../src/discord/messages';
 
 const ZW = '​';
@@ -172,5 +172,17 @@ describe('buildTimeSetPing', () => {
     const p = buildTimeSetPing({ recipientDiscordId: '42', posterIgn: '@here Alice', post, scheduledAt: '2025-11-10T20:00:00Z', webOrigin: ORIGIN });
     expect(p.content).toBe(`<@42> @${ZW}here Alice set the time for Hard @${ZW}everyone: <t:1762804800:F> → ${ORIGIN}/posts/p1`);
     expect(p.allowed_mentions).toEqual({ parse: [], users: ['42'] });
+  });
+});
+
+describe('buildWeeklyReminder', () => {
+  it('lists each recipient once, separated by single spaces, and starts with them', () => {
+    const post = weeklyReminderPost(makePost({ scheduledAt: '2025-11-10T20:00:00Z' }));
+    const p = buildWeeklyReminder({ recipientDiscordIds: ['1', '2', '1'], post, webOrigin: ORIGIN });
+    expect(p.content).toMatch(/^<@1> <@2> Weekly party reminder: \S/);
+    expect(p.content).toContain(`<t:1762804800:F>`);
+    expect(p.content).toContain(`${ORIGIN}/posts/p1`);
+    expect(p.allowed_mentions).toEqual({ parse: [], users: ['1', '2'] });
+    expect(buildWeeklyReminder({ recipientDiscordIds: [], post, webOrigin: ORIGIN }).content).toMatch(/^Weekly party reminder: /);
   });
 });

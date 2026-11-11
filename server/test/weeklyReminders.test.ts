@@ -166,7 +166,30 @@ it('can notify a member who joins another configured guild while delivery is que
   const sender = new FakeWebhookSender();
   const worker = new WebhookWorker({ prisma, sender, now: () => at });
   expect((await worker.runOnce()).sent).toBe(2);
-  expect(sender.calls.find((call) => call.url.includes('/2/test'))?.payload.allowed_mentions.users).toContain(discordId);
+  const call = sender.calls.find((c) => c.url.includes('/2/test'))!;
+  expect(call.payload.allowed_mentions.users).toContain(discordId);
+  expect(call.payload.content).toMatch(new RegExp(`^<@${discordId}> Weekly party reminder: `));
+  expect(call.payload.content).not.toMatch(/^\s|>\s{2}/);
+});
+
+it('builds the sent message from the reminder metadata and the members at send time', async () => {
+  const { guild, character, post } = await party();
+  await job.runOnce(at);
+  await prisma.webhookDelivery.updateMany({ data: { createdAt: at } });
+  const delivery = await prisma.webhookDelivery.findFirstOrThrow();
+  // The stored text is not edited at send time; only the metadata is used.
+  await prisma.webhookDelivery.update({ where: { id: delivery.id }, data: { payload: { ...(delivery.payload as object), content: 'stale text' } } });
+  const joined = await makeCharacter({ guildId: guild.id });
+  await addMember(post.id, joined.id);
+  const [owner, member] = await Promise.all([character.ownerId, joined.ownerId].map((id) => prisma.user.findUniqueOrThrow({ where: { id } })));
+  const sender = new FakeWebhookSender();
+  expect((await new WebhookWorker({ prisma, sender, now: () => at }).runOnce()).sent).toBe(1);
+  const content = sender.calls[0]!.payload.content!;
+  expect(content).toBe(`<@${owner!.discordId}> <@${member!.discordId}> Weekly party reminder: ${content.split('Weekly party reminder: ')[1]}`);
+  expect(content).toContain(`<t:${Math.floor(at.getTime() / 1000)}:F>`);
+  expect(content).toContain(`https://pf.example/posts/${post.id}`);
+  expect(content).not.toContain('stale text');
+  expect(sender.calls[0]!.payload.allowed_mentions).toEqual({ parse: [], users: [owner!.discordId, member!.discordId] });
 });
 
 it('uses a configured guild when another character of the same user has no webhook', async () => {

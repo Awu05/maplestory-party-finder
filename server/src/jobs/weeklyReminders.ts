@@ -1,6 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 import { postExpiresAt } from '@pf/shared';
-import { buildWeeklyReminder } from '../discord/messages.js';
+import { buildWeeklyReminder, weeklyReminderPost } from '../discord/messages.js';
 import { enqueueDelivery } from '../discord/outbox.js';
 import { weeklyRecipients } from '../discord/weeklyRecipients.js';
 import { postSummaryInclude, toPostSummaryDTO } from '../posts/serialize.js';
@@ -47,7 +47,7 @@ export class WeeklyReminderJob {
 
         if (now.getTime() - row.scheduledAt!.getTime() <= MAX_LATENESS_MS) {
           const recipients = await weeklyRecipients(tx, row.id);
-          const post = toPostSummaryDTO(row, null, storage, now);
+          const post = weeklyReminderPost(toPostSummaryDTO(row, null, storage, now));
           // Also reserve deliveries for eligible guilds in this world: someone can join or
           // change guilds while a reminder is waiting in the outbox. Empty deliveries are discarded.
           const worldGuilds = await tx.guild.findMany({
@@ -59,7 +59,7 @@ export class WeeklyReminderJob {
             const ids = recipients.get(guildId) ?? [];
             await enqueueDelivery(tx, guildId, 'post.weekly_reminder', {
               ...buildWeeklyReminder({ recipientDiscordIds: ids, post, webOrigin }),
-              _weekly: { nextAt: next.nextAt.toISOString(), anchorAt: row.weeklyAnchorAt!.toISOString(), timeZone: row.weeklyTimeZone! },
+              _weekly: { nextAt: next.nextAt.toISOString(), anchorAt: row.weeklyAnchorAt!.toISOString(), timeZone: row.weeklyTimeZone!, post, webOrigin },
             }, row.id);
           }
         }
