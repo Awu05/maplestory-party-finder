@@ -226,3 +226,22 @@ it('continues routing a member after their character is deleted', async () => {
   const delivery = await prisma.webhookDelivery.findFirstOrThrow();
   expect((delivery.payload as { allowed_mentions: { users: string[] } }).allowed_mentions.users).toContain(discordId);
 });
+
+it('skips a post that fails a week ahead, logs it, and still reminds the other parties', async () => {
+  const logged: { obj: object; msg: string }[] = [];
+  const { storage, app } = await buildTestApp();
+  await app.close();
+  const logging = new WeeklyReminderJob({ prisma, storage, webOrigin: 'https://pf.example', log: { error: (obj, msg) => logged.push({ obj, msg }) } });
+  // Older, so it is claimed first; an unknown zone makes the next-occurrence query throw.
+  const poisoned = (await party({ scheduledAt: new Date(at.getTime() - 60_000) })).post;
+  await prisma.$executeRaw`UPDATE "Post" SET "weeklyTimeZone" = 'Not/AZone' WHERE id = ${poisoned.id}`;
+  const good = (await party()).post;
+  expect(await logging.runOnce(at)).toBe(1);
+  expect(await prisma.webhookDelivery.count({ where: { postId: good.id } })).toBe(1);
+  expect(await prisma.webhookDelivery.count({ where: { postId: poisoned.id } })).toBe(0);
+  const skipped = await prisma.post.findUniqueOrThrow({ where: { id: poisoned.id } });
+  expect(skipped.scheduledAt!.getTime()).toBe(at.getTime() - 60_000 + 7 * 86_400_000);
+  expect(skipped.expiresAt.getTime()).toBe(skipped.scheduledAt!.getTime() + 3 * 3600_000);
+  expect(logged).toEqual([{ obj: { postId: poisoned.id, errName: expect.any(String) }, msg: expect.stringContaining('weekly reminder') }]);
+  expect(await logging.runOnce(at)).toBe(0);
+});
