@@ -107,7 +107,8 @@ export function CardDetailModal({ character: c, tiers, onClose, onEdit }: Props)
             <h3>Discord</h3>
             <div className="card-modal__discord">
               <span>{c.owner.displayName ?? c.owner.discordUsername}</span>
-              <small className="card-modal__muted">@{c.owner.discordUsername}</small>
+              <small className="card-modal__muted">{c.owner.discordLinked ? `@${c.owner.discordUsername}` : c.owner.discordUsername}</small>
+              {!c.owner.discordLinked && <small className="unverified-note" title="Typed at sign-up and not confirmed through Discord">unverified</small>}
               <button type="button" className="btn btn--secondary btn--compact" onClick={copyUsername} aria-label="Copy Discord username">
                 {copied ? 'Copied' : 'Copy'}
               </button>

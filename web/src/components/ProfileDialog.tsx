@@ -52,7 +52,7 @@ export function ProfileDialog({ me, onClose, onLogout }: Props) {
     >
       <form className="profile-dialog__content" onSubmit={save}>
         <h2 id={headingId}>Profile</h2>
-        <p className="profile-dialog__muted">Discord: @{me.discordUsername}</p>
+        <p className="profile-dialog__muted">{me.discordLinked === false ? `Discord name (unverified): ${me.discordUsername}` : `Discord: @${me.discordUsername}`}</p>
         {me.discordLinked === false && <p className="profile-dialog__muted">Your Discord account is not linked, so Discord pings are unavailable for this account.</p>}
         <label className="profile-dialog__field">
           Display name

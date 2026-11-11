@@ -17,7 +17,7 @@ const character: CharacterDTO = {
   guild: null,
   manual: true,
   screenshotUrl: null,
-  owner: { discordUsername: 'lily#1', displayName: null },
+  owner: { discordUsername: 'lily#1', displayName: null, discordLinked: true },
   isOwner: true,
   syncStatus: 'ok',
   lastSyncedAt: '2026-11-01T00:00:00Z',

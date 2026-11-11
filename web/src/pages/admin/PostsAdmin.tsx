@@ -42,7 +42,7 @@ export function PostsAdmin() {
               <tr key={p.id}>
                 <td data-label="Type">{POST_TYPE_LABELS[p.type]}</td>
                 <td data-label="Bosses">{p.bosses.map(bossLabel).join(', ')}</td>
-                <td data-label="Poster">{ign} ({p.posterDiscordUsername})</td>
+                <td data-label="Poster">{ign} ({p.posterDiscordUsername}{p.posterDiscordLinked ? '' : ', unverified'})</td>
                 <td data-label="World">{p.world.name}</td>
                 <td data-label="Status"><StatusPill status={p.status} deleted={p.deleted} /></td>
                 <td data-label="Closed reason">{p.closedReason ?? '—'}</td>

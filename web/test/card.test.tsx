@@ -25,7 +25,7 @@ function makeCharacter(overrides: Partial<CharacterDTO> = {}): CharacterDTO {
     cpUpdatedAt: new Date(Date.now() - 3 * 86_400_000).toISOString(),
     guild: { id: 'g1', name: 'Mapleholics', iconUrl: null }, manual: false,
     screenshotUrl: '/uploads/lily.png',
-    owner: { discordUsername: 'maple_fan', displayName: null },
+    owner: { discordUsername: 'maple_fan', displayName: null, discordLinked: true },
     isOwner: false,
     syncStatus: 'ok',
     lastSyncedAt: new Date().toISOString(),
@@ -50,12 +50,21 @@ describe('formatCp', () => {
 
 describe('CharacterCard', () => {
   it('shows the display name with Discord username fallback', () => {
-    const owner = { discordUsername: 'maple_fan', displayName: 'Maple Friend' };
+    const owner = { discordUsername: 'maple_fan', displayName: 'Maple Friend', discordLinked: true };
     const { rerender } = render(<CharacterCard character={makeCharacter({ owner })} tiers={tiers} />);
     expect(screen.getByText('Maple Friend')).toBeVisible();
     expect(screen.queryByText('maple_fan')).toBeNull();
     rerender(<CharacterCard character={makeCharacter()} tiers={tiers} />);
     expect(screen.getByText('maple_fan')).toBeVisible();
+  });
+
+  it('marks a Discord name typed at password/passkey signup as unverified', () => {
+    const owner = { discordUsername: 'typed_name', displayName: null, discordLinked: false };
+    const { rerender } = render(<CharacterCard character={makeCharacter({ owner })} tiers={tiers} />);
+    expect(screen.getByText('typed_name')).toBeVisible();
+    expect(screen.getByText('unverified')).toBeVisible();
+    rerender(<CharacterCard character={makeCharacter()} tiers={tiers} />);
+    expect(screen.queryByText('unverified')).toBeNull();
   });
 
   it('labels manual characters and shows No guild for guildless ones', () => {
@@ -67,7 +76,7 @@ describe('CharacterCard', () => {
   });
 
   it('"Added manually" sits on its own line, outside the truncated Discord name', () => {
-    const long = { discordUsername: 'x'.repeat(80), displayName: null };
+    const long = { discordUsername: 'x'.repeat(80), displayName: null, discordLinked: true };
     render(<CharacterCard character={makeCharacter({ manual: true, owner: long })} tiers={tiers} />);
     const manual = screen.getByText('Added manually');
     expect(manual.closest('.card__owner')).toBeNull();
@@ -148,12 +157,20 @@ describe('CardDetailModal', () => {
   it('shows the chosen name and copies the real Discord username', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal('navigator', { clipboard: { writeText } });
-    render(<CardDetailModal character={makeCharacter({ owner: { discordUsername: 'maple_fan', displayName: 'Maple Friend' } })} tiers={tiers} onClose={() => {}} />);
+    render(<CardDetailModal character={makeCharacter({ owner: { discordUsername: 'maple_fan', displayName: 'Maple Friend', discordLinked: true } })} tiers={tiers} onClose={() => {}} />);
     expect(screen.getByText('@maple_fan')).toBeVisible();
     expect(screen.getAllByText('Maple Friend').length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole('button', { name: 'Copy Discord username' }));
     expect(writeText).toHaveBeenCalledWith('maple_fan');
     expect(await screen.findByText('Copied')).toBeVisible();
+  });
+
+  it('shows an unverified Discord name without an @ and marks it unverified', () => {
+    render(<CardDetailModal character={makeCharacter({ owner: { discordUsername: 'typed_name', displayName: 'Maple Friend', discordLinked: false } })} tiers={tiers} onClose={() => {}} />);
+    const discord = screen.getByRole('dialog').querySelector<HTMLElement>('.card-modal__discord')!;
+    expect(within(discord).queryByText('@typed_name')).toBeNull();
+    expect(within(discord).getByText('typed_name')).toBeVisible();
+    expect(within(discord).getByText('unverified')).toBeVisible();
   });
 
   it('modal shows discord username, screenshot img, and no boss, play time or note sections; Edit only for owner', () => {

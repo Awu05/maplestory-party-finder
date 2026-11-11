@@ -125,3 +125,19 @@ it('queues a new thread on the next finalize after a delivery was rejected by Di
   const sender = new FakeWebhookSender();
   expect((await new WebhookWorker({ prisma, sender }).runOnce()).sent).toBe(1);
 });
+
+it("marks a password or passkey member's typed Discord name as unverified in the roster", async () => {
+  const post = await prisma.post.findUniqueOrThrow({ where: { id: postId } });
+  const local = await makeUser({ discordId: null, username: 'typed_name' });
+  const character = await makeCharacter({ ownerId: local.id, worldId: post.worldId, guildId: post.guildId, ign: 'LocalHero' });
+  await addMember(postId, character.id);
+  expect((await finalize(new Date(Date.now() + 86_400_000))).statusCode).toBe(200);
+  const queued = await prisma.webhookDelivery.findFirstOrThrow({ where: { postId, eventType: 'post.party_thread' } });
+  expect(JSON.stringify(queued.payload)).not.toContain('@typed_name');
+  const sender = new FakeWebhookSender();
+  expect((await new WebhookWorker({ prisma, sender }).runOnce()).sent).toBe(1);
+  const content = sender.calls[0]!.payload.content!;
+  expect(content).toContain('LocalHero (Discord name, unverified: typed_name)');
+  expect(content).not.toContain('@typed_name');
+  expect(content).toContain(`<@${OWNER_DISCORD_ID}>`);
+});

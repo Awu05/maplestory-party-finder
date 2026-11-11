@@ -41,6 +41,9 @@ export function neutralize(text: string): string {
 
 const clip = (s: string, max: number): string => (s.length > max ? s.slice(0, max - 1) + '…' : s);
 
+/** A Discord name typed at password/passkey signup: nobody checked it, so it is never shown as a mention. */
+const unverifiedDiscordName = (name: string): string => `Discord name, unverified: ${name}`;
+
 export const bossLabel = (b: Pick<PostBossDTO, 'bossName' | 'difficulty'>): string => `${b.difficulty} ${b.bossName}`;
 const bossesLabel = (post: Pick<WeeklyReminderPost, 'bosses'>): string => post.bosses.map(bossLabel).join(' + ');
 const postLink = (post: Pick<PostSummaryDTO, 'id'>, webOrigin: string): string => `${webOrigin}/posts/${post.id}`;
@@ -67,7 +70,9 @@ export function buildNewPostMessage(post: PostSummaryDTO, webOrigin: string, bos
   fields.push(field('Guild', (post.guild?.name ?? 'No guild')));
   const owner = post.poster.character?.owner;
   // Always include the real handle: a display name alone can't be searched on Discord and could copy someone else's.
-  const discord = owner && (owner.displayName ? `${owner.displayName} (@${owner.discordUsername})` : owner.discordUsername);
+  // Only a Discord login proves the handle; a name typed at password/passkey signup is marked unverified.
+  const handle = owner && (owner.discordLinked ? `@${owner.discordUsername}` : unverifiedDiscordName(owner.discordUsername));
+  const discord = owner && (owner.displayName ? `${owner.displayName} (${handle})` : owner.discordLinked ? owner.discordUsername : handle);
   if (discord) fields.push(field('Discord', discord));
   const note = clip(neutralize(post.note.trim()), NOTE_MAX);
   if (note) fields.push({ name: 'Note', value: note, inline: false });
@@ -132,7 +137,7 @@ export function buildPartyThread(post: WeeklyReminderPost & { world: { name: str
   const poster = clip(neutralize(post.poster.snapshot.ign), 100);
   const roster = members.filter((member) => member.discordId === null || /^[1-9]\d{16,19}$/.test(member.discordId))
     .map((member) => member.discordId === null
-      ? `• ${clip(neutralize(member.ign), 50)}${member.discordUsername ? ` (Discord: @${clip(neutralize(member.discordUsername), 50)})` : ''}`
+      ? `• ${clip(neutralize(member.ign), 50)}${member.discordUsername ? ` (${unverifiedDiscordName(clip(neutralize(member.discordUsername), 50))})` : ''}`
       : `• ${clip(neutralize(member.ign), 50)}: <@${member.discordId}> (\`${member.discordId}\`)`).join('\n');
   return {
     name: clip(`${bosses} — ${poster}`, 100),

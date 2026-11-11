@@ -63,6 +63,7 @@ export async function adminModerationRoutes(app: FastifyInstance): Promise<void>
     isAdmin: isAdminUser(u, config),
     createdAt: u.createdAt.toISOString(),
     characterCount: u._count.characters,
+    discordLinked: u.discordId !== null,
   });
 
   app.get('/admin/users', async (req) => {
@@ -142,7 +143,7 @@ export async function adminModerationRoutes(app: FastifyInstance): Promise<void>
     if (q) and.push({ posterCharacter: { ignLower: { startsWith: q.toLowerCase() } } });
     const rows = await prisma.post.findMany({
       where: { AND: and },
-      include: { ...postSummaryInclude, posterUser: { select: { username: true } } },
+      include: { ...postSummaryInclude, posterUser: { select: { username: true, discordId: true } } },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: 100,
     });
@@ -152,6 +153,7 @@ export async function adminModerationRoutes(app: FastifyInstance): Promise<void>
         deletedAt: r.deletedAt?.toISOString() ?? null,
         closedReason: r.closedReason,
         posterDiscordUsername: r.posterUser.username,
+        posterDiscordLinked: r.posterUser.discordId !== null,
       }),
     );
   });

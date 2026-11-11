@@ -296,3 +296,10 @@ input[type='radio'] {
     display: flex;
   }
 }
+
+/* A Discord name typed at password/passkey sign-up: shown, but never presented as a verified handle. */
+.unverified-note {
+  font-size: 0.75em;
+  font-style: italic;
+  color: var(--muted);
+}
