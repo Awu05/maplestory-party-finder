@@ -1,8 +1,25 @@
 import { describe, expect, it } from 'vitest';
-import { loadConfig, withUtcSession } from '../src/config.js';
+import { loadConfig, PRIVATE_PROXIES, withUtcSession } from '../src/config.js';
 import { buildTestApp, testConfig } from './helpers.js';
 
 const base = { SESSION_SECRET: 'x'.repeat(32), DATABASE_URL: 'postgresql://x' };
+
+describe('SMTP configuration', () => {
+  it('disables reset email until configured and chooses secure SMTP defaults', () => {
+    expect(loadConfig(base).smtp).toBeUndefined();
+    expect(loadConfig({ ...base, SMTP_HOST: 'smtp.example.com', SMTP_FROM: 'pf@example.com' }).smtp).toMatchObject({ port: 587, secure: false });
+    expect(loadConfig({ ...base, SMTP_HOST: 'smtp.example.com', SMTP_FROM: 'pf@example.com', SMTP_SECURE: 'true' }).smtp).toMatchObject({ port: 465, secure: true });
+  });
+  it.each([
+    { SMTP_HOST: 'smtp.example.com' },
+    { SMTP_HOST: 'smtp.example.com', SMTP_FROM: 'bad' },
+    { SMTP_HOST: 'smtp.example.com', SMTP_FROM: 'pf@example.com', SMTP_USER: 'user' },
+    { SMTP_HOST: 'smtp.example.com', SMTP_FROM: 'pf@example.com', SMTP_PORT: '0' },
+    { SMTP_HOST: 'smtp.example.com', SMTP_FROM: 'pf@example.com', SMTP_SECURE: 'invalid' },
+  ])('rejects incomplete or invalid SMTP settings (%j)', (smtp) => {
+    expect(() => loadConfig({ ...base, ...smtp })).toThrow(/SMTP/);
+  });
+});
 
 describe('loadConfig JOBS_ENABLED', () => {
   it('defaults to true', () => {
@@ -70,5 +87,72 @@ describe('withUtcSession', () => {
   it("leaves a URL alone when it already sets the session time zone", () => {
     const url = 'postgresql://u:p@h/db?options=-c%20TimeZone%3DUTC';
     expect(withUtcSession(url)).toBe(url);
+  });
+});
+
+describe('loadConfig TRUST_PROXY', () => {
+  it('defaults to local and private-network proxies for an https WEB_ORIGIN and off otherwise', () => {
+    expect(loadConfig(base).trustProxy).toBe(false);
+    expect(loadConfig({ ...base, WEB_ORIGIN: 'http://localhost:3000' }).trustProxy).toBe(false);
+    expect(loadConfig({ ...base, WEB_ORIGIN: 'https://pf.example.com' }).trustProxy).toEqual(PRIVATE_PROXIES);
+    expect(loadConfig({ ...base, WEB_ORIGIN: 'https://pf.example.com', TRUST_PROXY: ' ' }).trustProxy).toEqual(PRIVATE_PROXIES);
+    expect(PRIVATE_PROXIES).toEqual(expect.arrayContaining(['127.0.0.0/8', '::1/128', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16']));
+  });
+  it.each([
+    ['false', false], ['FALSE', false], ['true', true], [' True ', true], ['1', 1], ['2', 2],
+    ['127.0.0.1', ['127.0.0.1']], ['10.0.0.0/8, 172.16.0.0/12,::1', ['10.0.0.0/8', '172.16.0.0/12', '::1']], ['fd00::/8', ['fd00::/8']],
+  ] as const)('%j -> %j', (v, expected) => {
+    expect(loadConfig({ ...base, WEB_ORIGIN: 'https://pf.example.com', TRUST_PROXY: v }).trustProxy).toEqual(expected);
+  });
+  it.each(['0', '-1', '1.5', 'yes', 'proxy.example.com', '10.0.0.0/33', '::1/129', '10.0.0.1,', '300.0.0.1', '10.0.0.0/'])('%j throws a config error', (v) => {
+    expect(() => loadConfig({ ...base, TRUST_PROXY: v })).toThrow(/TRUST_PROXY/);
+  });
+});
+
+describe('trustProxy in the app', () => {
+  const forgot = (app: Awaited<ReturnType<typeof buildTestApp>>['app'], forwardedFor: string) => app.inject({
+    method: 'POST', url: '/api/auth/password/forgot', remoteAddress: '10.0.0.5',
+    headers: { origin: 'http://localhost:5173', 'x-forwarded-for': forwardedFor }, payload: { email: 'maple@example.com' },
+  });
+
+  it('counts clients behind a trusted proxy in separate per-IP buckets', async () => {
+    const { app } = await buildTestApp({ config: testConfig({ trustProxy: 1 }) });
+    try {
+      // The forgot-password guard allows 10 requests per IP per window (503 here: no mailer configured).
+      for (let i = 0; i < 10; i++) expect((await forgot(app, '203.0.113.1')).statusCode).toBe(503);
+      expect((await forgot(app, '203.0.113.1')).statusCode).toBe(429);
+      // One trusted hop: only the address our proxy appended counts, not entries a client prepended.
+      expect((await forgot(app, '198.51.100.1, 203.0.113.1')).statusCode).toBe(429);
+      expect((await forgot(app, '203.0.113.2')).statusCode).toBe(503);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('by default (https) a visitor connecting directly from the internet cannot fake their address', async () => {
+    const { app } = await buildTestApp({ config: testConfig({ trustProxy: PRIVATE_PROXIES }) });
+    const direct = (forwardedFor: string) => app.inject({
+      method: 'POST', url: '/api/auth/password/forgot', remoteAddress: '203.0.113.50',
+      headers: { origin: 'http://localhost:5173', 'x-forwarded-for': forwardedFor }, payload: { email: 'maple@example.com' },
+    });
+    try {
+      // The peer is a public address, not a proxy we trust: every spoofed value lands in its one bucket.
+      for (let i = 0; i < 10; i++) expect((await direct(`198.51.100.${i + 1}`)).statusCode).toBe(503);
+      expect((await direct('198.51.100.99')).statusCode).toBe(429);
+      // A real proxy on the private network is still believed.
+      expect((await forgot(app, '198.51.100.200')).statusCode).toBe(503);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('ignores X-Forwarded-For without a trusted proxy, so spoofed values share one bucket', async () => {
+    const { app } = await buildTestApp({ config: testConfig({ trustProxy: false }) });
+    try {
+      for (let i = 0; i < 10; i++) expect((await forgot(app, `203.0.113.${i + 1}`)).statusCode).toBe(503);
+      expect((await forgot(app, '203.0.113.99')).statusCode).toBe(429);
+    } finally {
+      await app.close();
+    }
   });
 });

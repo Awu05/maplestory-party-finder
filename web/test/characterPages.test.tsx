@@ -18,7 +18,7 @@ const character: CharacterDTO = {
   cpUpdatedAt: '2026-11-01T00:00:00Z',
   guild: { id: 'g1', name: 'Maple Guild', iconUrl: null }, manual: false,
   screenshotUrl: null,
-  owner: { discordUsername: 'lily#1', displayName: null },
+  owner: { discordUsername: 'lily#1', displayName: null, discordLinked: true },
   isOwner: true,
   syncStatus: 'ok',
   lastSyncedAt: '2026-11-01T00:00:00Z',
@@ -71,7 +71,7 @@ describe('MyCharactersPage', () => {
   it('shows the login prompt when logged out', async () => {
     mockApi({ ...shared, '/api/auth/me': null, '/api/characters?mine=1': [] });
     renderWithProviders(<MyCharactersPage />);
-    expect(await screen.findByText(/Log in with Discord to manage/)).toBeInTheDocument();
+    expect(await screen.findByText(/Log in to manage/)).toBeInTheDocument();
   });
 
   it('shows a TOO_SOON message on refresh and deletes after confirm', async () => {

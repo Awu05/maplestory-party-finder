@@ -1,3 +1,5 @@
+import { isIP } from 'node:net';
+
 export interface Config {
   port: number;
   databaseUrl: string;
@@ -6,6 +8,16 @@ export interface Config {
   discordClientSecret: string;
   discordRedirectUri: string;
   webOrigin: string;
+  /**
+   * Fastify `trustProxy`: which reverse proxies may set X-Forwarded-For, so `req.ip` (and every per-IP
+   * limit) sees the real client. false, true, a hop count, or a list of proxy IPs/CIDRs.
+   */
+  trustProxy: boolean | number | string[];
+  /**
+   * Email + password accounts (sign-up, login, reset by email). Off by default: only Discord and
+   * passkeys are offered, and the password routes are not registered at all.
+   */
+  passwordAuth: boolean;
   adminDiscordIds: string[];
   uploadDir: string;
   /** Built web app directory; when set, the server serves it (production only). */
@@ -14,6 +26,19 @@ export interface Config {
   jobsEnabled: boolean;
   /** Fastify request logging (on in the real server, off in tests). */
   logger: boolean;
+  smtp?: { host: string; port: number; secure: boolean; user?: string; password?: string; from: string };
+}
+
+function smtpConfig(env: NodeJS.ProcessEnv): Config['smtp'] {
+  if (![env.SMTP_HOST, env.SMTP_FROM, env.SMTP_USER, env.SMTP_PASSWORD, env.SMTP_PORT, env.SMTP_SECURE].some((value) => value?.trim())) return undefined;
+  if (!env.SMTP_HOST?.trim() || !env.SMTP_FROM?.trim()) throw new Error('SMTP_HOST and SMTP_FROM are required for password-reset email');
+  if (/[\r\n]/.test(env.SMTP_HOST + env.SMTP_FROM) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(env.SMTP_FROM.trim())) throw new Error('Invalid SMTP_HOST or SMTP_FROM');
+  if (env.SMTP_SECURE && !['true', 'false'].includes(env.SMTP_SECURE.trim().toLowerCase())) throw new Error('SMTP_SECURE must be true or false');
+  const secure = env.SMTP_SECURE?.trim().toLowerCase() === 'true';
+  const port = Number(env.SMTP_PORT?.trim() || (secure ? 465 : 587));
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('SMTP_PORT must be an integer from 1 to 65535');
+  if (!!env.SMTP_USER !== !!env.SMTP_PASSWORD) throw new Error('Set both SMTP_USER and SMTP_PASSWORD, or neither');
+  return { host: env.SMTP_HOST.trim(), from: env.SMTP_FROM.trim(), port, secure, user: env.SMTP_USER, password: env.SMTP_PASSWORD };
 }
 
 /** PORT: unset or blank means 3000; otherwise a plain integer from 1 to 65535. */
@@ -25,6 +50,42 @@ function parsePort(raw: string | undefined): number {
   return n;
 }
 
+/**
+ * Loopback, private-network and link-local ranges: where a reverse proxy in front of this server lives
+ * (the same machine, a Docker network, the LAN). A visitor connecting straight to the port from the
+ * internet is not in these ranges, so they cannot fake X-Forwarded-For.
+ */
+export const PRIVATE_PROXIES: string[] = [
+  '127.0.0.0/8', '::1/128', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '169.254.0.0/16', 'fc00::/7', 'fe80::/10',
+];
+
+/**
+ * TRUST_PROXY: `true`, `false`, a positive hop count, or comma-separated proxy IPs/CIDRs.
+ * Unset/blank: PRIVATE_PROXIES when WEB_ORIGIN is https (the server only speaks plain HTTP, so an https
+ * site has a TLS proxy in front), else false. The default is never a bare hop count, because a hop
+ * count believes X-Forwarded-For from anyone who can reach the port directly.
+ */
+function parseTrustProxy(raw: string | undefined, webOrigin: string): Config['trustProxy'] {
+  const v = (raw ?? '').trim();
+  const fail = (): never => {
+    throw new Error(`TRUST_PROXY must be true, false, a positive hop count, or comma-separated IPs/CIDRs (got ${JSON.stringify(raw)})`);
+  };
+  if (v === '') return webOrigin.startsWith('https://') ? [...PRIVATE_PROXIES] : false;
+  if (/^(true|false)$/i.test(v)) return v.toLowerCase() === 'true';
+  if (/^\d+$/.test(v)) {
+    const hops = Number(v);
+    return Number.isSafeInteger(hops) && hops > 0 ? hops : fail();
+  }
+  return v.split(',').map((entry) => {
+    const item = entry.trim();
+    const [address = '', prefix, ...rest] = item.split('/');
+    const family = isIP(address);
+    if (!family || rest.length) fail();
+    if (prefix !== undefined && (!/^\d{1,3}$/.test(prefix) || Number(prefix) > (family === 4 ? 32 : 128))) fail();
+    return item;
+  });
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv): Config {
   const required = (key: string): string => {
     const v = env[key];
@@ -33,6 +94,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
   };
   const sessionSecret = required('SESSION_SECRET');
   if (sessionSecret.length < 32) throw new Error('SESSION_SECRET must be at least 32 characters');
+  const webOrigin = env.WEB_ORIGIN ?? 'http://localhost:5173';
   return {
     port: parsePort(env.PORT),
     databaseUrl: required('DATABASE_URL'),
@@ -40,7 +102,9 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     discordClientId: env.DISCORD_CLIENT_ID ?? '',
     discordClientSecret: env.DISCORD_CLIENT_SECRET ?? '',
     discordRedirectUri: env.DISCORD_REDIRECT_URI ?? '',
-    webOrigin: env.WEB_ORIGIN ?? 'http://localhost:5173',
+    webOrigin,
+    trustProxy: parseTrustProxy(env.TRUST_PROXY, webOrigin),
+    passwordAuth: ['true', '1'].includes((env.PASSWORD_AUTH_ENABLED ?? '').trim().toLowerCase()),
     adminDiscordIds: (env.ADMIN_DISCORD_IDS ?? '')
       .split(',')
       .map((s) => s.trim())
@@ -49,6 +113,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     webDist: env.WEB_DIST || undefined,
     jobsEnabled: !['false', '0'].includes((env.JOBS_ENABLED ?? '').trim().toLowerCase()),
     logger: true,
+    smtp: smtpConfig(env),
   };
 }
 

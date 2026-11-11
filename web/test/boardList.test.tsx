@@ -16,7 +16,7 @@ const character: CharacterDTO = {
   cpUpdatedAt: '2026-11-01T00:00:00Z',
   guild: { id: 'g1', name: 'Maple Guild', iconUrl: null }, manual: false,
   screenshotUrl: null,
-  owner: { discordUsername: 'lily#1', displayName: null },
+  owner: { discordUsername: 'lily#1', displayName: null, discordLinked: true },
   isOwner: false,
   syncStatus: 'ok',
   lastSyncedAt: '2026-11-01T00:00:00Z',
@@ -118,6 +118,29 @@ const postsCalls = (fetchMock: ReturnType<typeof mockApi>) =>
   fetchMock.mock.calls.map(([u]) => String(u)).filter((u) => u.startsWith('/api/posts?') || u === '/api/posts');
 
 describe('Board list', () => {
+  it.each([480, 1200])('shows world badges in All worlds and hides them for a single world at %spx', async (width) => {
+    setViewport(width);
+    mockApi({ ...base,
+      '/api/worlds': [
+        { id: 5, name: 'Kronos', nexonWorldId: 5, worldType: 'heroic', active: true },
+        { id: 6, name: 'Challenger World', nexonWorldId: 6, worldType: 'heroic', active: true },
+      ],
+      '/api/posts': [p1, { ...p2, world: { id: 6, name: 'Challenger World' } }],
+      '/api/posts?worldIds=5': [p1],
+    });
+    renderBoard();
+    const list = await screen.findByRole(width <= 640 ? 'list' : 'listbox', { name: 'Posts' });
+    const rows = await within(list).findAllByRole(width <= 640 ? 'link' : 'option');
+    expect(within(rows[0]).getByText('Kronos')).toBeInTheDocument();
+    expect(within(rows[1]).getByText('Challenger World')).toBeInTheDocument();
+    const worlds = within(screen.getByRole('radiogroup', { name: 'Worlds' }));
+    fireEvent.click(worlds.getByRole('radio', { name: 'Kronos' }));
+    await waitFor(() => expect(within(list).getAllByRole(width <= 640 ? 'link' : 'option')).toHaveLength(1));
+    expect(within(list).queryByText('Kronos')).not.toBeInTheDocument();
+    fireEvent.click(worlds.getByRole('radio', { name: 'All' }));
+    expect(await within(list).findByText('Kronos')).toBeInTheDocument();
+    expect(await within(list).findByText('Challenger World')).toBeInTheDocument();
+  });
   it('selects the first post by default and writes ?post=p1', async () => {
     mockApi({ ...base, '/api/posts': [p1, p2] });
     renderBoard();
@@ -139,7 +162,7 @@ describe('Board list', () => {
     const rows = await within(await screen.findByRole('listbox', { name: 'Posts' })).findAllByRole('option');
     expect(within(rows[0]).getByText('Recruiting')).toHaveClass('post-badge', 'post-badge--recruiting');
     expect(within(rows[1]).getByText('Looking for party')).toHaveClass('post-badge', 'post-badge--lfp');
-    expect(rows[0].querySelector('.post-row__meta')?.textContent).toBe('Flexible·Lily · Maple Guild');
+    expect(rows[0].querySelector('.post-row__meta')?.textContent).toBe('Kronos·Flexible·Lily · Maple Guild');
   });
 
   it('clicking row 2 selects it and updates the URL without navigating', async () => {
@@ -438,7 +461,7 @@ describe('Board filters (menus)', () => {
     const party = await screen.findByRole('group', { name: 'Party type' });
     expect(within(party).getByRole('radiogroup', { name: 'Type' })).toBeInTheDocument();
     const location = screen.getByRole('group', { name: 'Location' });
-    expect(within(location).getByRole('group', { name: 'Worlds' })).toBeInTheDocument();
+    expect(within(location).getByRole('radiogroup', { name: 'Worlds' })).toBeInTheDocument();
     const boss = screen.getByRole('group', { name: 'Boss' });
     expect(within(boss).getByRole('button', { name: 'Difficulty' })).toBeDisabled();
     expect(screen.queryByRole('group', { name: 'Availability' })).not.toBeInTheDocument();

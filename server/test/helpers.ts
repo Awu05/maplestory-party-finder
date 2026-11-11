@@ -27,6 +27,9 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
     discordClientSecret: 'test-client-secret',
     discordRedirectUri: 'http://localhost:3000/api/auth/discord/callback',
     webOrigin: 'http://localhost:5173',
+    trustProxy: false,
+    // On in tests so the password-account suites run; production defaults to off.
+    passwordAuth: true,
     adminDiscordIds: ['admin-1'],
     uploadDir: path.join(os.tmpdir(), 'pf-test-uploads'),
     jobsEnabled: false,
@@ -262,6 +265,7 @@ export async function buildTestApp(
     prisma,
     discord: new FakeDiscord(),
     webhookSender,
+    scouterValidator: { validate: async () => {} },
     ...rest,
     config,
     storage,

@@ -357,9 +357,9 @@ export async function finalizePostTime(prisma: PrismaClient, viewer: Viewer, id:
         ? await tx.guild.findUnique({ where: { id: post.guildId }, select: { id: true, active: true, partyForumWebhookUrl: true } })
         : await tx.guild.findFirst({ where: { active: true, partyForumWebhookUrl: { not: null }, worlds: { some: { worldId: post.worldId } } }, orderBy: { id: 'asc' }, select: { id: true, active: true, partyForumWebhookUrl: true } });
       if (guild?.active && guild.partyForumWebhookUrl) {
-        const users = await tx.user.findMany({ where: { id: { in: post.members.map((member) => member.userId) } }, select: { id: true, discordId: true } });
-        const ids = new Map(users.map((user) => [user.id, user.discordId]));
-        const roster = post.members.map((member) => ({ ign: parseSnapshot(member.snapshot).ign, discordId: ids.get(member.userId) ?? '' }));
+        const users = await tx.user.findMany({ where: { id: { in: post.members.map((member) => member.userId) } }, select: { id: true, discordId: true, username: true } });
+        const ids = new Map(users.map((user) => [user.id, user]));
+        const roster = post.members.map((member) => ({ ign: parseSnapshot(member.snapshot).ign, discordId: ids.get(member.userId)?.discordId ?? null, discordUsername: ids.get(member.userId)?.username }));
         const thread = buildPartyThread(toPostSummaryDTO(post, null, forum.storage, now), forum.webOrigin, roster);
         const payload = { ...thread.message, thread_name: thread.name, _forum: { webOrigin: forum.webOrigin } };
         if (!row.forumThreadRequested) {

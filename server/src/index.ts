@@ -11,13 +11,15 @@ import { WebhookWorker } from './discord/outbox.js';
 import { DailySyncJob } from './jobs/dailySync.js';
 import { WeeklyReminderJob } from './jobs/weeklyReminders.js';
 import { LocalDiskStorage } from './storage/storage.js';
+import { LocalScouterValidator, OcrWorker } from './storage/scouterValidator.js';
+import { SmtpPasswordResetMailer } from './auth/resetMailer.js';
 
 const config = loadConfig(process.env);
 mkdirSync(config.uploadDir, { recursive: true });
 const prisma = new PrismaClient({ datasources: { db: { url: withUtcSession(config.databaseUrl) } } });
 const storage = new LocalDiskStorage(config.uploadDir);
 // The app logger only exists after buildApp; the shim forwards to it (events are emitted only by requests, after that).
-let appLog: { error(obj: object, msg: string): void } | undefined;
+let appLog: { error(obj: object, msg: string): void; warn(obj: object, msg: string): void } | undefined;
 const dispatcher = new EventDispatcher({
   prisma,
   storage,
@@ -34,6 +36,8 @@ const app = await buildApp({
   storage,
   events: dispatcher,
   webhookSender,
+  scouterValidator: new LocalScouterValidator({ worker: new OcrWorker({ log: { warn: (obj, msg) => appLog?.warn(obj, msg) } }) }),
+  passwordResetMailer: config.smtp ? new SmtpPasswordResetMailer(config.smtp) : undefined,
 });
 appLog = app.log;
 await app.listen({ port: config.port, host: '0.0.0.0' });

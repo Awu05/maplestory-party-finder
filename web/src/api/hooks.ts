@@ -246,11 +246,11 @@ export const useDeleteBoss = () =>
   useAdminMutation((id: number) => api<void>(`/api/admin/bosses/${id}`, { method: 'DELETE' }));
 
 export const useCreateClass = () =>
-  useAdminMutation((input: { name: string; archetype: JobClassDTO['archetype'] }) =>
+  useAdminMutation((input: { name: string; archetype: JobClassDTO['archetype']; category: JobClassDTO['category'] }) =>
     api<JobClassDTO>('/api/admin/classes', { method: 'POST', json: input }),
   );
 export const useUpdateClass = () =>
-  useAdminMutation(({ id, ...json }: { id: number; archetype: JobClassDTO['archetype'] }) =>
+  useAdminMutation(({ id, ...json }: { id: number; archetype?: JobClassDTO['archetype']; category?: JobClassDTO['category'] }) =>
     api<JobClassDTO>(`/api/admin/classes/${id}`, { method: 'PATCH', json }),
   );
 export const useDeleteClass = () =>

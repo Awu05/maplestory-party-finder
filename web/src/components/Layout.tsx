@@ -5,6 +5,7 @@ import { useMe } from '../api/hooks';
 import { api } from '../api/client';
 import { NotificationBell } from './NotificationBell';
 import { ProfileDialog } from './ProfileDialog';
+import { LoginButton } from './LoginDialog';
 
 export function Layout() {
   // A failed /me (server error, network down) counts as logged out once it settles.
@@ -131,9 +132,7 @@ export function Layout() {
             </>
           ) : (
             !mePending && (
-              <a className="btn btn--primary" href="/api/auth/discord">
-                Log in with Discord
-              </a>
+              <LoginButton onOpen={close} />
             )
           )}
         </div>

@@ -29,16 +29,63 @@ enum SyncStatus {
 
 model User {
   id            String         @id @default(cuid())
-  discordId     String         @unique
+  discordId     String?        @unique
   username      String
   displayName   String?
   avatar        String?
   banned        Boolean        @default(false)
   createdAt     DateTime       @default(now())
+  sessionVersion Int          @default(0)
   characters    Character[]
   posts         Post[]
   postMembers   PostMember[]
   notifications Notification[]
+  passkeys      Passkey[]
+  passwordCredential PasswordCredential?
+  passwordResetToken PasswordResetToken?
+}
+
+model PasswordResetToken {
+  userId         String   @id
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash      String   @unique
+  sessionVersion Int
+  expiresAt      DateTime
+
+  @@index([expiresAt])
+}
+
+model PasswordCredential {
+  userId       String @id
+  user         User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  email        String @unique
+  passwordHash String
+}
+
+model Passkey {
+  id         String   @id
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  publicKey  Bytes
+  counter    BigInt   @default(0)
+  deviceType String
+  backedUp   Boolean
+  transports String[] @default([])
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+}
+
+model PasskeyChallenge {
+  id          String   @id
+  challenge   String
+  purpose     String
+  userId      String?
+  username    String?
+  displayName String?
+  expiresAt   DateTime
+
+  @@index([expiresAt])
 }
 
 model World {
@@ -312,4 +359,5 @@ model JobClass {
   name      String
   nameLower String    @unique
   archetype Archetype
+  category  String    @default("Other")
 }

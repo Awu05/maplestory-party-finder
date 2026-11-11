@@ -122,7 +122,7 @@ export class WebhookWorker {
       const post = await this.prisma.post.findUnique({ where: { id: row.postId }, include: {
         world: { select: { name: true } },
         bosses: { include: { bossDifficulty: { include: { boss: true } } } },
-        members: { include: { user: { select: { discordId: true } } }, orderBy: { joinedAt: 'asc' } },
+        members: { include: { user: { select: { discordId: true, username: true } } }, orderBy: { joinedAt: 'asc' } },
       } });
       const poster = post?.members.find((member) => member.role === 'poster');
       if (!post || !poster || post.status !== 'closed' || post.closedReason !== 'finalized' || post.deletedAt || post.expiresAt <= this.now()) {
@@ -139,7 +139,7 @@ export class WebhookWorker {
         id: post.id, scheduledAt: post.scheduledAt?.toISOString() ?? null, world: post.world,
         poster: { snapshot: parseSnapshot(poster.snapshot) },
         bosses: toBossDTOs(post),
-      }, webOrigin, post.members.map((member) => ({ ign: parseSnapshot(member.snapshot).ign, discordId: member.user.discordId })));
+      }, webOrigin, post.members.map((member) => ({ ign: parseSnapshot(member.snapshot).ign, discordId: member.user.discordId, discordUsername: member.user.username })));
       payload = { ...thread.message, thread_name: thread.name };
     }
     if (row.eventType === 'post.weekly_reminder' && row.postId) {

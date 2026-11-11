@@ -1,3 +1,4 @@
+import { LoginButton } from '../components/LoginDialog';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import type { PostDetailDTO, PostSummaryDTO, RarityTierDTO, RequestWithPostDTO } from '@pf/shared';
 import { useMe, useRarityTiers } from '../api/hooks';
@@ -194,10 +195,8 @@ export function MyPartiesPage() {
     return (
       <section>
         <h1>My parties</h1>
-        <p>Log in with Discord to see your parties.</p>
-        <a className="btn btn--primary" href="/api/auth/discord">
-          Log in with Discord
-        </a>
+        <p>Log in to see your parties.</p>
+        <LoginButton />
       </section>
     );
   }

@@ -66,7 +66,9 @@ export function CharacterCard({ character: c, tiers, onOpen }: Props) {
         <footer className="card__footer">
           {/* Only the owner line truncates; "Added manually" gets its own line so a long name can't hide it. */}
           <span className="card__owner">
-            <span className="card__footer-label">Discord</span> <span className="card__discord">{c.owner.displayName ?? c.owner.discordUsername}</span>
+            <span className="card__footer-label">Discord</span>{' '}
+            {!c.owner.discordLinked && <><span className="unverified-note" title="Typed at sign-up and not confirmed through Discord">unverified</span>{' '}</>}
+            <span className="card__discord">{c.owner.displayName ?? c.owner.discordUsername}</span>
           </span>
           {c.manual && <span className="card__manual">Added manually</span>}
         </footer>

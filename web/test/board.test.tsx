@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CharacterDTO, PartyMemberDTO, PostSummaryDTO } from '@pf/shared';
 import { App } from '../src/App';
@@ -20,7 +20,7 @@ const character: CharacterDTO = {
   cpUpdatedAt: '2026-11-01T00:00:00Z',
   guild: { id: 'g1', name: 'Maple Guild', iconUrl: null }, manual: false,
   screenshotUrl: null,
-  owner: { discordUsername: 'lily#1', displayName: null },
+  owner: { discordUsername: 'lily#1', displayName: null, discordLinked: true },
   isOwner: false,
   syncStatus: 'ok',
   lastSyncedAt: '2026-11-01T00:00:00Z',
@@ -147,23 +147,43 @@ describe('BoardPage', () => {
     expect(screen.getByRole('button', { name: /Difficulty/ })).toBeEnabled();
   });
 
-  it('world chips: default pressed, deselecting every world drops worldIds, toggling adds it back', async () => {
+  it('selects one world at a time, including the initial default, and All clears the filter', async () => {
     const fetchMock = mockApi({
       ...base,
       '/api/auth/me': user,
-      '/api/characters?mine=1': [character],
+      '/api/characters?mine=1': [character, { ...character, id: 'c2', world: { id: 6, name: 'Challenger World' } }],
+      '/api/worlds': [
+        { id: 5, name: 'Kronos', nexonWorldId: 5, worldType: 'heroic', active: true },
+        { id: 6, name: 'Challenger World', nexonWorldId: 6, worldType: 'heroic', active: true },
+      ],
       '/api/posts?worldIds=5': [post],
+      '/api/posts?worldIds=6': [post],
       '/api/posts': [post],
     });
     renderWithProviders(<App />);
-    const kronos = await screen.findByRole('button', { name: 'Kronos' });
+    const worlds = within(await screen.findByRole('radiogroup', { name: 'Worlds' }));
+    const kronos = await worlds.findByRole('radio', { name: 'Kronos' });
+    const challenger = worlds.getByRole('radio', { name: 'Challenger World' });
+    const all = worlds.getByRole('radio', { name: 'All' });
     await screen.findByText('2 / 4');
-    expect(kronos).toHaveAttribute('aria-pressed', 'true');
-    fireEvent.click(kronos);
-    expect(kronos).toHaveAttribute('aria-pressed', 'false');
-    await waitFor(() => expect(postsCalls(fetchMock)).toEqual(['/api/posts?worldIds=5', '/api/posts']));
-    fireEvent.click(kronos);
-    await waitFor(() => expect(postsCalls(fetchMock)).toEqual(['/api/posts?worldIds=5', '/api/posts', '/api/posts?worldIds=5']));
+    expect(kronos).toHaveAttribute('aria-checked', 'true');
+    expect(all).toHaveAttribute('aria-checked', 'false');
+    expect(postsCalls(fetchMock)).toEqual(['/api/posts?worldIds=5']);
+    fireEvent.click(challenger);
+    expect(kronos).toHaveAttribute('aria-checked', 'false');
+    expect(challenger).toHaveAttribute('aria-checked', 'true');
+    await waitFor(() => expect(postsCalls(fetchMock).at(-1)).toBe('/api/posts?worldIds=6'));
+    fireEvent.click(challenger);
+    expect(challenger).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(all);
+    expect(all).toHaveAttribute('aria-checked', 'true');
+    expect(challenger).toHaveAttribute('aria-checked', 'false');
+    await waitFor(() => expect(postsCalls(fetchMock).at(-1)).toBe('/api/posts'));
+    fireEvent.keyDown(all, { key: 'ArrowRight' });
+    expect(kronos).toHaveFocus();
+    expect(kronos).toHaveAttribute('aria-checked', 'true');
+    expect(all).toHaveAttribute('aria-checked', 'false');
+    await waitFor(() => expect(postsCalls(fetchMock).at(-1)).toBe('/api/posts?worldIds=5'));
   });
 
   it('shows the empty state', async () => {

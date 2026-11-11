@@ -20,7 +20,7 @@ it('saves a trimmed display name, exposes it on characters, and preserves it acr
   const world = await makeWorld();
   const character = await makeCharacter({ ownerId: me.id, worldId: world.id });
   const detail = await app.inject({ url: `/api/characters/${character.id}` });
-  expect(detail.json().owner).toEqual({ displayName: 'Maple Friend', discordUsername: 'new_discord_name' });
+  expect(detail.json().owner).toEqual({ displayName: 'Maple Friend', discordUsername: 'new_discord_name', discordLinked: true });
   const cleared = await app.inject({ method: 'PATCH', url: '/api/auth/me', headers: { cookie }, payload: { displayName: '   ' } });
   expect(cleared.json().displayName).toBeNull();
 });

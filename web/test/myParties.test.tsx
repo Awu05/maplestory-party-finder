@@ -16,7 +16,7 @@ const character = (id: string, ign: string): CharacterDTO => ({
   cpUpdatedAt: '2026-11-01T00:00:00Z',
   guild: { id: 'g1', name: 'Maple Guild', iconUrl: null }, manual: false,
   screenshotUrl: null,
-  owner: { discordUsername: `${ign}#1`, displayName: null },
+  owner: { discordUsername: `${ign}#1`, displayName: null, discordLinked: true },
   isOwner: false,
   syncStatus: 'ok',
   lastSyncedAt: '2026-11-01T00:00:00Z',
@@ -194,6 +194,6 @@ describe('MyPartiesPage', () => {
 
   it('logged out shows login prompt', async () => {
     renderPage({ '/api/auth/me': null });
-    expect(await screen.findByText('Log in with Discord to see your parties.')).toBeInTheDocument();
+    expect(await screen.findByText('Log in to see your parties.')).toBeInTheDocument();
   });
 });

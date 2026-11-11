@@ -20,7 +20,7 @@ const lily: CharacterDTO = {
   cpUpdatedAt: '2026-11-01T00:00:00Z',
   guild: { id: 'g1', name: 'Maple Guild', iconUrl: null }, manual: false,
   screenshotUrl: null,
-  owner: { discordUsername: 'lily#1', displayName: null },
+  owner: { discordUsername: 'lily#1', displayName: null, discordLinked: true },
   isOwner: true,
   syncStatus: 'ok',
   lastSyncedAt: '2026-11-01T00:00:00Z',
@@ -231,7 +231,7 @@ describe('NewPostPage (create)', () => {
   it('logged-out user sees the login prompt', async () => {
     mockApi({ ...base, '/api/auth/me': null });
     renderWithProviders(<App />, { route: '/posts/new' });
-    expect(await screen.findByText('Log in with Discord to post.')).toBeInTheDocument();
+    expect(await screen.findByText('Log in to post.')).toBeInTheDocument();
   });
 });
 

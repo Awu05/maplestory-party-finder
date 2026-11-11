@@ -16,7 +16,7 @@ const character = (id: string, ign: string, cp = 1_500_000_000, world = { id: 5,
   cpUpdatedAt: '2026-11-01T00:00:00Z',
   guild: { id: 'g1', name: 'Maple Guild', iconUrl: null }, manual: false,
   screenshotUrl: null,
-  owner: { discordUsername: `${ign}#1`, displayName: null },
+  owner: { discordUsername: `${ign}#1`, displayName: null, discordLinked: true },
   isOwner: false,
   syncStatus: 'ok',
   lastSyncedAt: '2026-11-01T00:00:00Z',
@@ -204,7 +204,7 @@ describe('request to join', () => {
 
   it('visitor sees log in prompt', async () => {
     renderPage({ '/api/posts/p1': post(), '/api/auth/me': null });
-    expect(await screen.findByText('Log in with Discord to join.')).toBeInTheDocument();
+    expect(await screen.findByText('Log in to join.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Request to join' })).toBeNull();
   });
 });

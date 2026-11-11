@@ -12,7 +12,7 @@ function makePost(over: Partial<PostSummaryDTO> = {}): PostSummaryDTO {
     id: 'p1', type: 'recruiting', world: { id: 1, name: 'Scania' }, guild: { id: 'g1', name: 'Maple Guild' },
     poster: {
       id: 'm1', role: 'poster', characterId: 'c1', cpAtJoin: 1_500_000_000, joinedAt: '2025-11-09T00:00:00Z',
-      character: { owner: { discordUsername: 'alice' } } as never,
+      character: { owner: { discordUsername: 'alice', discordLinked: true } } as never,
       snapshot: { ign: 'Alice', jobName: 'Hero', level: 280, imageUrl: 'https://img/a.png', worldName: 'Scania', guildName: 'Maple Guild' },
       isMine: false,
     },
@@ -31,6 +31,14 @@ const fields = (p: ReturnType<typeof buildNewPostMessage>) =>
   Object.fromEntries((p.embeds![0] as any).fields.map((f: any) => [f.name, f.value]));
 
 describe('helpers', () => {
+  it('lists unlinked accounts by their typed name, marked unverified, without allowing Discord mentions', () => {
+    const thread = buildPartyThread(makePost(), ORIGIN, [{ ign: 'Local', discordId: null, discordUsername: '<@123456789012345678> @everyone' }]);
+    expect(thread.message.content).toContain(`Local (Discord name, unverified: <@${ZW}123456789012345678> @${ZW}everyone)`);
+    expect(thread.message.content).not.toContain('Discord: @');
+    expect(thread.message.content).not.toContain('<@123456789012345678>');
+    expect(thread.message.content).not.toContain('@everyone');
+    expect(thread.message.allowed_mentions).toEqual({ parse: [] });
+  });
   it('builds a safe, concise finalized party thread with time and link', () => {
     const post = makePost({ bosses: [{ bossDifficultyId: 1, bossName: '@everyone', difficulty: 'Hard' }] });
     const thread = buildPartyThread(post, ORIGIN, [{ ign: 'Alice', discordId: '123456789012345678' }, { ign: '@everyone', discordId: '234567890123456789' }, { ign: 'Invalid', discordId: 'bad-id' }]);
@@ -61,6 +69,22 @@ describe('buildNewPostMessage', () => {
     const ping = buildAcceptPing({ recipientDiscordId: '123', ign: 'Alice', post, webOrigin: ORIGIN });
     expect(ping.content).toContain('<@123>');
     expect(ping.allowed_mentions).toEqual({ parse: [], users: ['123'] });
+  });
+  it('treats a post stored before accounts could be unlinked (no discordLinked field) as Discord-linked', () => {
+    const post = makePost();
+    // Messages queued by an older version carry no discordLinked; every account was a Discord account then.
+    delete (post.poster.character!.owner as { discordLinked?: boolean }).discordLinked;
+    expect(fields(buildNewPostMessage(post, ORIGIN)).Discord).toBe('alice');
+    post.poster.character!.owner.displayName = 'Maple';
+    expect(fields(buildNewPostMessage(post, ORIGIN)).Discord).toBe('Maple (@alice)');
+  });
+
+  it('marks a typed Discord name from a password or passkey account as unverified, without an @', () => {
+    const post = makePost();
+    post.poster.character!.owner = { discordUsername: '@everyone', displayName: null, discordLinked: false };
+    expect(fields(buildNewPostMessage(post, ORIGIN)).Discord).toBe(`Discord name, unverified: @${ZW}everyone`);
+    post.poster.character!.owner = { discordUsername: 'alice', displayName: 'Maple', discordLinked: false };
+    expect(fields(buildNewPostMessage(post, ORIGIN)).Discord).toBe('Maple (Discord name, unverified: alice)');
   });
   it('omits the thumbnail when the snapshot image url is empty or relative', () => {
     for (const imageUrl of ['', '/uploads/a.png']) {

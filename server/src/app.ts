@@ -18,6 +18,8 @@ import { notificationRoutes } from './notifications/routes.js';
 import type { DomainEvents } from './events.js';
 import type { Storage } from './storage/storage.js';
 import type { WebhookSender } from './discord/sender.js';
+import type { ScouterValidator } from './storage/scouterValidator.js';
+import type { PasswordResetMailer } from './auth/resetMailer.js';
 import { adminWebhookRoutes } from './admin/webhooks.js';
 import { adminModerationRoutes } from './admin/moderation.js';
 
@@ -29,6 +31,8 @@ export interface AppDeps {
   storage: Storage;
   events: DomainEvents;
   webhookSender: WebhookSender;
+  scouterValidator: ScouterValidator;
+  passwordResetMailer?: PasswordResetMailer;
 }
 
 declare module 'fastify' {
@@ -38,9 +42,17 @@ declare module 'fastify' {
 }
 
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
-  const app = Fastify({ logger: deps.config.logger });
+  const { trustProxy } = deps.config;
+  const app = Fastify({
+    logger: deps.config.logger,
+    // Fastify ignores a bare hop count, so trust exactly that many hops in front of us: the socket peer
+    // (hop 0) and the next n-1 X-Forwarded-For entries; the client is the address after them.
+    trustProxy: typeof trustProxy === 'number' ? (_address: string, hop: number) => hop < trustProxy : trustProxy,
+  });
   app.decorate('deps', deps);
   registerErrorHandler(app);
+  // Stops the long-lived OCR process; index.ts calls app.close() on shutdown.
+  app.addHook('onClose', async () => { await deps.scouterValidator.close?.(); });
 
   const sessionMaxAgeSeconds = 60 * 60 * 24 * 30;
   await app.register(secureSession, {

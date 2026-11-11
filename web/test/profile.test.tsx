@@ -67,3 +67,12 @@ it.each([
   expect(calls).toEqual([false]);
   expect(btn).toHaveFocus();
 });
+
+it('shows a typed Discord name as unverified, without an @, for accounts not linked to Discord', async () => {
+  mockApi({ ...NOTIF, '/api/auth/me': { id: 'u1', discordUsername: 'typed_name', displayName: null, avatarUrl: null, isAdmin: false, discordLinked: false } });
+  renderWithProviders(<App />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Profile: typed_name' }));
+  const dialog = screen.getByRole('dialog', { name: 'Profile' });
+  expect(within(dialog).getByText('Discord name (unverified): typed_name')).toBeVisible();
+  expect(within(dialog).queryByText(/@typed_name/)).toBeNull();
+});

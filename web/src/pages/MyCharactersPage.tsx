@@ -1,3 +1,4 @@
+import { LoginButton } from '../components/LoginDialog';
 import { useEffect, useRef, useState } from 'react';
 import type { RefreshResultDTO } from '@pf/shared';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
@@ -96,10 +97,8 @@ export function MyCharactersPage() {
         <div className="page__head">
           <h1>My characters</h1>
         </div>
-        <p>Log in with Discord to manage your characters.</p>
-        <a className="btn btn--primary" href="/api/auth/discord">
-          Log in with Discord
-        </a>
+        <p>Log in to manage your characters.</p>
+        <LoginButton />
       </section>
     );
   }

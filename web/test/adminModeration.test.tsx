@@ -5,13 +5,13 @@ import { mockApi, renderWithProviders } from './setup';
 
 const user = (id: string, name: string, over: Record<string, unknown> = {}) => ({
   id, discordUsername: name, avatarUrl: null, banned: false, isAdmin: false,
-  createdAt: '2026-01-01T00:00:00Z', characterCount: 1, ...over,
+  createdAt: '2026-01-01T00:00:00Z', characterCount: 1, discordLinked: true, ...over,
 });
 
 const char = {
   id: 'c1', ign: 'Mapler', level: 250, jobName: 'Bishop', combatPower: 1_000_000, imageUrl: '',
   world: { id: 1, name: 'Scania' }, guild: { id: 'g', name: 'Alpha', iconUrl: null }, cpUpdatedAt: '2026-01-01T00:00:00Z',
-  screenshotUrl: null, owner: { discordUsername: 'bob', displayName: null },
+  screenshotUrl: null, owner: { discordUsername: 'bob', displayName: null, discordLinked: true },
 };
 
 const usersRoutes = (extra: Record<string, unknown> = {}) => ({
@@ -46,6 +46,15 @@ describe('admin users', () => {
     fireEvent.click(btn);
     await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
     expect(bodyOf(patch.mock.calls[0] as unknown[])).toEqual({ banned: true });
+  });
+
+  it('marks typed (password/passkey) Discord names as unverified, without an @', async () => {
+    mockApi({ ...usersRoutes(), '/api/admin/users': [user('u1', 'typed_name', { displayName: 'Typed', discordLinked: false }), user('u2', 'real', { displayName: 'Real', discordLinked: true })] });
+    renderWithProviders(<UsersAdmin />);
+    expect(await screen.findByText('typed_name')).toBeInTheDocument();
+    expect(screen.queryByText('@typed_name')).toBeNull();
+    expect(screen.getByText('@real')).toBeInTheDocument();
+    expect(screen.getAllByText('unverified')).toHaveLength(1);
   });
 
   it('no ban button for admin users; banned user shows pill and Unban', async () => {
@@ -113,7 +122,7 @@ const post = (id: string, over: Record<string, unknown> = {}) => ({
   poster: { snapshot: { ign: 'Mapler' } }, bosses: [{ bossDifficultyId: 1, bossName: 'Lucid', difficulty: 'Hard' }],
   scheduledAt: null, expiresAt: '2026-12-01T00:00:00Z', createdAt: new Date().toISOString(),
   partySize: 6, memberCount: 1, minCp: null, note: '', status: 'open', deleted: false, isPoster: false,
-  deletedAt: null, closedReason: null, posterDiscordUsername: 'bob', ...over,
+  deletedAt: null, closedReason: null, posterDiscordUsername: 'bob', posterDiscordLinked: true, ...over,
 });
 
 describe('admin posts', () => {
@@ -130,6 +139,13 @@ describe('admin posts', () => {
       expect(fetchMock.mock.calls.some(([u]) => String(u) === '/api/admin/posts?status=deleted')).toBe(true),
     );
     expect(await screen.findByRole('link', { name: 'View p2' })).toBeInTheDocument();
+  });
+
+  it("marks a poster's unverified Discord name", async () => {
+    mockApi({ '/api/admin/posts?status=all': [post('p1', { posterDiscordUsername: 'typed_name', posterDiscordLinked: false }), post('p2', { posterDiscordLinked: true })] });
+    renderWithProviders(<PostsAdmin />);
+    expect(await screen.findByText('Mapler (typed_name, unverified)')).toBeInTheDocument();
+    expect(screen.getByText('Mapler (bob)')).toBeInTheDocument();
   });
 
   it('Delete permanently confirms then DELETEs /api/admin/posts/:id', async () => {

@@ -19,7 +19,8 @@ function ReassignPanel({ character, ownerId, onDone }: { character: CharacterDTO
   const choices = users.data?.filter((u) => u.id !== ownerId && !u.banned) ?? [];
 
   const choose = (u: AdminUserDTO) => {
-    if (!window.confirm(`Reassign ${character.ign} to ${u.displayName ? `${u.displayName} (@${u.discordUsername})` : u.discordUsername}?`)) return;
+    const handle = u.discordLinked ? `@${u.discordUsername}` : `${u.discordUsername}, unverified`;
+    if (!window.confirm(`Reassign ${character.ign} to ${u.displayName ? `${u.displayName} (${handle})` : u.discordLinked ? u.discordUsername : `${u.discordUsername} (unverified)`}?`)) return;
     reassign.mutate({ id: character.id, userId: u.id }, { onSuccess: onDone });
   };
 
@@ -103,7 +104,8 @@ export function UsersAdmin() {
             <div className="admin__user-head">
               {u.avatarUrl ? <img className="admin__avatar" src={u.avatarUrl} alt="" /> : <span className="admin__avatar" aria-hidden="true" />}
               <strong>{u.displayName ?? u.discordUsername}</strong>
-              {u.displayName && <small>@{u.discordUsername}</small>}
+              {u.displayName && <small>{u.discordLinked ? `@${u.discordUsername}` : u.discordUsername}</small>}
+              {!u.discordLinked && <small className="unverified-note" title="Typed at sign-up and not confirmed through Discord">unverified</small>}
               {u.isAdmin && <span className="pill">Admin</span>}
               {u.banned && <span className="pill pill--red">Banned</span>}
               <span>{u.characterCount} {u.characterCount === 1 ? 'character' : 'characters'}</span>

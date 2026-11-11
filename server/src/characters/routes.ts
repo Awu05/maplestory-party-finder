@@ -110,6 +110,7 @@ export async function characterRoutes(app: FastifyInstance): Promise<void> {
     const row = await getOwnedCharacter(prisma, id, viewer.user.id);
     uploads.take(viewer.user.id); // before reading or decoding anything
     const { buf, ext } = await readImageUpload(req);
+    await app.deps.scouterValidator.validate(buf);
     const key = await storage.save(buf, ext);
     let updated;
     try {

@@ -54,6 +54,13 @@ describe('GET /admin/users', () => {
     expect(all.length).toBe(4);
     expect(all.find((u: any) => u.discordUsername === 'boss').isAdmin).toBe(true);
   });
+
+  it('says which accounts have a verified (Discord-linked) username', async () => {
+    await makeUser({ discordId: null, username: 'typed_name' });
+    const all = (await call('GET', '/api/admin/users')).json();
+    expect(all.find((u: any) => u.discordUsername === 'typed_name').discordLinked).toBe(false);
+    expect(all.find((u: any) => u.discordUsername === 'boss').discordLinked).toBe(true);
+  });
 });
 
 describe('ban', () => {
@@ -283,6 +290,7 @@ describe('GET /admin/posts', () => {
     const dto = (await call('GET', '/api/admin/posts?status=deleted')).json()[0];
     expect(dto.deletedAt).not.toBeNull();
     expect(typeof dto.posterDiscordUsername).toBe('string');
+    expect(dto.posterDiscordLinked).toBe(true);
   });
 
   it('q matches the poster IGN prefix', async () => {

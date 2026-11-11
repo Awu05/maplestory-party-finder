@@ -1,3 +1,4 @@
+import { LoginButton } from '../components/LoginDialog';
 import { useId, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -251,10 +252,8 @@ export function NewPostPage() {
     return (
       <section>
         {heading}
-        <p>Log in with Discord to post.</p>
-        <a className="btn btn--primary" href="/api/auth/discord">
-          Log in with Discord
-        </a>
+        <p>Log in to post.</p>
+        <LoginButton />
       </section>
     );
   }

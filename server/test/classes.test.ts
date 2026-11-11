@@ -20,6 +20,16 @@ const call = (method: 'GET' | 'POST' | 'PATCH' | 'DELETE', url: string, payload?
   app.inject({ method, url, headers: { cookie: admin }, ...(payload ? { payload } : {}) });
 
 describe('classes', () => {
+  it('stores categories and allows changing only the category', async () => {
+    const created = await call('POST', '/api/admin/classes', { name: 'Ren', archetype: 'warrior', category: 'Anima' });
+    expect(created.statusCode).toBe(201);
+    expect(created.json()).toMatchObject({ category: 'Anima', archetype: 'warrior' });
+    const character = await makeCharacter({ jobName: 'Ren' });
+    const changed = await call('PATCH', `/api/admin/classes/${created.json().id}`, { category: 'Other' });
+    expect(changed.json()).toMatchObject({ category: 'Other', archetype: 'warrior' });
+    expect((await prisma.character.findUniqueOrThrow({ where: { id: character.id } })).archetype).toBe('warrior');
+    expect((await call('PATCH', `/api/admin/classes/${created.json().id}`, { category: 'Invented' })).statusCode).toBe(400);
+  });
   it('GET /api/classes is sorted alphabetically, case-insensitive', async () => {
     await makeJobClass('zero', 'warrior');
     await makeJobClass('Adele', 'warrior');
@@ -102,10 +112,14 @@ describe('classes', () => {
     const c = await makeCharacter({ jobName: 'Hero', archetype: 'unknown' });
     await seed(prisma);
     const total = await prisma.jobClass.count();
-    await prisma.jobClass.update({ where: { nameLower: 'bishop' }, data: { archetype: 'pirate' } });
+    expect(total).toBe(54);
+    expect((await prisma.jobClass.findUniqueOrThrow({ where: { nameLower: 'lethe' } })).category).toBe('Demon');
+    expect((await prisma.jobClass.findUniqueOrThrow({ where: { nameLower: 'sia astelle' } })).category).toBe('Shine');
+    await prisma.jobClass.update({ where: { nameLower: 'bishop' }, data: { archetype: 'pirate', category: 'Other' } });
     await seed(prisma);
     expect(await prisma.jobClass.count()).toBe(total);
     expect((await prisma.jobClass.findUniqueOrThrow({ where: { nameLower: 'bishop' } })).archetype).toBe('pirate');
+    expect((await prisma.jobClass.findUniqueOrThrow({ where: { nameLower: 'bishop' } })).category).toBe('Other');
     expect((await prisma.character.findUniqueOrThrow({ where: { id: c.id } })).archetype).toBe('warrior');
   });
 });

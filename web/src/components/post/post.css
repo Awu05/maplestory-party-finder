@@ -364,6 +364,18 @@ a.post-card:hover {
 .post-row__when {
   flex: none;
 }
+.post-row__world {
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 1px var(--space-2);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-2) 15%, transparent);
+  color: var(--accent-2);
+  font-size: 0.75rem;
+}
 .post-row .post-badge {
   flex: none;
 }

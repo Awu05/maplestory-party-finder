@@ -22,11 +22,10 @@ interface Details {
   guildId: string | null;
 }
 
-/** Class names sorted case-insensitively; `current` is kept even if the class has since been removed. */
-function classNames(classes: JobClassDTO[] | undefined, current?: string): string[] {
-  const names = (classes ?? []).map((c) => c.name);
-  if (current && !names.includes(current)) names.push(current);
-  return names.sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' }));
+function classOptions(classes: JobClassDTO[] | undefined, current?: string): Pick<JobClassDTO, 'name' | 'category'>[] {
+  const options = [...(classes ?? [])];
+  if (current && !options.some((job) => job.name === current)) return [...options, { name: current, category: 'Other' }];
+  return options;
 }
 
 /** Controlled state for the manual fields, with the shared validation and error copy. */
@@ -145,6 +144,7 @@ function DetailsForm({ initial, lead, validate, guilds, onSubmit }: FormProps) {
         <input
           ref={fileInput}
           type="file"
+          aria-describedby="scouter-upload-hint"
           accept={SCREENSHOT_TYPES.join(',')}
           onChange={(e) => {
             setFile(e.target.files?.[0] ?? null);
@@ -152,6 +152,7 @@ function DetailsForm({ initial, lead, validate, guilds, onSubmit }: FormProps) {
           }}
         />
       </label>
+      <small id="scouter-upload-hint">Upload the full Maple Scouter results with Boss Clear and Scouter Graph or Stat Efficiency visible.</small>
       <div
         className="paste-box"
         role="button"
@@ -296,7 +297,7 @@ function AddCharacter({ guilds }: { guilds: GuildDTO[] }) {
               onJob={manual.setJobName}
               level={manual.level}
               onLevel={manual.setLevel}
-              classOptions={classNames(classes.data)}
+              classOptions={classOptions(classes.data)}
               worlds={worlds.data ?? []}
             />
           }
@@ -354,7 +355,7 @@ function EditForm({ id, guilds, character }: { id: string; guilds: GuildDTO[]; c
               onJob={manual.setJobName}
               level={manual.level}
               onLevel={manual.setLevel}
-              classOptions={classNames(classes.data, character.jobName)}
+              classOptions={classOptions(classes.data, character.jobName)}
             />
           )
         }

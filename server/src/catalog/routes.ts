@@ -4,6 +4,7 @@ import { z } from 'zod';
 import type { AdminGuildDTO, BossDTO, GuildDTO, JobClassDTO, RarityTierDTO, WorldDTO } from '@pf/shared';
 import { getViewer, requireAdmin } from '../auth/guards.js';
 import { AppError } from '../http/errors.js';
+import { CLASS_CATEGORIES } from '@pf/shared';
 
 const WEBHOOK_RE = /^https:\/\/(discord|discordapp)\.com\/api\/webhooks\/\d+\/[\w-]+$/;
 
@@ -81,8 +82,8 @@ const tiersInput = z.object({
 });
 
 const archetypeEnum = z.enum(['warrior', 'magician', 'bowman', 'thief', 'pirate', 'xenon']);
-const classCreate = z.object({ name: z.string().trim().min(1).max(40), archetype: archetypeEnum });
-const classPatch = z.object({ archetype: archetypeEnum });
+const classCreate = z.object({ name: z.string().trim().min(1).max(40), archetype: archetypeEnum, category: z.enum(CLASS_CATEGORIES).default('Other') });
+const classPatch = z.object({ archetype: archetypeEnum.optional(), category: z.enum(CLASS_CATEGORIES).optional() }).refine((value) => value.archetype !== undefined || value.category !== undefined, 'Choose a category or archetype');
 
 const idParam = z.object({ id: z.coerce.number().int() });
 const guildIdParam = z.object({ id: z.string().min(1) });
@@ -124,8 +125,8 @@ function toTierDTO(t: { id: number; name: string; minCp: bigint; sortOrder: numb
   return { id: t.id, name: t.name, minCp: Number(t.minCp), sortOrder: t.sortOrder };
 }
 
-function toClassDTO(c: { id: number; name: string; archetype: string }): JobClassDTO {
-  return { id: c.id, name: c.name, archetype: c.archetype as JobClassDTO['archetype'] };
+function toClassDTO(c: { id: number; name: string; archetype: string; category: string }): JobClassDTO {
+  return { id: c.id, name: c.name, archetype: c.archetype as JobClassDTO['archetype'], category: c.category as JobClassDTO['category'] };
 }
 
 function isCode(err: unknown, code: string): boolean {
@@ -355,7 +356,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       () =>
         prisma.$transaction(async (tx) => {
           const jc = await tx.jobClass.create({
-            data: { name: body.name, nameLower: body.name.toLowerCase(), archetype: body.archetype },
+            data: { name: body.name, nameLower: body.name.toLowerCase(), archetype: body.archetype, category: body.category },
           });
           await tx.character.updateMany({
             where: { jobName: { equals: jc.name, mode: 'insensitive' } },
@@ -374,8 +375,8 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     const body = classPatch.parse(req.body);
     return prisma.$transaction(async (tx) => {
       if (!(await tx.jobClass.findUnique({ where: { id } }))) throw new AppError(404, 'NOT_FOUND');
-      const jc = await tx.jobClass.update({ where: { id }, data: { archetype: body.archetype } });
-      await tx.character.updateMany({
+      const jc = await tx.jobClass.update({ where: { id }, data: { archetype: body.archetype, category: body.category } });
+      if (body.archetype !== undefined) await tx.character.updateMany({
         where: { jobName: { equals: jc.name, mode: 'insensitive' } },
         data: { archetype: jc.archetype },
       });

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { JobClassDTO } from '@pf/shared';
+import { CLASS_CATEGORIES, groupClasses, type ClassCategory, type JobClassDTO } from '@pf/shared';
 import { useClasses, useCreateClass, useDeleteClass, useUpdateClass } from '../../api/hooks';
 import { friendlyError } from '../../api/errors';
 
@@ -24,6 +24,10 @@ function ArchetypeOptions() {
   );
 }
 
+function CategoryOptions() {
+  return <>{CLASS_CATEGORIES.map((category) => <option key={category} value={category}>{category}</option>)}</>;
+}
+
 export function ClassesAdmin() {
   const classes = useClasses();
   const create = useCreateClass();
@@ -31,12 +35,13 @@ export function ClassesAdmin() {
   const remove = useDeleteClass();
   const [name, setName] = useState('');
   const [archetype, setArchetype] = useState<Arch>('warrior');
+  const [category, setCategory] = useState<ClassCategory>('Other');
   const error = create.error ?? update.error ?? remove.error ?? (classes.isError ? classes.error : null);
-  const sorted = [...(classes.data ?? [])].sort((a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' }));
+  const groups = groupClasses(classes.data ?? []);
 
   function add(e: React.FormEvent) {
     e.preventDefault();
-    create.mutate({ name: name.trim(), archetype }, { onSuccess: () => setName('') });
+    create.mutate({ name: name.trim(), archetype, category }, { onSuccess: () => setName('') });
   }
 
   return (
@@ -54,16 +59,24 @@ export function ClassesAdmin() {
             <ArchetypeOptions />
           </select>
         </label>
+        <label>
+          Category
+          <select aria-label="New class category" value={category} onChange={(e) => setCategory(e.target.value as ClassCategory)}>
+            <CategoryOptions />
+          </select>
+        </label>
         <div className="admin__row">
           <button type="submit" className="btn btn--primary" disabled={create.isPending}>Add class</button>
         </div>
       </form>
-      <table className="admin__table">
+      {groups.map((group) => <section key={group.category} aria-label={group.category}>
+      <h3>{group.category} <small>({group.classes.length})</small></h3>
+      <table className="admin__table" aria-label={`${group.category} classes`}>
         <thead>
-          <tr><th>Class</th><th>Archetype</th><th /></tr>
+          <tr><th>Class</th><th>Archetype</th><th>Category</th><th /></tr>
         </thead>
         <tbody>
-          {sorted.map((c) => (
+          {group.classes.map((c) => (
             <tr key={c.id}>
               <td data-label="Class">{c.name}</td>
               <td data-label="Archetype">
@@ -75,6 +88,16 @@ export function ClassesAdmin() {
                   onChange={(e) => update.mutate({ id: c.id, archetype: e.target.value as Arch })}
                 >
                   <ArchetypeOptions />
+                </select>
+              </td>
+              <td data-label="Category">
+                <select
+                  aria-label={`Category for ${c.name}`}
+                  value={c.category ?? 'Other'}
+                  disabled={update.isPending && update.variables?.id === c.id}
+                  onChange={(e) => update.mutate({ id: c.id, category: e.target.value as ClassCategory })}
+                >
+                  <CategoryOptions />
                 </select>
               </td>
               <td>
@@ -91,6 +114,7 @@ export function ClassesAdmin() {
           ))}
         </tbody>
       </table>
+      </section>)}
     </div>
   );
 }

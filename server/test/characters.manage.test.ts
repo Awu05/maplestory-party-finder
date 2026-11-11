@@ -3,7 +3,7 @@ import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Storage } from '../src/storage/storage.js';
 import type { FastifyInstance } from 'fastify';
 import {
-  buildTestApp, loginAs, makeCharacter, makeGuild, makeWorld, prisma, resetDb, type FakeNexon,
+  buildTestApp, loginAs, makeCharacter, makeGuild, makeUser, makeWorld, prisma, resetDb, type FakeNexon,
 } from './helpers.js';
 
 const PNG = Buffer.from(
@@ -86,6 +86,14 @@ describe('characters get', () => {
     expect(res.json()).toMatchObject({ id: c.id, isOwner: false, owner: { discordUsername: 'owner' } });
     expect((await get(`/api/characters/${c.id}`, cookie)).json().isOwner).toBe(true);
     expect((await get('/api/characters/nope')).statusCode).toBe(404);
+  });
+
+  it('says whether the owner signed in with Discord, without exposing the Discord ID', async () => {
+    const linked = await makeCharacter({ ownerId, worldId, guildId });
+    const local = await makeUser({ discordId: null, username: 'typed_name' });
+    const unverified = await makeCharacter({ ownerId: local.id, worldId, guildId });
+    expect((await get(`/api/characters/${linked.id}`)).json().owner).toEqual({ discordUsername: 'owner', displayName: null, discordLinked: true });
+    expect((await get(`/api/characters/${unverified.id}`)).json().owner).toEqual({ discordUsername: 'typed_name', displayName: null, discordLinked: false });
   });
 });
 

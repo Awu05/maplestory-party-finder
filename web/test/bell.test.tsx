@@ -121,7 +121,7 @@ describe('NotificationBell', () => {
   it('not rendered when logged out', async () => {
     mockApi({ '/api/auth/me': null });
     renderWithProviders(<App />);
-    await screen.findByRole('link', { name: 'Log in with Discord' });
+    await screen.findByRole('button', { name: 'Log in' });
     expect(screen.queryByRole('button', { name: /^Notifications/ })).not.toBeInTheDocument();
   });
 
@@ -163,7 +163,7 @@ describe('NotificationBell', () => {
     await screen.findByRole('button', { name: 'Notifications, 1 unread' });
     fireEvent.click(screen.getByRole('button', { name: /^Profile:/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Log out' }));
-    await screen.findByRole('link', { name: 'Log in with Discord' });
+    await screen.findByRole('button', { name: 'Log in' });
     await waitFor(() => expect(client.getQueryCache().findAll({ queryKey: ['notifications'] })).toHaveLength(0));
   });
 

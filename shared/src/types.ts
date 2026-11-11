@@ -1,4 +1,4 @@
-import type { Archetype } from './archetype';
+import type { Archetype, ClassCategory } from './archetype';
 export interface CharacterDTO {
   id: string;
   ign: string;
@@ -12,7 +12,8 @@ export interface CharacterDTO {
   guild: { id: string; name: string; iconUrl: string | null } | null;
   manual: boolean;
   screenshotUrl: string | null;
-  owner: { discordUsername: string; displayName: string | null };
+  /** discordLinked: signed in with Discord. Otherwise discordUsername was typed at signup and is unverified. */
+  owner: { discordUsername: string; displayName: string | null; discordLinked: boolean };
   isOwner: boolean;
   syncStatus: 'ok' | 'stale';
   lastSyncedAt: string;
@@ -60,7 +61,7 @@ export type BossDTO = {
 
 export type RarityTierDTO = { id: number; name: string; minCp: number; sortOrder: number };
 
-export type MeDTO = { id: string; discordUsername: string; displayName: string | null; avatarUrl: string | null; isAdmin: boolean } | null;
+export type MeDTO = { id: string; discordUsername: string; displayName: string | null; avatarUrl: string | null; isAdmin: boolean; discordLinked?: boolean } | null;
 
 export type PostType = 'lfp' | 'recruiting' | 'carrying';
 export type PostStatus = 'open' | 'full' | 'closed';
@@ -127,7 +128,7 @@ export interface WebhookHealthDTO {
   guildId: string; guildName: string; hasWebhook: boolean; active: boolean;
   lastSentAt: string | null; pending: number; failedLast24h: number; recentFailures: WebhookFailureDTO[]; // <= 10
 }
-export interface AdminUserDTO { id: string; discordUsername: string; displayName: string | null; avatarUrl: string | null; banned: boolean; isAdmin: boolean; createdAt: string; characterCount: number }
-export interface AdminPostDTO extends PostSummaryDTO { deletedAt: string | null; closedReason: string | null; posterDiscordUsername: string }
+export interface AdminUserDTO { id: string; discordUsername: string; displayName: string | null; avatarUrl: string | null; banned: boolean; isAdmin: boolean; createdAt: string; characterCount: number; discordLinked: boolean }
+export interface AdminPostDTO extends PostSummaryDTO { deletedAt: string | null; closedReason: string | null; posterDiscordUsername: string; posterDiscordLinked: boolean }
 
-export type JobClassDTO = { id: number; name: string; archetype: Exclude<Archetype, 'unknown'> };
+export type JobClassDTO = { id: number; name: string; archetype: Exclude<Archetype, 'unknown'>; category: ClassCategory };
