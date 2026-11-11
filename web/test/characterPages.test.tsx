@@ -159,6 +159,24 @@ describe('CharacterFormPage', () => {
     expect(Object.keys(body).sort()).toEqual(['combatPower', 'guildId', 'ign', 'nexonWorldId']);
   });
 
+  it('guild is optional: "No guild" saves with guildId null', async () => {
+    const fetchMock = mockApi({
+      ...shared,
+      'POST /api/characters/lookup': [preview],
+      'POST /api/characters': character,
+    });
+    renderWithProviders(formRoutes(), { route: '/me/characters/new' });
+    await fillAddForm();
+    fireEvent.change(screen.getByLabelText('Guild'), { target: { value: '' } });
+    expect(screen.getByRole('option', { name: 'No guild' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Guild')).toHaveAccessibleDescription("Optional. You'll need a guild to make or join parties.");
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByRole('heading', { name: 'My list' })).toBeInTheDocument();
+    const post = fetchMock.mock.calls.find((c) => String(c[0]) === '/api/characters' && (c[1] as RequestInit).method === 'POST')!;
+    expect(bodyOf(post).guildId).toBeNull();
+    expect(screen.queryByText('Pick a guild.')).toBeNull();
+  });
+
   it('the details form has only CP, guild and screenshot', async () => {
     mockApi({ ...shared, 'POST /api/characters/lookup': [preview] });
     renderWithProviders(formRoutes(), { route: '/me/characters/new' });

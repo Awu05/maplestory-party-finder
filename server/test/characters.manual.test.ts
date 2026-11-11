@@ -50,6 +50,25 @@ describe('POST /api/characters/manual', () => {
     expect(nexon.calls).toEqual([]);
   });
 
+  it('guild is optional for manual characters too', async () => {
+    const res = await create(body({ guildId: null }));
+    expect(res.statusCode).toBe(201);
+    expect(res.json().guild).toBeNull();
+    const { guildId: _omit, ...withoutGuild } = body({ ign: 'Manny2' });
+    const res2 = await create(withoutGuild);
+    expect(res2.statusCode).toBe(201);
+    expect(res2.json().guild).toBeNull();
+  });
+
+  it('an edit can clear the guild, and set it again', async () => {
+    const id = (await create(body())).json().id as string;
+    const cleared = await patch(id, { guildId: null });
+    expect(cleared.statusCode).toBe(200);
+    expect(cleared.json().guild).toBeNull();
+    const set = await patch(id, { guildId });
+    expect(set.json().guild.id).toBe(guildId);
+  });
+
   it('rejects an unknown class', async () => {
     const res = await create(body({ jobName: 'Nope' }));
     expectError(res, 400, 'UNKNOWN_CLASS');

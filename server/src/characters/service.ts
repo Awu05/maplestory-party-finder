@@ -11,7 +11,7 @@ export interface CreateCharacterInput {
   ign: string;
   nexonWorldId: number;
   combatPower: number;
-  guildId: string;
+  guildId: string | null;
 }
 
 async function findOnNexon(nexon: NexonClient, ign: string, opts?: { fresh?: boolean }): Promise<NexonCharacter[]> {
@@ -58,7 +58,7 @@ export async function createCharacter(
 ): Promise<CharacterRow> {
   const { prisma } = deps;
 
-  const guild = await requireActiveGuild(prisma, input.guildId);
+  const guild = input.guildId === null ? null : await requireActiveGuild(prisma, input.guildId);
 
   const match = (await findOnNexon(deps.nexon, input.ign)).find((c) => c.nexonWorldId === input.nexonWorldId);
   if (!match) throw new AppError(404, 'CHARACTER_NOT_FOUND', 'Character not found on that world');
@@ -84,7 +84,7 @@ export async function createCharacter(
           combatPower: BigInt(input.combatPower),
           cpUpdatedAt: now,
           lastSyncedAt: now,
-          guildId: guild.id,
+          guildId: guild?.id ?? null,
         },
         include: characterInclude,
       }),
@@ -98,7 +98,7 @@ export interface ManualCharacterInput {
   jobName: string;
   level: number;
   combatPower: number;
-  guildId: string;
+  guildId: string | null;
 }
 
 export const DEFAULT_CHARACTER_IMAGE = '/default-character.svg';
@@ -114,7 +114,7 @@ export async function createManualCharacter(
   ownerId: string,
   input: ManualCharacterInput,
 ): Promise<CharacterRow> {
-  const guild = await requireActiveGuild(prisma, input.guildId);
+  const guild = input.guildId === null ? null : await requireActiveGuild(prisma, input.guildId);
   const world = await prisma.world.findUnique({ where: { id: input.worldId } });
   if (!world) throw new AppError(400, 'UNKNOWN_WORLD', "That world isn't set up yet — ask the admin");
   if (!world.active) throw new AppError(400, 'WORLD_INACTIVE', 'That world is not active');
@@ -136,7 +136,7 @@ export async function createManualCharacter(
         combatPower: BigInt(input.combatPower),
         cpUpdatedAt: now,
         lastSyncedAt: now,
-        guildId: guild.id,
+        guildId: guild?.id ?? null,
         source: 'manual',
       },
       include: characterInclude,
@@ -193,7 +193,7 @@ export async function updateCharacter(
   row: CharacterRow,
   input: UpdateCharacterInput,
 ): Promise<CharacterRow> {
-  if (input.guildId !== undefined && input.guildId !== row.guildId) await requireActiveGuild(prisma, input.guildId);
+  if (input.guildId != null && input.guildId !== row.guildId) await requireActiveGuild(prisma, input.guildId);
 
   let classData: { jobName: string; archetype: Archetype } | null = null;
   if (input.jobName !== undefined || input.level !== undefined) {

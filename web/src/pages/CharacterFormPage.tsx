@@ -19,7 +19,7 @@ import './characters.css';
 
 interface Details {
   combatPower: number;
-  guildId: string;
+  guildId: string | null;
 }
 
 /** Class names sorted case-insensitively; `current` is kept even if the class has since been removed. */
@@ -71,10 +71,9 @@ function DetailsForm({ initial, lead, validate, guilds, onSubmit }: FormProps) {
     if (leadError) return setError(leadError);
     const digits = cp.replace(/,/g, '').trim();
     if (!/^\d+$/.test(digits) || Number(digits) <= 0) return setError('Enter your combat power as a number.');
-    if (!guildId) return setError('Pick a guild.');
     setSaving(true);
     try {
-      await onSubmit({ combatPower: Number(digits), guildId }, file);
+      await onSubmit({ combatPower: Number(digits), guildId: guildId || null }, file);
     } catch (err) {
       setError(friendlyError(err));
       setSaving(false);
@@ -90,8 +89,8 @@ function DetailsForm({ initial, lead, validate, guilds, onSubmit }: FormProps) {
       </label>
       <label>
         Guild
-        <select value={guildId} onChange={(e) => setGuildId(e.target.value)}>
-          <option value="">Select a guild</option>
+        <select value={guildId} aria-describedby="guild-hint" onChange={(e) => setGuildId(e.target.value)}>
+          <option value="">No guild</option>
           {guilds
             .filter((g) => g.active || g.id === initial?.guild?.id)
             .map((g) => (
@@ -101,6 +100,7 @@ function DetailsForm({ initial, lead, validate, guilds, onSubmit }: FormProps) {
             ))}
         </select>
       </label>
+      <small id="guild-hint">Optional. You'll need a guild to make or join parties.</small>
       <label>
         Scouter screenshot
         <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
