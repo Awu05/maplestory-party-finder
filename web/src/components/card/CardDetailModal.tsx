@@ -16,6 +16,17 @@ export function CardDetailModal({ character: c, tiers, onClose, onEdit }: Props)
   const ref = useRef<HTMLDialogElement>(null);
   const headingId = useId();
   const [copied, setCopied] = useState(false);
+  const [viewing, setViewing] = useState(false);
+  const thumbButton = useRef<HTMLButtonElement>(null);
+  const viewerClose = useRef<HTMLButtonElement>(null);
+  const wasViewing = useRef(false);
+
+  // Focus the viewer's Close when it opens, and return to the thumbnail when it closes.
+  useEffect(() => {
+    if (viewing) viewerClose.current?.focus();
+    else if (wasViewing.current) thumbButton.current?.focus();
+    wasViewing.current = viewing;
+  }, [viewing]);
 
   useEffect(() => {
     const d = ref.current;
@@ -29,7 +40,9 @@ export function CardDetailModal({ character: c, tiers, onClose, onEdit }: Props)
   // Esc fires `cancel`; keep the dialog mounted/open state owned by the parent.
   const onCancel = (e: SyntheticEvent<HTMLDialogElement>) => {
     e.preventDefault();
-    onClose();
+    // Escape closes the full-size screenshot first, then the popup.
+    if (viewing) setViewing(false);
+    else onClose();
   };
   // The content wrapper fills the dialog, so a click landing on the dialog itself is on the backdrop.
   const onDialogClick = (e: MouseEvent<HTMLDialogElement>) => {
@@ -63,9 +76,15 @@ export function CardDetailModal({ character: c, tiers, onClose, onEdit }: Props)
           <CharacterCard character={c} tiers={tiers} />
           <section className="card-modal__screenshot">
             {c.screenshotUrl ? (
-              <a href={c.screenshotUrl} target="_blank" rel="noopener noreferrer">
+              <button
+                ref={thumbButton}
+                type="button"
+                className="card-modal__shot-button"
+                aria-label="View Scouter screenshot full size"
+                onClick={() => setViewing(true)}
+              >
                 <img src={c.screenshotUrl} alt={`${c.ign} Scouter screenshot`} />
-              </a>
+              </button>
             ) : (
               <p className="card-modal__muted">No Scouter screenshot yet</p>
             )}
@@ -104,6 +123,30 @@ export function CardDetailModal({ character: c, tiers, onClose, onEdit }: Props)
           )}
         </div>
       </div>
+      {viewing && c.screenshotUrl && (
+        <div
+          className="shot-viewer"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${c.ign} Scouter screenshot`}
+          onClick={(e) => {
+            // Clicking the dim area around the image closes the viewer, not the popup.
+            e.stopPropagation();
+            if (e.target === e.currentTarget) setViewing(false);
+          }}
+        >
+          <button
+            ref={viewerClose}
+            type="button"
+            className="btn btn--secondary shot-viewer__close"
+            aria-label="Close screenshot"
+            onClick={() => setViewing(false)}
+          >
+            Close
+          </button>
+          <img src={c.screenshotUrl} alt={`${c.ign} Scouter screenshot`} />
+        </div>
+      )}
     </dialog>
   );
 }
