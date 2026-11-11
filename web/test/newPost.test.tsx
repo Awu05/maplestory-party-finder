@@ -231,7 +231,7 @@ describe('NewPostPage (create)', () => {
   it('logged-out user sees the login prompt', async () => {
     mockApi({ ...base, '/api/auth/me': null });
     renderWithProviders(<App />, { route: '/posts/new' });
-    expect(await screen.findByText('Log in with Discord to post.')).toBeInTheDocument();
+    expect(await screen.findByText('Log in to post.')).toBeInTheDocument();
   });
 });
 

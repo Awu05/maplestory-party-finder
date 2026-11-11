@@ -127,11 +127,13 @@ export function buildTestMessage(guildName: string): WebhookPayload {
 }
 
 /** Thread title and opening message for a finalized party. */
-export function buildPartyThread(post: WeeklyReminderPost & { world: { name: string }; poster: { snapshot: { ign: string } } }, webOrigin: string, members: { ign: string; discordId: string }[] = []): { name: string; message: WebhookPayload } {
+export function buildPartyThread(post: WeeklyReminderPost & { world: { name: string }; poster: { snapshot: { ign: string } } }, webOrigin: string, members: { ign: string; discordId: string | null; discordUsername?: string }[] = []): { name: string; message: WebhookPayload } {
   const bosses = clip(neutralize(bossesLabel(post)), 700);
   const poster = clip(neutralize(post.poster.snapshot.ign), 100);
-  const roster = members.filter((member) => /^[1-9]\d{16,19}$/.test(member.discordId))
-    .map((member) => `• ${clip(neutralize(member.ign), 50)}: <@${member.discordId}> (\`${member.discordId}\`)`).join('\n');
+  const roster = members.filter((member) => member.discordId === null || /^[1-9]\d{16,19}$/.test(member.discordId))
+    .map((member) => member.discordId === null
+      ? `• ${clip(neutralize(member.ign), 50)}${member.discordUsername ? ` (Discord: @${clip(neutralize(member.discordUsername), 50)})` : ''}`
+      : `• ${clip(neutralize(member.ign), 50)}: <@${member.discordId}> (\`${member.discordId}\`)`).join('\n');
   return {
     name: clip(`${bosses} — ${poster}`, 100),
     message: {

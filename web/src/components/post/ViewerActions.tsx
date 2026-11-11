@@ -15,6 +15,7 @@ import { CharacterCard } from '../card/CharacterCard';
 import { CharacterPicker } from './CharacterPicker';
 import { bossLabel, postLabel } from './labels';
 import { useLastActionError } from './useLastActionError';
+import { LoginButton } from '../LoginDialog';
 
 export function ViewerActions({ post }: { post: PostDetailDTO }) {
   const { data: me, isLoading } = useMe();
@@ -43,7 +44,7 @@ export function ViewerActions({ post }: { post: PostDetailDTO }) {
   });
 
   if (isLoading) return null;
-  if (!loggedIn) return <p>Log in with Discord to join.</p>;
+  if (!loggedIn) return <div><p>Log in to join.</p><LoginButton /></div>;
 
   // A recruiting post that already has a pending invite to this LFP post is not offered again.
   const alreadyInvited = new Set(post.sentInvitesToThis.map((r) => r.postId));

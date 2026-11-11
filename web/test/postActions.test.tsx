@@ -204,7 +204,7 @@ describe('request to join', () => {
 
   it('visitor sees log in prompt', async () => {
     renderPage({ '/api/posts/p1': post(), '/api/auth/me': null });
-    expect(await screen.findByText('Log in with Discord to join.')).toBeInTheDocument();
+    expect(await screen.findByText('Log in to join.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Request to join' })).toBeNull();
   });
 });

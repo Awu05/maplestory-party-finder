@@ -194,6 +194,6 @@ describe('MyPartiesPage', () => {
 
   it('logged out shows login prompt', async () => {
     renderPage({ '/api/auth/me': null });
-    expect(await screen.findByText('Log in with Discord to see your parties.')).toBeInTheDocument();
+    expect(await screen.findByText('Log in to see your parties.')).toBeInTheDocument();
   });
 });

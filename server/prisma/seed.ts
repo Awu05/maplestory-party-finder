@@ -62,10 +62,10 @@ export async function seed(prisma: PrismaClient): Promise<void> {
     });
   }
 
-  for (const { name, archetype } of KNOWN_CLASSES) {
+  for (const { name, archetype, category } of KNOWN_CLASSES) {
     await prisma.jobClass.upsert({
       where: { nameLower: name.toLowerCase() },
-      create: { name, nameLower: name.toLowerCase(), archetype },
+      create: { name, nameLower: name.toLowerCase(), archetype, category },
       update: {},
     });
   }

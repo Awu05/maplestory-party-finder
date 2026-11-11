@@ -1,4 +1,4 @@
-import type { WorldDTO } from '@pf/shared';
+import { groupClasses, type JobClassDTO, type WorldDTO } from '@pf/shared';
 
 interface Props {
   /** Present only when adding (with the world picker); editing keeps IGN and world fixed. */
@@ -10,7 +10,7 @@ interface Props {
   onJob: (v: string) => void;
   level: string;
   onLevel: (v: string) => void;
-  classOptions: string[];
+  classOptions: Pick<JobClassDTO, 'name' | 'category'>[];
   worlds?: WorldDTO[];
 }
 
@@ -43,10 +43,10 @@ export function ManualFields({
         Class
         <select value={jobName} onChange={(e) => onJob(e.target.value)}>
           <option value="">Select a class</option>
-          {classOptions.map((name) => (
-            <option key={name} value={name}>
-              {name}
-            </option>
+          {groupClasses(classOptions).map((group) => (
+            <optgroup key={group.category} label={group.category}>
+              {group.classes.map(({ name }) => <option key={name} value={name}>{name}</option>)}
+            </optgroup>
           ))}
         </select>
       </label>

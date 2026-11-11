@@ -262,6 +262,7 @@ export async function buildTestApp(
     prisma,
     discord: new FakeDiscord(),
     webhookSender,
+    scouterValidator: { validate: async () => {} },
     ...rest,
     config,
     storage,

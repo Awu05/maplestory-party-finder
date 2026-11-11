@@ -186,20 +186,20 @@ describe('admin pages', () => {
 
   describe('classes admin', () => {
     const classes = [
-      { id: 2, name: 'Bishop', archetype: 'magician' },
-      { id: 1, name: 'Adele', archetype: 'warrior' },
+      { id: 2, name: 'Bishop', archetype: 'magician', category: 'Explorers' },
+      { id: 1, name: 'Adele', archetype: 'warrior', category: 'Flora' },
     ];
     const u = {
       click: async (el: Element) => void fireEvent.click(el),
       type: async (el: Element, v: string) => void fireEvent.change(el, { target: { value: v } }),
     };
 
-    it('lists classes alphabetically', async () => {
+    it('groups classes by their category', async () => {
       mockApi({ '/api/classes': classes });
       renderWithProviders(<ClassesAdmin />);
       await screen.findByText('Adele');
-      const names = screen.getAllByRole('row').slice(1).map((r) => within(r).getAllByRole('cell')[0].textContent);
-      expect(names).toEqual(['Adele', 'Bishop']);
+      expect(within(screen.getByRole('table', { name: 'Explorers classes' })).getByText('Bishop')).toBeInTheDocument();
+      expect(within(screen.getByRole('table', { name: 'Flora classes' })).getByText('Adele')).toBeInTheDocument();
     });
 
     it('adds a class with name and archetype', async () => {
@@ -208,9 +208,10 @@ describe('admin pages', () => {
       renderWithProviders(<ClassesAdmin />);
       await u.type(await screen.findByLabelText('Class name'), 'Lynn');
       await u.type(screen.getByLabelText('New class archetype'), 'magician');
+      await u.type(screen.getByLabelText('New class category'), 'Jianghu');
       await u.click(screen.getByRole('button', { name: 'Add class' }));
       await waitFor(() => expect(post).toHaveBeenCalled());
-      expect(body(post.mock.calls[0][0])).toEqual({ name: 'Lynn', archetype: 'magician' });
+      expect(body(post.mock.calls[0][0])).toEqual({ name: 'Lynn', archetype: 'magician', category: 'Jianghu' });
     });
 
     it('changes an archetype via the row select', async () => {
@@ -220,6 +221,15 @@ describe('admin pages', () => {
       await u.type(await screen.findByLabelText('Archetype for Adele'), 'thief');
       await waitFor(() => expect(patch).toHaveBeenCalled());
       expect(body(patch.mock.calls[0][0])).toEqual({ archetype: 'thief' });
+    });
+
+    it('changes a category without changing the archetype', async () => {
+      const patch = vi.fn((_init?: RequestInit) => ({}));
+      mockApi({ '/api/classes': classes, 'PATCH /api/admin/classes/1': patch });
+      renderWithProviders(<ClassesAdmin />);
+      await u.type(await screen.findByLabelText('Category for Adele'), 'Other');
+      await waitFor(() => expect(patch).toHaveBeenCalled());
+      expect(body(patch.mock.calls[0][0])).toEqual({ category: 'Other' });
     });
 
     it("disables a row's archetype select while its update is pending", async () => {

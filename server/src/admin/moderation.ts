@@ -60,7 +60,7 @@ export async function adminModerationRoutes(app: FastifyInstance): Promise<void>
     displayName: u.displayName,
     avatarUrl: u.avatar,
     banned: u.banned,
-    isAdmin: config.adminDiscordIds.includes(u.discordId),
+    isAdmin: u.discordId !== null && config.adminDiscordIds.includes(u.discordId),
     createdAt: u.createdAt.toISOString(),
     characterCount: u._count.characters,
   });
@@ -86,7 +86,7 @@ export async function adminModerationRoutes(app: FastifyInstance): Promise<void>
     const { banned } = banBody.parse(req.body);
     const user = await prisma.user.findUnique({ where: { id } });
     if (!user) throw new AppError(404, 'NOT_FOUND');
-    if (banned && (user.id === admin.user.id || config.adminDiscordIds.includes(user.discordId))) {
+    if (banned && (user.id === admin.user.id || (user.discordId !== null && config.adminDiscordIds.includes(user.discordId)))) {
       throw new AppError(400, 'CANNOT_BAN_ADMIN', 'Admins cannot be banned');
     }
     if (banned && !user.banned) {

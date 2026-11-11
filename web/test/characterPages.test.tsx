@@ -71,7 +71,7 @@ describe('MyCharactersPage', () => {
   it('shows the login prompt when logged out', async () => {
     mockApi({ ...shared, '/api/auth/me': null, '/api/characters?mine=1': [] });
     renderWithProviders(<MyCharactersPage />);
-    expect(await screen.findByText(/Log in with Discord to manage/)).toBeInTheDocument();
+    expect(await screen.findByText(/Log in to manage/)).toBeInTheDocument();
   });
 
   it('shows a TOO_SOON message on refresh and deletes after confirm', async () => {

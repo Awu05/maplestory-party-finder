@@ -100,7 +100,7 @@ describe('delete', () => {
     expect((await call('GET', '/api/posts')).json()).toHaveLength(0);
 
     const ownerOfMember = await prisma.user.findUniqueOrThrow({ where: { id: member.ownerId } });
-    const memberCookie = await loginAs(app, ownerOfMember.discordId, 'member');
+    const memberCookie = await loginAs(app, ownerOfMember.discordId!, 'member');
     const detail = await call('GET', `/api/posts/${p.id}`, memberCookie);
     expect(detail.statusCode).toBe(200);
     expect(detail.json().deleted).toBe(true);

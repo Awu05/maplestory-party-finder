@@ -3,6 +3,10 @@ import type { FastifyInstance } from 'fastify';
 import type { MeDTO } from '@pf/shared';
 import { z } from 'zod';
 import { getViewer, requireUser } from './guards.js';
+import { passkeyRoutes } from './passkeys.js';
+import { passwordRoutes } from './passwords.js';
+import { passwordResetRoutes } from './passwordReset.js';
+import { toMeDTO } from './serialize.js';
 
 // Control and invisible format characters (e.g. zero-width spaces) are stripped, so a name can't render blank.
 const profileBody = z
@@ -17,6 +21,9 @@ const profileBody = z
 
 export async function authRoutes(api: FastifyInstance): Promise<void> {
   const { prisma, discord, config } = api.deps;
+  await api.register(passkeyRoutes);
+  await api.register(passwordRoutes);
+  await api.register(passwordResetRoutes);
 
   api.get('/auth/discord', async (req, reply) => {
     const state = randomBytes(16).toString('hex');
@@ -52,19 +59,13 @@ export async function authRoutes(api: FastifyInstance): Promise<void> {
     });
     if (user.banned) return reply.redirect(`${config.webOrigin}/?login=banned`);
     req.session.set('userId', user.id);
+    req.session.set('sessionVersion', user.sessionVersion);
     return reply.redirect(`${config.webOrigin}/me/characters`);
   });
 
   api.get('/auth/me', async (req): Promise<MeDTO> => {
     const viewer = await getViewer(req);
-    if (!viewer) return null;
-    return {
-      id: viewer.user.id,
-      discordUsername: viewer.user.username,
-      displayName: viewer.user.displayName,
-      avatarUrl: viewer.user.avatar,
-      isAdmin: viewer.isAdmin,
-    };
+    return viewer ? toMeDTO(viewer) : null;
   });
 
   api.patch('/auth/me', async (req): Promise<MeDTO> => {
@@ -74,7 +75,7 @@ export async function authRoutes(api: FastifyInstance): Promise<void> {
       where: { id: viewer.user.id },
       data: { displayName: displayName || null },
     });
-    return { id: user.id, discordUsername: user.username, displayName: user.displayName, avatarUrl: user.avatar, isAdmin: viewer.isAdmin };
+    return toMeDTO({ ...viewer, user });
   });
 
   api.post('/auth/logout', async (req, reply) => {

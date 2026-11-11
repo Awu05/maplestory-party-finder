@@ -1,4 +1,4 @@
-import type { Archetype } from './archetype';
+import type { Archetype, ClassCategory } from './archetype';
 export interface CharacterDTO {
   id: string;
   ign: string;
@@ -60,7 +60,7 @@ export type BossDTO = {
 
 export type RarityTierDTO = { id: number; name: string; minCp: number; sortOrder: number };
 
-export type MeDTO = { id: string; discordUsername: string; displayName: string | null; avatarUrl: string | null; isAdmin: boolean } | null;
+export type MeDTO = { id: string; discordUsername: string; displayName: string | null; avatarUrl: string | null; isAdmin: boolean; discordLinked?: boolean } | null;
 
 export type PostType = 'lfp' | 'recruiting' | 'carrying';
 export type PostStatus = 'open' | 'full' | 'closed';
@@ -130,4 +130,4 @@ export interface WebhookHealthDTO {
 export interface AdminUserDTO { id: string; discordUsername: string; displayName: string | null; avatarUrl: string | null; banned: boolean; isAdmin: boolean; createdAt: string; characterCount: number }
 export interface AdminPostDTO extends PostSummaryDTO { deletedAt: string | null; closedReason: string | null; posterDiscordUsername: string }
 
-export type JobClassDTO = { id: number; name: string; archetype: Exclude<Archetype, 'unknown'> };
+export type JobClassDTO = { id: number; name: string; archetype: Exclude<Archetype, 'unknown'>; category: ClassCategory };

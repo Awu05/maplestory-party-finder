@@ -61,6 +61,18 @@ it('routes guildless party members to a configured world channel', async () => {
   expect(delivery.payload).toMatchObject({ allowed_mentions: { users: [user.discordId] } });
 });
 
+it('never treats an unlinked account contact username as a reminder recipient ID', async () => {
+  const { guild, character, post } = await party();
+  const member = await makeCharacter({ guildId: guild.id });
+  await prisma.user.update({ where: { id: member.ownerId }, data: { discordId: null, username: '123456789012345678' } });
+  await addMember(post.id, member.id);
+  expect(await job.runOnce(at)).toBe(1);
+  const owner = await prisma.user.findUniqueOrThrow({ where: { id: character.ownerId } });
+  const delivery = await prisma.webhookDelivery.findFirstOrThrow({ where: { postId: post.id } });
+  expect(delivery.payload).toMatchObject({ allowed_mentions: { users: [owner.discordId] } });
+  expect(JSON.stringify(delivery.payload)).not.toContain('123456789012345678');
+});
+
 it('advances and queues weekly reminders for finalized carrying parties', async () => {
   const { post } = await party({ type: 'carrying', status: 'closed', closedReason: 'finalized' });
   expect(await job.runOnce(at)).toBe(1);

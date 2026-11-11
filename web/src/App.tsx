@@ -16,12 +16,14 @@ import { TiersAdmin } from './pages/admin/TiersAdmin';
 import { WebhooksAdmin } from './pages/admin/WebhooksAdmin';
 import { UsersAdmin } from './pages/admin/UsersAdmin';
 import { PostsAdmin } from './pages/admin/PostsAdmin';
+import { ResetPasswordPage } from './pages/ResetPasswordPage';
 
 export function App() {
   return (
     <Routes>
       <Route element={<Layout />}>
         <Route index element={<BoardPage />} />
+        <Route path="reset-password" element={<ResetPasswordPage />} />
         <Route path="characters" element={<CharactersPage />} />
         <Route path="posts/new" element={<NewPostPage />} />
         <Route path="posts/:id" element={<PostDetailPage />} />

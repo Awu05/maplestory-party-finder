@@ -31,6 +31,13 @@ const fields = (p: ReturnType<typeof buildNewPostMessage>) =>
   Object.fromEntries((p.embeds![0] as any).fields.map((f: any) => [f.name, f.value]));
 
 describe('helpers', () => {
+  it('lists unlinked accounts by contact username without allowing Discord mentions', () => {
+    const thread = buildPartyThread(makePost(), ORIGIN, [{ ign: 'Local', discordId: null, discordUsername: '<@123456789012345678> @everyone' }]);
+    expect(thread.message.content).toContain('Local (Discord: @');
+    expect(thread.message.content).not.toContain('<@123456789012345678>');
+    expect(thread.message.content).not.toContain('@everyone');
+    expect(thread.message.allowed_mentions).toEqual({ parse: [] });
+  });
   it('builds a safe, concise finalized party thread with time and link', () => {
     const post = makePost({ bosses: [{ bossDifficultyId: 1, bossName: '@everyone', difficulty: 'Hard' }] });
     const thread = buildPartyThread(post, ORIGIN, [{ ign: 'Alice', discordId: '123456789012345678' }, { ign: '@everyone', discordId: '234567890123456789' }, { ign: 'Invalid', discordId: 'bad-id' }]);

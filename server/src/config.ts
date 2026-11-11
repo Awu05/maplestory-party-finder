@@ -14,6 +14,19 @@ export interface Config {
   jobsEnabled: boolean;
   /** Fastify request logging (on in the real server, off in tests). */
   logger: boolean;
+  smtp?: { host: string; port: number; secure: boolean; user?: string; password?: string; from: string };
+}
+
+function smtpConfig(env: NodeJS.ProcessEnv): Config['smtp'] {
+  if (![env.SMTP_HOST, env.SMTP_FROM, env.SMTP_USER, env.SMTP_PASSWORD, env.SMTP_PORT, env.SMTP_SECURE].some((value) => value?.trim())) return undefined;
+  if (!env.SMTP_HOST?.trim() || !env.SMTP_FROM?.trim()) throw new Error('SMTP_HOST and SMTP_FROM are required for password-reset email');
+  if (/[\r\n]/.test(env.SMTP_HOST + env.SMTP_FROM) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(env.SMTP_FROM.trim())) throw new Error('Invalid SMTP_HOST or SMTP_FROM');
+  if (env.SMTP_SECURE && !['true', 'false'].includes(env.SMTP_SECURE.trim().toLowerCase())) throw new Error('SMTP_SECURE must be true or false');
+  const secure = env.SMTP_SECURE?.trim().toLowerCase() === 'true';
+  const port = Number(env.SMTP_PORT?.trim() || (secure ? 465 : 587));
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('SMTP_PORT must be an integer from 1 to 65535');
+  if (!!env.SMTP_USER !== !!env.SMTP_PASSWORD) throw new Error('Set both SMTP_USER and SMTP_PASSWORD, or neither');
+  return { host: env.SMTP_HOST.trim(), from: env.SMTP_FROM.trim(), port, secure, user: env.SMTP_USER, password: env.SMTP_PASSWORD };
 }
 
 /** PORT: unset or blank means 3000; otherwise a plain integer from 1 to 65535. */
@@ -49,6 +62,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     webDist: env.WEB_DIST || undefined,
     jobsEnabled: !['false', '0'].includes((env.JOBS_ENABLED ?? '').trim().toLowerCase()),
     logger: true,
+    smtp: smtpConfig(env),
   };
 }
 

@@ -11,6 +11,8 @@ import { WebhookWorker } from './discord/outbox.js';
 import { DailySyncJob } from './jobs/dailySync.js';
 import { WeeklyReminderJob } from './jobs/weeklyReminders.js';
 import { LocalDiskStorage } from './storage/storage.js';
+import { LocalScouterValidator } from './storage/scouterValidator.js';
+import { SmtpPasswordResetMailer } from './auth/resetMailer.js';
 
 const config = loadConfig(process.env);
 mkdirSync(config.uploadDir, { recursive: true });
@@ -34,6 +36,8 @@ const app = await buildApp({
   storage,
   events: dispatcher,
   webhookSender,
+  scouterValidator: new LocalScouterValidator(),
+  passwordResetMailer: config.smtp ? new SmtpPasswordResetMailer(config.smtp) : undefined,
 });
 appLog = app.log;
 await app.listen({ port: config.port, host: '0.0.0.0' });

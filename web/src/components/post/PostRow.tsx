@@ -13,13 +13,14 @@ interface Props {
   onSelect: () => void;
   /** Phone mode: a plain link that navigates. Otherwise a listbox option that selects on plain left-click. */
   asLink: boolean;
+  showWorld: boolean;
   onKeyDown?: (e: KeyboardEvent<HTMLAnchorElement>) => void;
 }
 
 const isPlainLeftClick = (e: MouseEvent) => e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey;
 
 export const PostRow = forwardRef<HTMLAnchorElement, Props>(function PostRow(
-  { post, selected, onSelect, asLink, onKeyDown },
+  { post, selected, onSelect, asLink, showWorld, onKeyDown },
   ref,
 ) {
   const { poster } = post;
@@ -54,6 +55,10 @@ export const PostRow = forwardRef<HTMLAnchorElement, Props>(function PostRow(
           <span className="post-row__bosses">{post.bosses.map(bossLabel).join(', ')}</span>
         </span>
         <span className="post-row__meta">
+          {showWorld && <>
+            <span className="post-row__world" title={`World: ${post.world.name}`}>{post.world.name}</span>
+            <span aria-hidden="true">·</span>
+          </>}
           <span className="post-row__when">{whenLabel(post)}</span>
           <span aria-hidden="true">·</span>
           <span className="post-row__who">{`${ign} · ${(post.guild?.name ?? 'No guild')}`}</span>

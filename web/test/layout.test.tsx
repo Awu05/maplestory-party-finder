@@ -19,11 +19,13 @@ function findOrderViolations(css: string): string[] {
 const user = { id: 'u1', discordUsername: 'maple_fan', avatarUrl: null, isAdmin: false };
 
 describe('Layout', () => {
-  it('logged out shows Log in with Discord linking /api/auth/discord', async () => {
+  it('logged out opens login choices and preserves the Discord login link', async () => {
     mockApi({ '/api/auth/me': null });
     renderWithProviders(<App />);
-    const link = await screen.findByRole('link', { name: 'Log in with Discord' });
-    expect(link).toHaveAttribute('href', '/api/auth/discord');
+    fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Log in' });
+    expect(within(dialog).getByRole('link', { name: 'Log in with Discord' })).toHaveAttribute('href', '/api/auth/discord');
+    expect(within(dialog).getByRole('button', { name: 'Create account' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'My characters' })).not.toBeInTheDocument();
   });
 
@@ -36,7 +38,7 @@ describe('Layout', () => {
         : fallback(input, init),
     );
     renderWithProviders(<App />);
-    expect(await screen.findByRole('link', { name: 'Log in with Discord' })).toHaveAttribute('href', '/api/auth/discord');
+    expect(await screen.findByRole('button', { name: 'Log in' })).toBeInTheDocument();
   });
 
   it('a rejected /api/auth/me fetch (network down) still shows Log in with Discord', async () => {
@@ -46,7 +48,7 @@ describe('Layout', () => {
       },
     });
     renderWithProviders(<App />);
-    expect(await screen.findByRole('link', { name: 'Log in with Discord' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Log in' })).toBeInTheDocument();
   });
 
   it('logged in shows username and My characters, no Admin', async () => {
@@ -77,7 +79,7 @@ describe('Layout', () => {
   it('no banner without ?login=failed', async () => {
     mockApi({ '/api/auth/me': null });
     renderWithProviders(<App />);
-    await screen.findByRole('link', { name: 'Log in with Discord' });
+    await screen.findByRole('button', { name: 'Log in' });
     expect(screen.queryByText(/Login with Discord failed/)).not.toBeInTheDocument();
   });
 
@@ -91,7 +93,7 @@ describe('Layout', () => {
     renderWithProviders(<App />);
     fireEvent.click(await screen.findByRole('button', { name: /^Profile:/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Log out' }));
-    expect(await screen.findByRole('link', { name: 'Log in with Discord' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Log in' })).toBeInTheDocument();
     await waitFor(() =>
       expect(fetchMock.mock.calls.some(([u, i]) => String(u) === '/api/auth/logout' && i?.method === 'POST')).toBe(true),
     );
@@ -107,7 +109,7 @@ describe('Layout', () => {
     renderWithProviders(<App />, { client });
     fireEvent.click(await screen.findByRole('button', { name: /^Profile:/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Log out' }));
-    await screen.findByRole('link', { name: 'Log in with Discord' });
+    await screen.findByRole('button', { name: 'Log in' });
     await waitFor(() => expect(client.getQueryCache().findAll({ queryKey: ['posts', 'detail'] })).toHaveLength(0));
     expect(client.getQueryData(['posts', 'mine', 'requests'])).toBeUndefined();
   });

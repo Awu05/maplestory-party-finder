@@ -1,6 +1,16 @@
 # Party Finder
 
-Guild party-finder for MapleStory bossing. Monorepo: `shared/` (types, TS source), `server/` (Fastify + Prisma), `web/` (Vite + React).
+Party finder for MapleStory bossing. Monorepo: `shared/` (types, TS source), `server/` (Fastify + Prisma), `web/` (Vite + React).
+
+## Accounts and sign-in
+
+- **Log in** offers Discord, **Log in with email**, and **Sign in with a passkey**. Account creation asks for a Discord username and display name, then a choice of passkey or email and password. Successful sign-in opens My characters.
+- Passkeys require HTTPS in production (localhost works for development). Set `WEB_ORIGIN` to the site's stable public origin: passkeys are tied to its hostname. The database stores public keys and verification counters; private keys and device biometrics stay with the authenticator. Apply database migrations before running the updated server.
+- Email/password accounts use case-insensitive email addresses and passwords of 15–128 characters, including spaces. Passwords are stored as individually salted scrypt hashes (`N=32768, r=8, p=3`), never plaintext. Hashing is asynchronous with at most two operations per process; excess requests receive a retry message. Password endpoints limit requests per IP and per email over ten minutes. Credentials and emails are excluded from public account responses.
+- **Forgot password?** under email login sends a single-use link valid for 30 minutes. Only a hash of the token is stored; requesting another link replaces the previous one. Resetting signs the account out on every device and asks the user to log in again. Requests return the same message for known and unknown email addresses and are rate limited. Passkey-only and Discord-only accounts cannot be reset by email.
+- Configure SMTP to enable reset emails; without it, the reset form explains that email is unavailable. Delivery uses a bounded, sequential in-memory queue so response timing does not reveal whether an account exists. Failed deliveries invalidate their token and log no addresses or links. Pending deliveries do not survive restarts; request another link if needed. SMTP delivery errors should be checked in the server logs.
+- Signup does not verify email ownership. Users must use an email they control for recovery. There is no automatic linking between email, passkey and Discord accounts. A typed Discord username is unverified contact information; it never links an existing Discord account or grants admin access. These accounts receive in-app notifications but cannot receive direct Discord pings. Party forum rosters show their contact username instead of a Discord ID.
+- Discord sign-in still uses only the `identify` scope. It stores the Discord user ID, username and avatar URL, plus the app account creation timestamp and optional display name. The OAuth access token is used to fetch the profile and is not saved. The app does not request email, passwords, messages, friends or server membership. Normal server logs can contain request metadata such as IP addresses.
 
 ## Discord application
 
@@ -21,6 +31,9 @@ Copy `.env.example` to `.env` (root, used by Docker) or `server/.env` (dev).
 | `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` | Discord OAuth credentials |
 | `DISCORD_REDIRECT_URI` | Must match the redirect URI registered with Discord |
 | `WEB_ORIGIN` | Public origin of the site (https enables secure cookies) |
+| `SMTP_HOST` / `SMTP_FROM` | SMTP server and verified sender email for password resets; leave all SMTP settings blank to disable |
+| `SMTP_PORT` / `SMTP_SECURE` | Default 587 with required STARTTLS; use `465` / `true` for TLS from connection start. Certificate verification stays enabled. |
+| `SMTP_USER` / `SMTP_PASSWORD` | SMTP credentials; set both, or neither for a trusted relay |
 | `ADMIN_DISCORD_IDS` | Comma-separated Discord IDs granted admin |
 | `UPLOAD_DIR` | Where screenshots are stored. Every upload (PNG, JPEG or WebP, up to 5 MB) is decoded and redrawn as a fresh WebP of at most 2560 px, so hidden data and metadata (such as photo GPS) are thrown away. Images larger than about 40 megapixels are refused, and each user can upload 10 screenshots per 10 minutes. |
 | `JOBS_ENABLED` | Run the webhook worker, daily sync and weekly party reminders in this process (default `true`; `false` or `0` disables, e.g. on a second instance) |
@@ -65,7 +78,7 @@ Guilds can post new parties and pings to a Discord channel through a webhook.
 - **Refresh from Nexon on a manual character.** If Nexon now finds it on its own world, it becomes a normal synced character. If it is found on another active world of the same type (heroic/interactive), a popup offers to move it there. Moving clears the guild (or sets a newly picked one) and is refused while the character is in an open party or has pending requests/invites.
 - **Guild is optional.** A character can be added without a guild (or have it cleared on its edit page), but it can't post, request to join or be invited until a guild is picked.
 - Characters have no bosses, play times or note; those live on posts.
-- **Admin -> Classes** adds and removes classes and sets each class's type (warrior/magician/bowman/thief/pirate/xenon), which drives the card frame color. Lists are alphabetical. It is seeded with the known classes.
+- **Admin -> Classes** includes all 54 classes from [Grandis Library](https://grandislibrary.com/classes), grouped into its 12 categories in both the admin view and character class dropdowns. Admins can change the category and archetype (warrior/magician/bowman/thief/pirate/xenon); archetype drives the card frame color. Classes are alphabetical within each category. Seeding preserves admin changes. Legacy Nexon names still resolve to the correct archetype without appearing as duplicate choices.
 
 ## Development
 
@@ -89,6 +102,8 @@ npm test
 ```
 
 Server tests use the `partyfinder_test` database (migrated automatically).
+
+Scouter screenshots are checked locally with bundled English OCR data before storage. Upload the full results with Boss Clear, combat stats, and Scouter Graph or Stat Efficiency visible. Cropped or unreadable images may be rejected. Each server process checks one upload at a time and queues up to five more in arrival order. Queued uploads wait at most 30 seconds; each active check has a separate 20-second deadline. A full queue asks the user to retry. Images are not sent to an external service. This checks screenshot text; it does not detect NSFW content or prove the image is authentic. Existing uploads are not rescanned.
 
 ## Run the whole app in Docker
 

@@ -5,7 +5,7 @@ import type { PostSummaryDTO, PostType } from '@pf/shared';
 import { useBosses, useCharacters, useMe, useWorlds } from '../api/hooks';
 import { usePosts } from '../api/postHooks';
 import { friendlyError } from '../api/errors';
-import { ChipGroup, MenuChip, ToggleChip } from '../components/ui/Chips';
+import { ChipGroup, MenuChip } from '../components/ui/Chips';
 import { PostRow } from '../components/post/PostRow';
 import { PostPreview } from '../components/post/PostPreview';
 import { usePhone } from '../hooks/useMediaQuery';
@@ -20,19 +20,19 @@ export function BoardPage() {
   const [type, setType] = useState<PostType | ''>('');
   const [bossId, setBossId] = useState('');
   const [difficultyId, setDifficultyId] = useState('');
-  const [pickedWorlds, setPickedWorlds] = useState<number[] | null>(null);
+  const [pickedWorld, setPickedWorld] = useState<string | null>(null);
 
   // Wait for the session (and the viewer's characters) so the first board request already has its world default.
   const defaultsReady = me.isError || me.data === null || (me.data !== undefined && (mine.data !== undefined || mine.isError));
-  const defaultWorlds = [...new Set((me.data ? (mine.data ?? []) : []).map((c) => c.world.id))].sort((a, b) => a - b);
-  const worldIds = pickedWorlds ?? defaultWorlds;
+  const defaultWorld = (me.data ? (mine.data ?? []) : []).map((c) => c.world.id).sort((a, b) => a - b)[0];
+  const worldId = pickedWorld ?? (defaultWorld === undefined ? '' : String(defaultWorld));
 
   const posts = usePosts(
     {
       type: type || undefined,
       bossId: bossId ? Number(bossId) : undefined,
       bossDifficultyId: difficultyId ? Number(difficultyId) : undefined,
-      worldIds: worldIds.length > 0 ? worldIds : undefined,
+      worldIds: worldId ? [Number(worldId)] : undefined,
     },
     { enabled: defaultsReady },
   );
@@ -69,8 +69,6 @@ export function BoardPage() {
 
   const selectedBoss = bosses.data?.find((b) => String(b.id) === bossId);
   const selectedDifficulty = selectedBoss?.difficulties.find((d) => String(d.id) === difficultyId);
-  const toggleWorld = (id: number) =>
-    setPickedWorlds(worldIds.includes(id) ? worldIds.filter((w) => w !== id) : [...worldIds, id]);
 
   return (
     <section>
@@ -123,12 +121,13 @@ export function BoardPage() {
         <fieldset className="board-filters__group">
           <legend>Location</legend>
           <span className="board-filters__label">Worlds</span>
-          <div role="group" aria-label="Worlds" className="board-filters__worlds">
-            {worlds.data?.map((w) => (
-              <ToggleChip key={w.id} pressed={worldIds.includes(w.id)} onToggle={() => toggleWorld(w.id)}>
-                {w.name}
-              </ToggleChip>
-            ))}
+          <div className="board-filters__worlds">
+            <ChipGroup
+              label="Worlds"
+              value={worldId}
+              onChange={setPickedWorld}
+              options={[{ value: '', label: 'All' }, ...(worlds.data ?? []).map((world) => ({ value: String(world.id), label: world.name }))]}
+            />
           </div>
         </fieldset>
       </section>
@@ -139,6 +138,7 @@ export function BoardPage() {
           loading={posts.isPending}
           refetching={posts.isPlaceholderData}
           isPhone={isPhone}
+          showWorld={worldId === ''}
           selectedId={selectedId}
           wanted={wanted}
           select={select}
@@ -165,6 +165,7 @@ interface PostListProps {
   loading: boolean;
   refetching: boolean;
   isPhone: boolean;
+  showWorld: boolean;
   selectedId: string | null;
   wanted: string | null;
   /** A user selection (click, keyboard). */
@@ -173,7 +174,7 @@ interface PostListProps {
   rewrite: (id: string) => void;
 }
 
-function PostList({ posts, loading, refetching, isPhone, selectedId, wanted, select, rewrite }: PostListProps) {
+function PostList({ posts, loading, refetching, isPhone, showWorld, selectedId, wanted, select, rewrite }: PostListProps) {
   const navigate = useNavigate();
   const rowRefs = useRef(new Map<string, HTMLAnchorElement>());
   const hintId = useId();
@@ -234,7 +235,7 @@ function PostList({ posts, loading, refetching, isPhone, selectedId, wanted, sel
       <ul className="post-list" aria-label="Posts">
         {posts.map((p) => (
           <li key={p.id}>
-            <PostRow post={p} selected={false} onSelect={() => {}} asLink />
+            <PostRow post={p} selected={false} onSelect={() => {}} asLink showWorld={showWorld} />
           </li>
         ))}
       </ul>
@@ -278,6 +279,7 @@ function PostList({ posts, loading, refetching, isPhone, selectedId, wanted, sel
               else rowRefs.current.delete(p.id);
             }}
             post={p}
+            showWorld={showWorld}
             selected={p.id === selectedId}
             onSelect={() => select(p.id)}
             onKeyDown={(e) => onKeyDown(e, i)}

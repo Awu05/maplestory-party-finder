@@ -4,6 +4,23 @@ import { buildTestApp, testConfig } from './helpers.js';
 
 const base = { SESSION_SECRET: 'x'.repeat(32), DATABASE_URL: 'postgresql://x' };
 
+describe('SMTP configuration', () => {
+  it('disables reset email until configured and chooses secure SMTP defaults', () => {
+    expect(loadConfig(base).smtp).toBeUndefined();
+    expect(loadConfig({ ...base, SMTP_HOST: 'smtp.example.com', SMTP_FROM: 'pf@example.com' }).smtp).toMatchObject({ port: 587, secure: false });
+    expect(loadConfig({ ...base, SMTP_HOST: 'smtp.example.com', SMTP_FROM: 'pf@example.com', SMTP_SECURE: 'true' }).smtp).toMatchObject({ port: 465, secure: true });
+  });
+  it.each([
+    { SMTP_HOST: 'smtp.example.com' },
+    { SMTP_HOST: 'smtp.example.com', SMTP_FROM: 'bad' },
+    { SMTP_HOST: 'smtp.example.com', SMTP_FROM: 'pf@example.com', SMTP_USER: 'user' },
+    { SMTP_HOST: 'smtp.example.com', SMTP_FROM: 'pf@example.com', SMTP_PORT: '0' },
+    { SMTP_HOST: 'smtp.example.com', SMTP_FROM: 'pf@example.com', SMTP_SECURE: 'invalid' },
+  ])('rejects incomplete or invalid SMTP settings (%j)', (smtp) => {
+    expect(() => loadConfig({ ...base, ...smtp })).toThrow(/SMTP/);
+  });
+});
+
 describe('loadConfig JOBS_ENABLED', () => {
   it('defaults to true', () => {
     expect(loadConfig(base).jobsEnabled).toBe(true);
