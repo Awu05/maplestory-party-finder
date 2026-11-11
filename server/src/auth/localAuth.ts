@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { AppError } from '../http/errors.js';
+import { SlidingWindowLimiter } from '../http/slidingWindowLimiter.js';
 import { getViewer } from './guards.js';
 
 const name = z.string().transform((value) => value.replace(/[\p{Cc}\p{Cf}]/gu, '').trim()).pipe(z.string().min(1).max(50));
@@ -13,37 +14,19 @@ export interface AttemptLimiterOptions {
   now?: () => number;
 }
 
-export class AttemptLimiter {
-  private readonly attempts = new Map<string, number[]>();
-  private readonly windowMs: number;
-  private readonly maxKeys: number;
-  private readonly now: () => number;
-
-  constructor(private readonly limit: number, options: AttemptLimiterOptions = {}) {
-    this.windowMs = options.windowMs ?? 10 * 60_000;
-    this.maxKeys = options.maxKeys ?? 5000;
-    this.now = options.now ?? Date.now;
+/** Sign-in attempt limit: `limit` attempts per key per 10 minutes by default. */
+export class AttemptLimiter extends SlidingWindowLimiter {
+  constructor(limit: number, options: AttemptLimiterOptions = {}) {
+    super({
+      limit, windowMs: options.windowMs ?? 10 * 60_000, maxKeys: options.maxKeys ?? 5000, now: options.now,
+      error: () => new AppError(429, 'TOO_MANY_ATTEMPTS', 'Too many sign-in attempts. Please try again in 10 minutes.'),
+    });
   }
 
+  /** Records an attempt, or throws 429 TOO_MANY_ATTEMPTS when `key` is over the limit. */
   check(key: string): void {
-    const now = this.now();
-    const cutoff = now - this.windowMs;
-    const recent = (this.attempts.get(key) ?? []).filter((time) => time > cutoff);
-    if (recent.length >= this.limit) throw this.tooMany();
-    // Re-insert so the map stays ordered from least to most recently used.
-    this.attempts.delete(key);
-    this.attempts.set(key, [...recent, now]);
-    if (this.attempts.size > this.maxKeys) {
-      for (const [id, times] of this.attempts) if (times.every((time) => time <= cutoff)) this.attempts.delete(id);
-      // Never reject a new key because the map is full: forget the least recently used ones instead.
-      for (const id of this.attempts.keys()) {
-        if (this.attempts.size <= this.maxKeys) break;
-        this.attempts.delete(id);
-      }
-    }
+    this.take(key);
   }
-
-  private tooMany() { return new AppError(429, 'TOO_MANY_ATTEMPTS', 'Too many sign-in attempts. Please try again in 10 minutes.'); }
 }
 
 export function createAuthRequestGuard(api: FastifyInstance, limit = 60, allowAuthenticated = false): (req: FastifyRequest) => Promise<void> {
