@@ -104,7 +104,7 @@ npm test
 
 Server tests use the `partyfinder_test` database (migrated automatically).
 
-Scouter screenshots are checked locally with bundled English OCR data before storage. Upload the full results with Boss Clear, combat stats, and Scouter Graph or Stat Efficiency visible. Cropped or unreadable images may be rejected. Each server process checks one upload at a time and queues up to five more in arrival order. Queued uploads wait at most 30 seconds; each active check has a separate 20-second deadline. A full queue asks the user to retry. Images are not sent to an external service. This checks screenshot text; it does not detect NSFW content or prove the image is authentic. Existing uploads are not rescanned.
+Scouter screenshots are checked locally with bundled English OCR data before storage. Upload the full results with Boss Clear, combat stats, and Scouter Graph or Stat Efficiency visible. Cropped or unreadable images may be rejected. Each server process keeps one OCR worker process, started on the first upload and reused after that (it is restarted if it crashes or a check times out, and stopped on shutdown). It checks one upload at a time and queues up to 20 more in arrival order. Queued uploads wait at most 60 seconds; each active check has a separate 20-second deadline that does not include the worker's first start. A full queue asks the user to retry. Images are not sent to an external service. This checks screenshot text; it does not detect NSFW content or prove the image is authentic. Existing uploads are not rescanned.
 
 ## Run the whole app in Docker
 

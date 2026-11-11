@@ -2,7 +2,9 @@ import fs from 'node:fs';
 import sharp from 'sharp';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { AppError } from '../src/http/errors.js';
-import { isScouterText, LocalScouterValidator } from '../src/storage/scouterValidator.js';
+import { EventEmitter } from 'node:events';
+import type { ChildProcess } from 'node:child_process';
+import { isScouterText, LocalScouterValidator, OcrWorker, SCOUTER_MAX_WAIT_MS, SCOUTER_MAX_WAITING } from '../src/storage/scouterValidator.js';
 import { buildTestApp, loginAs, makeCharacter, prisma, resetDb } from './helpers.js';
 
 const SCOUTER_TEXT = 'Lv.289 Lynn Combat Power ITEM STAT HEXA STAT Boss Clear (Cut) Scouter Graph Stat Efficiency Party-able Impossible';
@@ -46,12 +48,127 @@ it('reads representative Scouter headings with the real local OCR process', asyn
     </g>
   </svg>`;
   const buf = await sharp(Buffer.from(svg)).png().toBuffer();
-  await expect(new LocalScouterValidator().validate(buf)).resolves.toBeUndefined();
-}, 30_000);
+  const validator = new LocalScouterValidator();
+  try {
+    await expect(validator.validate(buf)).resolves.toBeUndefined();
+    // The same long-lived OCR process handles the next upload too.
+    await expect(validator.validate(await image())).rejects.toMatchObject({ code: 'NOT_SCOUTER' });
+    await expect(validator.validate(buf)).resolves.toBeUndefined();
+  } finally {
+    await validator.close();
+  }
+}, 60_000);
 
 it('rejects an unrelated image using real OCR', async () => {
-  await expect(new LocalScouterValidator().validate(await image())).rejects.toMatchObject({ code: 'NOT_SCOUTER' });
+  const validator = new LocalScouterValidator();
+  try {
+    await expect(validator.validate(await image())).rejects.toMatchObject({ code: 'NOT_SCOUTER' });
+  } finally {
+    await validator.close();
+  }
 }, 30_000);
+
+/** A stand-in for the forked OCR process: says ready, then answers each job with `reply`. */
+class FakeOcrChild extends EventEmitter {
+  killed = false;
+  jobs: { id: number }[] = [];
+  constructor(private readonly behavior: { readyAfterMs?: number; reply?: (job: number) => string | null } = {}) {
+    super();
+    setTimeout(() => this.emit('message', { type: 'ready' }), behavior.readyAfterMs ?? 0);
+  }
+  send(message: { id: number; image: Buffer }, callback?: (error: Error | null) => void): boolean {
+    this.jobs.push({ id: message.id });
+    const text = (this.behavior.reply ?? (() => SCOUTER_TEXT))(this.jobs.length);
+    if (text !== null) setImmediate(() => this.emit('message', { id: message.id, text }));
+    callback?.(null);
+    return true;
+  }
+  kill(): boolean {
+    if (this.killed) return true;
+    this.killed = true;
+    setImmediate(() => this.emit('exit', null, 'SIGKILL'));
+    return true;
+  }
+  crash(): void {
+    this.emit('exit', 1, null);
+  }
+}
+
+function fakeSpawner(behavior: ConstructorParameters<typeof FakeOcrChild>[0] = {}) {
+  const children: FakeOcrChild[] = [];
+  const spawn = vi.fn(() => {
+    const child = new FakeOcrChild(behavior);
+    children.push(child);
+    return child as unknown as ChildProcess;
+  });
+  return { spawn, children };
+}
+
+it('starts one OCR worker lazily and reuses it for later checks', async () => {
+  const { spawn, children } = fakeSpawner();
+  const validator = new LocalScouterValidator({ worker: new OcrWorker({ spawn }) });
+  expect(spawn).not.toHaveBeenCalled();
+  const buf = await image();
+  await expect(validator.validate(buf)).resolves.toBeUndefined();
+  await expect(validator.validate(buf)).resolves.toBeUndefined();
+  expect(spawn).toHaveBeenCalledTimes(1);
+  expect(children[0]!.jobs).toHaveLength(2);
+  await validator.close();
+  expect(children[0]!.killed).toBe(true);
+});
+
+it('replaces a crashed OCR worker on the next check', async () => {
+  const { spawn, children } = fakeSpawner();
+  const validator = new LocalScouterValidator({ worker: new OcrWorker({ spawn }) });
+  const buf = await image();
+  await expect(validator.validate(buf)).resolves.toBeUndefined();
+  children[0]!.crash();
+  await expect(validator.validate(buf)).resolves.toBeUndefined();
+  expect(spawn).toHaveBeenCalledTimes(2);
+  expect(children[1]!.jobs).toHaveLength(1);
+  await validator.close();
+});
+
+it('fails a check whose worker dies mid-job, then recovers', async () => {
+  const { spawn, children } = fakeSpawner({ reply: () => null });
+  const validator = new LocalScouterValidator({ worker: new OcrWorker({ spawn }) });
+  const buf = await image();
+  const first = validator.validate(buf);
+  await vi.waitFor(() => expect(children[0]?.jobs).toHaveLength(1));
+  children[0]!.crash();
+  await expect(first).rejects.toMatchObject({ code: 'SCOUTER_CHECK_UNAVAILABLE' });
+  expect(spawn).toHaveBeenCalledTimes(1);
+  await validator.close();
+});
+
+it('does not count the worker cold start against the per-job timeout', async () => {
+  // Starting takes longer than the job timeout; the job itself is quick, so the check still passes.
+  const { spawn } = fakeSpawner({ readyAfterMs: 1500 });
+  const validator = new LocalScouterValidator({ worker: new OcrWorker({ spawn }), timeoutMs: 1000 });
+  await expect(validator.validate(await image())).resolves.toBeUndefined();
+  await validator.close();
+});
+
+it('kills a worker whose job times out and starts a fresh one for the next check', async () => {
+  let jobs = 0;
+  // The first job ever sent hangs; later ones (on the replacement worker) answer.
+  const { spawn, children } = fakeSpawner({ reply: () => (++jobs === 1 ? null : SCOUTER_TEXT) });
+  const validator = new LocalScouterValidator({ worker: new OcrWorker({ spawn }), timeoutMs: 2000 });
+  const buf = await image();
+  await expect(validator.validate(buf)).rejects.toMatchObject({ code: 'SCOUTER_CHECK_UNAVAILABLE' });
+  expect(children[0]!.killed).toBe(true);
+  await expect(validator.validate(buf)).resolves.toBeUndefined();
+  expect(spawn).toHaveBeenCalledTimes(2);
+  await validator.close();
+});
+
+it('gives up on a worker that never becomes ready', async () => {
+  const { spawn, children } = fakeSpawner({ readyAfterMs: 10_000 });
+  const validator = new LocalScouterValidator({ worker: new OcrWorker({ spawn, startupTimeoutMs: 100 }) });
+  await expect(validator.validate(await image())).rejects.toMatchObject({ code: 'SCOUTER_CHECK_UNAVAILABLE' });
+  expect(children[0]!.killed).toBe(true);
+  await validator.close();
+});
 
 it('rejects tiny images before starting OCR', async () => {
   const readText = vi.fn(async () => SCOUTER_TEXT);
@@ -78,7 +195,8 @@ it('processes simultaneous checks one at a time in arrival order', async () => {
   await expect(validator.validate(buf)).resolves.toBeUndefined();
 });
 
-it('accepts five waiting uploads and rejects additional ones until space is available', async () => {
+it('accepts a bounded number of waiting uploads and rejects additional ones until space is available', async () => {
+  expect(SCOUTER_MAX_WAITING).toBe(20);
   const entered = deferred<void>();
   const text = deferred<string>();
   const readText = vi.fn(() => { entered.resolve(); return text.promise; });
@@ -86,7 +204,7 @@ it('accepts five waiting uploads and rejects additional ones until space is avai
   const buf = await image();
   const first = validator.validate(buf);
   await entered.promise;
-  const waiting = Array.from({ length: 5 }, () => validator.validate(buf));
+  const waiting = Array.from({ length: SCOUTER_MAX_WAITING }, () => validator.validate(buf));
   await expect(validator.validate(buf)).rejects.toMatchObject({ code: 'SCOUTER_QUEUE_FULL', status: 429 });
   text.resolve(SCOUTER_TEXT);
   await Promise.all([first, ...waiting]);
@@ -98,13 +216,13 @@ it('expires queued uploads without running OCR for them', async () => {
   const entered = deferred<void>();
   const text = deferred<string>();
   const readText = vi.fn(() => { entered.resolve(); return text.promise; });
-  const validator = new LocalScouterValidator({ readText, timeoutMs: 60_000 });
+  const validator = new LocalScouterValidator({ readText, timeoutMs: 2 * SCOUTER_MAX_WAIT_MS });
   const buf = await image();
   const first = validator.validate(buf);
   await entered.promise;
   const queued = validator.validate(buf);
   const rejected = expect(queued).rejects.toMatchObject({ code: 'SCOUTER_QUEUE_TIMEOUT', status: 503 });
-  vi.advanceTimersByTime(30_000);
+  vi.advanceTimersByTime(SCOUTER_MAX_WAIT_MS);
   await rejected;
   text.resolve(SCOUTER_TEXT);
   await first;
@@ -186,4 +304,12 @@ it.each([
   } finally {
     await app.close();
   }
+});
+
+it('stops the OCR worker when the app closes', async () => {
+  const close = vi.fn(async () => {});
+  const { app } = await buildTestApp({ scouterValidator: { validate: async () => {}, close } });
+  expect(close).not.toHaveBeenCalled();
+  await app.close();
+  expect(close).toHaveBeenCalledTimes(1);
 });

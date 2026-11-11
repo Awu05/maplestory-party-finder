@@ -51,6 +51,8 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   });
   app.decorate('deps', deps);
   registerErrorHandler(app);
+  // Stops the long-lived OCR process; index.ts calls app.close() on shutdown.
+  app.addHook('onClose', async () => { await deps.scouterValidator.close?.(); });
 
   const sessionMaxAgeSeconds = 60 * 60 * 24 * 30;
   await app.register(secureSession, {
