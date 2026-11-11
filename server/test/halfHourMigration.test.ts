@@ -3,7 +3,7 @@ import { expect, it } from 'vitest';
 import { prisma } from './helpers.js';
 
 it('preserves every saved post and member hour as two half-hours', async () => {
-  const migration = readFileSync(new URL('../prisma/migrations/20261110225000_half_hour_slots/migration.sql', import.meta.url), 'utf8');
+  const migration = readFileSync(new URL('../prisma/migrations/20261111000300_half_hour_slots/migration.sql', import.meta.url), 'utf8');
   await prisma.$transaction(async (tx) => {
     await tx.$executeRawUnsafe('CREATE TEMP TABLE "Post" ("freeTimes" INTEGER[] NOT NULL) ON COMMIT DROP');
     await tx.$executeRawUnsafe('CREATE TEMP TABLE "PostMember" ("freeTimes" INTEGER[] NOT NULL) ON COMMIT DROP');

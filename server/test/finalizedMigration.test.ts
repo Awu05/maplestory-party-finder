@@ -3,7 +3,7 @@ import { expect, it } from 'vitest';
 import { prisma } from './helpers.js';
 
 it('closes existing scheduled posts and declines their pending requests', async () => {
-  const sql = readFileSync(new URL('../prisma/migrations/20261111000000_close_finalized_recruitment/migration.sql', import.meta.url), 'utf8');
+  const sql = readFileSync(new URL('../prisma/migrations/20261111000500_close_finalized_recruitment/migration.sql', import.meta.url), 'utf8');
   await prisma.$transaction(async (tx) => {
     await tx.$executeRawUnsafe('CREATE TEMP TABLE "Post" (id TEXT, type TEXT, status TEXT, "closedReason" TEXT, "scheduledAt" TIMESTAMP, "deletedAt" TIMESTAMP, "expiresAt" TIMESTAMP, "weeklyTimeZone" TEXT) ON COMMIT DROP');
     await tx.$executeRawUnsafe('CREATE TEMP TABLE "Request" (id TEXT, "postId" TEXT, "lfpPostId" TEXT, status TEXT, "decidedAt" TIMESTAMP) ON COMMIT DROP');
