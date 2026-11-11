@@ -7,7 +7,7 @@ import { LocalDiskStorage, type Storage } from '../src/storage/storage.js';
 import path from 'node:path';
 import { PrismaClient, type Boss, type BossDifficulty, type Character, type Guild, type Post, type PostMember, type Prisma, type User, type World } from '@prisma/client';
 import { classToArchetype, type Archetype } from '@pf/shared';
-import type { Config } from '../src/config.js';
+import { withUtcSession, type Config } from '../src/config.js';
 import type { NexonCharacter, NexonClient } from '../src/nexon/client.js';
 import { NexonUnavailableError } from '../src/nexon/client.js';
 import type { DomainEvent, DomainEvents } from '../src/events.js';
@@ -16,7 +16,7 @@ import { EventDispatcher } from '../src/notifications/dispatcher.js';
 import type { SendResult, WebhookSender } from '../src/discord/sender.js';
 import type { WebhookPayload } from '../src/discord/messages.js';
 
-export const prisma = new PrismaClient({ datasources: { db: { url: testDatabaseUrl() } } });
+export const prisma = new PrismaClient({ datasources: { db: { url: withUtcSession(testDatabaseUrl()) } } });
 
 export function testConfig(overrides: Partial<Config> = {}): Config {
   return {

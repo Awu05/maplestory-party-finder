@@ -51,3 +51,17 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     logger: true,
   };
 }
+
+/**
+ * Forces the database session time zone to UTC. Times are stored as UTC wall-clock values without a
+ * zone, and raw queries compare them with JS dates; Postgres converts those dates into the *session*
+ * zone first. A database server set to another zone (a home server on Eastern time, say) would then
+ * shift every comparison, e.g. queued webhooks would look 5 hours from being due and never send.
+ */
+export function withUtcSession(databaseUrl: string): string {
+  const url = new URL(databaseUrl);
+  const options = url.searchParams.get('options') ?? '';
+  if (/TimeZone\s*=/i.test(options)) return databaseUrl;
+  url.searchParams.set('options', [options, '-c TimeZone=UTC'].filter(Boolean).join(' '));
+  return url.toString();
+}

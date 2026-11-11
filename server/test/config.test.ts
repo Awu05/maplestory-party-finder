@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { loadConfig } from '../src/config.js';
+import { loadConfig, withUtcSession } from '../src/config.js';
 import { buildTestApp, testConfig } from './helpers.js';
 
 const base = { SESSION_SECRET: 'x'.repeat(32), DATABASE_URL: 'postgresql://x' };
@@ -50,5 +50,25 @@ describe('logger option', () => {
     } finally {
       await app.close();
     }
+  });
+});
+
+describe('withUtcSession', () => {
+  it('adds a UTC session time zone to the connection URL', () => {
+    const url = withUtcSession('postgresql://pf:p%40ss@db:5432/partyfinder');
+    expect(new URL(url).searchParams.get('options')).toBe('-c TimeZone=UTC');
+    expect(url).toContain('pf:p%40ss@db:5432/partyfinder');
+  });
+
+  it('keeps other query parameters and existing options', () => {
+    const url = withUtcSession('postgresql://u:p@h/db?schema=public&options=-c%20statement_timeout%3D5000');
+    const q = new URL(url).searchParams;
+    expect(q.get('schema')).toBe('public');
+    expect(q.get('options')).toBe('-c statement_timeout=5000 -c TimeZone=UTC');
+  });
+
+  it("leaves a URL alone when it already sets the session time zone", () => {
+    const url = 'postgresql://u:p@h/db?options=-c%20TimeZone%3DUTC';
+    expect(withUtcSession(url)).toBe(url);
   });
 });
