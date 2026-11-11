@@ -103,13 +103,21 @@ it('clears unfinished passkey ceremonies when signing in with a password', async
   expect(await prisma.passkeyChallenge.count()).toBe(0);
 });
 
-it('limits repeated attempts for one email even from different IP addresses', async () => {
-  for (let i = 0; i < 10; i++) {
-    const result = await app.inject({ method: 'POST', url: '/api/auth/password/login', remoteAddress: `192.0.2.${i + 1}`, headers: { origin: ORIGIN }, payload: { email: account.email, password } });
-    expect(result.statusCode).toBe(401);
-  }
-  expect((await post('login', { email: 'MAPLE@example.com', password })).statusCode).toBe(429);
-}, 20_000);
+const loginFrom = (remoteAddress: string, payload: object) => app.inject({ method: 'POST', url: '/api/auth/password/login', remoteAddress, headers: { origin: ORIGIN }, payload });
+
+it("limits failed attempts per email and address, so another address's failures cannot lock the owner out", async () => {
+  expect((await post('register', account)).statusCode).toBe(200);
+  for (let i = 0; i < 10; i++) expect((await loginFrom('192.0.2.1', { email: account.email, password: 'wrong password' })).statusCode).toBe(401);
+  // The attacker's address is now limited for this email, even with the right password...
+  expect((await loginFrom('192.0.2.1', { email: 'MAPLE@example.com', password })).statusCode).toBe(429);
+  // ...but the owner, from their own address, can still sign in.
+  expect((await loginFrom('198.51.100.7', { email: account.email, password })).statusCode).toBe(200);
+}, 30_000);
+
+it('does not count successful sign-ins against the failed-attempt limit', async () => {
+  expect((await post('register', account)).statusCode).toBe(200);
+  for (let i = 0; i < 12; i++) expect((await loginFrom('192.0.2.2', { email: account.email, password })).statusCode).toBe(200);
+}, 30_000);
 
 it('bounds concurrent password work and recovers capacity afterward', async () => {
   const results = await Promise.allSettled([hashPassword(password), hashPassword(password), hashPassword(password)]);

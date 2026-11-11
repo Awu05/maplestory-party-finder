@@ -9,6 +9,7 @@ import { hashPassword } from './passwordHash.js';
 import type { PasswordResetMailer } from './resetMailer.js';
 
 const digest = (token: string) => createHash('sha256').update(token).digest('hex');
+const RESET_REQUESTED = 'If an account uses that email, a reset link will arrive shortly. Check your spam folder too.';
 const invalid = () => new AppError(400, 'RESET_INVALID', 'This reset link is invalid or has expired. Request a new one.');
 
 class ResetDelivery {
@@ -54,6 +55,7 @@ class ResetDelivery {
 export async function passwordResetRoutes(api: FastifyInstance): Promise<void> {
   const { prisma, config, passwordResetMailer } = api.deps;
   const guard = createAuthRequestGuard(api, 10, true);
+  // Reset emails per address per 10 minutes.
   const addresses = new AttemptLimiter(3);
   const delivery = passwordResetMailer ? new ResetDelivery(prisma, passwordResetMailer, new URL(config.webOrigin).origin, () => api.log.warn('Password reset email delivery failed')) : undefined;
   api.addHook('onClose', async () => { await delivery?.close(); });
@@ -61,10 +63,11 @@ export async function passwordResetRoutes(api: FastifyInstance): Promise<void> {
   api.post('/auth/password/forgot', { bodyLimit: 4096 }, async (req) => {
     await guard(req);
     const input = z.object({ email }).strict().parse(req.body);
-    addresses.check(input.email);
     if (!delivery) throw new AppError(503, 'RESET_UNAVAILABLE', 'Password reset email is not available yet. Please contact the administrator.');
-    delivery.enqueue(input.email);
-    return { message: 'If an account uses that email, a reset link will arrive shortly. Check your spam folder too.' };
+    // Over the per-address cap (which stops email-bombing someone), skip sending but answer exactly as
+    // usual, so the response never hints at the cap or at whether the email is registered.
+    if (addresses.tryTake(input.email)) delivery.enqueue(input.email);
+    return { message: RESET_REQUESTED };
   });
 
   api.post('/auth/password/reset', { bodyLimit: 4096 }, async (req, reply) => {

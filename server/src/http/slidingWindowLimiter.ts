@@ -31,6 +31,11 @@ export class SlidingWindowLimiter {
     return this.recent(key, this.now()).length >= this.options.limit;
   }
 
+  /** Throws the configured error when `key` is over the limit. Records nothing. */
+  ensureAllowed(key: string): void {
+    if (this.isLimited(key)) throw this.options.error();
+  }
+
   /** Records an attempt for `key` (whether or not it is over the limit). */
   record(key: string): void {
     const now = this.now();

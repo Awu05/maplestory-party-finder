@@ -124,8 +124,17 @@ it('returns an actionable error when email is unconfigured', async () => {
   expect(response.json().error.code).toBe('RESET_UNAVAILABLE');
 });
 
-it('limits reset requests and rejects cross-origin submissions', async () => {
-  for (let i = 0; i < 3; i++) expect((await post('forgot', { email })).statusCode).toBe(200);
-  expect((await post('forgot', { email })).statusCode).toBe(429);
+it('caps reset emails per address silently, with the same response as always', async () => {
+  await post('register', signup);
+  const responses = [];
+  for (let i = 0; i < 5; i++) responses.push(await post('forgot', { email }));
+  expect(responses.map((response) => response.statusCode)).toEqual([200, 200, 200, 200, 200]);
+  expect(new Set(responses.map((response) => response.body)).size).toBe(1);
+  await vi.waitFor(() => expect(sent).toHaveLength(3));
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  expect(sent).toHaveLength(3);
+});
+
+it('rejects cross-origin reset submissions', async () => {
   expect((await app.inject({ method: 'POST', url: '/api/auth/password/forgot', headers: { origin: 'https://attacker.example' }, payload: { email } })).statusCode).toBe(403);
 });

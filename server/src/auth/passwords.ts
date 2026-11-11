@@ -14,7 +14,12 @@ const login = z.object({ email, password: z.string().min(1).max(128) }).strict()
 export async function passwordRoutes(api: FastifyInstance): Promise<void> {
   const { prisma, config } = api.deps;
   const checkRequest = createAuthRequestGuard(api, 20);
-  const accounts = new AttemptLimiter(10);
+  // Keyed by client address + email: failures from one address can't lock the owner out from another.
+  // Every address is also limited across all emails by checkRequest.
+  const registrations = new AttemptLimiter(10);
+  const failedLogins = new AttemptLimiter(10);
+  const attemptKey = (req: FastifyRequest, address: string) => `${req.ip}
+${address}`;
 
   async function complete(req: FastifyRequest, user: Parameters<typeof toMeDTO>[0]['user']) {
     const challengeId = req.session.get('passkeyChallengeId');
@@ -28,7 +33,7 @@ export async function passwordRoutes(api: FastifyInstance): Promise<void> {
   api.post('/auth/password/register', { bodyLimit: 4096 }, async (req) => {
     await checkRequest(req);
     const input = registration.parse(req.body);
-    accounts.check(input.email);
+    registrations.check(attemptKey(req, input.email));
     const passwordHash = await hashPassword(input.password);
     let user;
     try {
@@ -48,10 +53,15 @@ export async function passwordRoutes(api: FastifyInstance): Promise<void> {
   api.post('/auth/password/login', { bodyLimit: 4096 }, async (req) => {
     await checkRequest(req);
     const input = login.parse(req.body);
-    accounts.check(input.email);
+    const key = attemptKey(req, input.email);
+    failedLogins.ensureAllowed(key);
     const credential = await prisma.passwordCredential.findUnique({ where: { email: input.email }, include: { user: true } });
     const verified = await verifyPassword(input.password, credential?.passwordHash);
-    if (!verified || !credential || credential.user.banned) throw new AppError(401, 'INVALID_CREDENTIALS', 'Email or password is incorrect.');
+    if (!verified || !credential || credential.user.banned) {
+      // Only failures count: signing in successfully never uses up the owner's attempts.
+      failedLogins.record(key);
+      throw new AppError(401, 'INVALID_CREDENTIALS', 'Email or password is incorrect.');
+    }
     return complete(req, credential.user);
   });
 }
