@@ -140,9 +140,10 @@ export function nextOccurrence(slotOfWeek: number, zone: string, now: Date): Dat
   const start = nowMs - ((((p.minute % SLOT_MINUTES) * 60 + p.second) * 1000) + (((nowMs % 1000) + 1000) % 1000));
   for (let i = 0; i <= SLOTS_PER_DAY * 14; i++) {
     const t = start + i * SLOT_MS;
-    const z = instantToZoned(new Date(t), zone);
-    const minute = parts(t, zone).minute;
-    if (z.dayOfWeek * SLOTS_PER_DAY + z.hour * 2 + Math.floor(minute / SLOT_MINUTES) === slotOfWeek) return new Date(t);
+    // One Intl call per candidate: the weekday comes from the same wall date.
+    const z = parts(t, zone);
+    const dayOfWeek = new Date(Date.UTC(z.year, z.month - 1, z.day)).getUTCDay();
+    if (dayOfWeek * SLOTS_PER_DAY + z.hour * 2 + Math.floor(z.minute / SLOT_MINUTES) === slotOfWeek) return new Date(t);
   }
   throw new Error(`No occurrence of half-hour slot ${slotOfWeek} in ${zone}`);
 }

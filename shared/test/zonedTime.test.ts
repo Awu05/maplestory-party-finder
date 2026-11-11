@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   freeSlotsForViewer,
   freeSlotCoverageForViewer,
@@ -118,6 +118,16 @@ describe('nextOccurrence', () => {
   });
   it('does not return an instant before the current hour during a repeated fall-back hour', () => {
     expect(nextOccurrence(3, NY, new Date('2026-11-01T06:30:00Z')).toISOString()).toBe('2026-11-01T06:30:00.000Z');
+  });
+  it('formats each candidate half hour once', () => {
+    const spy = vi.spyOn(Intl.DateTimeFormat.prototype, 'formatToParts');
+    try {
+      // Slot 137 is 21 half hours after now (slot 116): 22 candidates, plus one read of now.
+      expect(nextOccurrence(137, NY, now).toISOString()).toBe('2026-11-11T01:30:00.000Z');
+      expect(spy).toHaveBeenCalledTimes(23);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 
