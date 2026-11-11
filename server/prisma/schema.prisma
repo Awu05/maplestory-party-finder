@@ -31,6 +31,8 @@ model User {
   id            String         @id @default(cuid())
   discordId     String?        @unique
   username      String
+  /// Lower-cased username: this account's current claim on that name (null = no claim). Unique, case-insensitive.
+  usernameKey   String?        @unique
   displayName   String?
   avatar        String?
   banned        Boolean        @default(false)
