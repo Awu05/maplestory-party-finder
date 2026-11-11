@@ -40,11 +40,13 @@ export class HttpNexonClient implements NexonClient {
   private readonly now: () => number;
   private readonly timeoutMs: number;
   private readonly region: string;
+  private readonly maxCacheEntries: number;
   private readonly cache = new Map<string, { expires: number; value: NexonCharacter[] }>();
 
   constructor(opts: {
     fetch?: typeof fetch;
     cacheTtlMs?: number;
+    maxCacheEntries?: number;
     now?: () => number;
     timeoutMs?: number;
     /** Nexon ranking region path segment (spec §13); 'na' today. */
@@ -52,6 +54,8 @@ export class HttpNexonClient implements NexonClient {
   }) {
     this.fetchFn = opts.fetch ?? fetch;
     this.cacheTtlMs = opts.cacheTtlMs ?? 600_000;
+    this.maxCacheEntries = opts.maxCacheEntries ?? 500;
+    if (!Number.isInteger(this.maxCacheEntries) || this.maxCacheEntries < 1) throw new RangeError('maxCacheEntries must be positive');
     this.now = opts.now ?? Date.now;
     this.timeoutMs = opts.timeoutMs ?? 8000;
     this.region = opts.region ?? 'na';
@@ -60,10 +64,20 @@ export class HttpNexonClient implements NexonClient {
   async findByName(ign: string, opts?: { fresh?: boolean }): Promise<NexonCharacter[]> {
     const key = ign.toLowerCase();
     const hit = opts?.fresh ? undefined : this.cache.get(key);
-    if (hit && hit.expires > this.now()) return hit.value;
+    if (hit && hit.expires > this.now()) {
+      this.cache.delete(key);
+      this.cache.set(key, hit);
+      return hit.value;
+    }
 
     const value = await this.fetchCharacters(ign);
-    this.cache.set(key, { expires: this.now() + this.cacheTtlMs, value });
+    const now = this.now();
+    this.cache.delete(key);
+    for (const [cachedKey, entry] of this.cache) {
+      if (entry.expires <= now) this.cache.delete(cachedKey);
+    }
+    while (this.cache.size >= this.maxCacheEntries) this.cache.delete(this.cache.keys().next().value!);
+    this.cache.set(key, { expires: now + this.cacheTtlMs, value });
     return value;
   }
 

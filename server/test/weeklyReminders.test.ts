@@ -1,4 +1,5 @@
 import { beforeEach, expect, it } from 'vitest';
+import type { Prisma } from '@prisma/client';
 import { WeeklyReminderJob } from '../src/jobs/weeklyReminders.js';
 import { WebhookWorker } from '../src/discord/outbox.js';
 import { addMember, buildTestApp, FakeWebhookSender, makeCharacter, makeGuild, makePost, prisma, resetDb } from './helpers.js';
@@ -10,6 +11,35 @@ beforeEach(async () => {
   const { storage, app } = await buildTestApp();
   job = new WeeklyReminderJob({ prisma, storage, webOrigin: 'https://pf.example' });
   await app.close();
+});
+
+it.each(['rescheduled', 'disabled', 'closed'] as const)('preserves a party %s after a reminder transaction fails', async (change) => {
+  const { storage, app } = await buildTestApp();
+  await app.close();
+  const post = await makePost({ scheduledAt: at, weeklyAnchorAt: at, weeklyTimeZone: 'Not/AZone' });
+  const future = new Date(at.getTime() + 86_400_000);
+  let changed = false;
+  const concurrent = new Proxy(prisma, { get(target, key) {
+    if (key !== '$transaction') return Reflect.get(target, key);
+    return async (callback: (tx: Prisma.TransactionClient) => Promise<unknown>) => {
+      try { return await target.$transaction(callback); }
+      catch (error) {
+        if (!changed) {
+          changed = true;
+          await target.post.update({ where: { id: post.id }, data: change === 'rescheduled'
+            ? { scheduledAt: future, weeklyAnchorAt: future, weeklyTimeZone: 'UTC' }
+            : change === 'disabled' ? { weeklyAnchorAt: null, weeklyTimeZone: null }
+            : { status: 'closed', closedReason: 'manual' } });
+        }
+        throw error;
+      }
+    };
+  } });
+  const recovering = new WeeklyReminderJob({ prisma: concurrent, storage, webOrigin: 'https://pf.example' });
+  expect(await recovering.runOnce(at)).toBe(0);
+  expect(changed).toBe(true);
+  const saved = await prisma.post.findUniqueOrThrow({ where: { id: post.id } });
+  expect(saved.scheduledAt).toEqual(change === 'rescheduled' ? future : at);
 });
 
 async function party(over: Parameters<typeof makePost>[0] = {}) {

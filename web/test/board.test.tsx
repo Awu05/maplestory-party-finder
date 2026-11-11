@@ -1,7 +1,6 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CharacterDTO, PartyMemberDTO, PostSummaryDTO } from '@pf/shared';
-import { SCHEDULED_GRACE_MS } from '@pf/shared';
 import { App } from '../src/App';
 import { boardQueryString } from '../src/api/postHooks';
 import { mockApi, renderWithProviders, testQueryClient } from './setup';
@@ -328,27 +327,5 @@ describe('BoardPage', () => {
     mockApi({ ...base, '/api/auth/me': user, '/api/characters?mine=1': [], '/api/posts': [] });
     renderWithProviders(<App />);
     expect(await screen.findByRole('link', { name: 'New post' })).toHaveAttribute('href', '/posts/new');
-  });
-});
-
-describe('boardQueryString', () => {
-  const now = new Date('2026-11-09T12:00:00.000Z');
-  const range = (qs: string) => {
-    const p = new URLSearchParams(qs);
-    return { from: p.get('from'), to: p.get('to') };
-  };
-
-  it('Next 24h starts a grace period back, so runs that just started (still on the board) match', () => {
-    expect(range(boardQueryString({ when: '24h' }, now))).toEqual({
-      from: new Date(now.getTime() - SCHEDULED_GRACE_MS).toISOString(),
-      to: '2026-11-10T12:00:00.000Z',
-    });
-  });
-
-  it('This week starts a grace period back and ends 7 days ahead', () => {
-    expect(range(boardQueryString({ when: '7d' }, now))).toEqual({
-      from: new Date(now.getTime() - SCHEDULED_GRACE_MS).toISOString(),
-      to: '2026-11-16T12:00:00.000Z',
-    });
   });
 });

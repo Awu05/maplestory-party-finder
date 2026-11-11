@@ -1,7 +1,7 @@
 import { useId, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { MAX_POST_BOSSES, POST_TYPE_LABELS, freeSlotCoverageForViewer, freeSlotsForViewer, maxPartySizeFor } from '@pf/shared';
+import { POST_TYPE_LABELS, freeSlotCoverageForViewer, freeSlotsForViewer, maxPartySizeFor } from '@pf/shared';
 import type { BossDTO, CharacterDTO, PostDetailDTO, PostType } from '@pf/shared';
 import { useBosses, useCharacters, useMe } from '../api/hooks';
 import { useCreatePost, usePost, useUpdatePost } from '../api/postHooks';
@@ -186,7 +186,7 @@ function PostForm({ characters, bosses, post }: FormProps) {
       </label>
       <div>
         <h3>Bosses</h3>
-        <BossMultiPicker value={v.bossIds} onChange={setBosses} bosses={bosses} max={MAX_POST_BOSSES} />
+        <BossMultiPicker value={v.bossIds} onChange={setBosses} bosses={bosses} />
       </div>
       <div>
         <h3>When you're free</h3>

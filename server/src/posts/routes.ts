@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { isValidTimeZone, MAX_POST_BOSSES } from '@pf/shared';
+import { isValidTimeZone } from '@pf/shared';
 import { getViewer, requireAdmin, requireUser } from '../auth/guards.js';
 import { adminDeletePost, announcePost, closePost, createPost, deletePost, editPost, finalizePostTime, getVisiblePost, listBoard, listMyParties, listMyPosts, removeMember, renewPost, reopenPost, setMemberFreeTimes } from './service.js';
 import { toPostDetailDTO, toPostSummaryDTO } from './serialize.js';
@@ -11,7 +11,6 @@ export const postTypeSchema = z.enum(['lfp', 'recruiting']);
 export const bossDifficultyIdsSchema = z
   .array(z.number().int())
   .min(1)
-  .max(MAX_POST_BOSSES)
   .refine((ids) => new Set(ids).size === ids.length, 'Duplicate bossDifficultyIds');
 export const scheduledAtSchema = z.string().datetime().transform((s) => new Date(s)).nullable();
 export const noteSchema = z.string().max(300);

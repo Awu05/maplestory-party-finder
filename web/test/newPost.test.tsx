@@ -84,7 +84,12 @@ const writes = (m: ReturnType<typeof mockApi>) =>
   m.mock.calls.filter(([, init]) => init?.method === 'POST' || init?.method === 'PATCH');
 const body = (call: Parameters<typeof fetch>) => JSON.parse(String(call[1]?.body));
 
-const pickBoss = async (name: string) => fireEvent.click(await screen.findByLabelText(name));
+const pickBoss = async (name: string) => {
+  const checkbox = await screen.findByLabelText(name);
+  const area = checkbox.closest('details');
+  if (area && !area.open) fireEvent.click(area.querySelector('summary')!);
+  fireEvent.click(checkbox);
+};
 const pickCharacter = async () => fireEvent.change(await screen.findByLabelText('Character'), { target: { value: 'c1' } });
 const pickSlot = (name: string) => fireEvent.click(screen.getByRole('button', { name }));
 const save = () => fireEvent.click(screen.getByRole('button', { name: 'Save' }));

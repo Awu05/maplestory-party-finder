@@ -57,8 +57,8 @@ describe('GET /api/me/parties', () => {
   });
 });
 
-describe('GET /api/me/parties cap', () => {
-  it('returns at most the 100 latest parties, in order', async () => {
+describe('GET /api/me/parties history', () => {
+  it('returns all parties beyond 100, including an unscheduled active party', async () => {
     const character = await makeCharacter({ ownerId: userId });
     const base = Date.now() + 86_400_000;
     const posts = await prisma.post.createManyAndReturn({
@@ -70,8 +70,11 @@ describe('GET /api/me/parties cap', () => {
       select: { id: true, scheduledAt: true },
     });
     await prisma.postMember.createMany({ data: posts.map((p) => ({ postId: p.id, characterId: character.id, userId, role: 'poster' as const, cpAtJoin: character.combatPower, snapshot: { ign: character.ign, jobName: character.jobName, level: character.level, imageUrl: character.imageUrl, worldName: 'w', guildName: 'g' } })) });
+    const active = await makePost({ posterCharacterId: character.id, scheduledAt: null });
+    await addMember(active.id, (await makeCharacter()).id);
     const result = ids(await get('/api/me/parties'));
-    const expected = [...posts].sort((a, b) => b.scheduledAt!.getTime() - a.scheduledAt!.getTime()).slice(0, 100).map((p) => p.id);
+    const expected = [...posts].sort((a, b) => b.scheduledAt!.getTime() - a.scheduledAt!.getTime()).map((p) => p.id);
+    expected.push(active.id);
     expect(result).toEqual(expected);
   });
 });

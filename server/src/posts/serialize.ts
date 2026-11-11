@@ -48,7 +48,7 @@ export function toMemberDTO(m: MemberRow, viewerUserId: string | null, storage: 
   };
 }
 
-function toBossDTOs(row: PostSummaryRow): PostBossDTO[] {
+export function toBossDTOs(row: Pick<PostSummaryRow, 'bosses'>): PostBossDTO[] {
   return [...row.bosses]
     .sort(
       (a, b) =>

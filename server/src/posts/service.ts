@@ -197,8 +197,7 @@ export async function listMyParties(prisma: PrismaClient, userId: string): Promi
     WHERE EXISTS (SELECT 1 FROM "PostMember" m WHERE m."postId" = p.id AND m."userId" = ${userId})
       AND ((p.type = 'recruiting' AND p."scheduledAt" IS NOT NULL)
         OR (SELECT count(*) FROM "PostMember" m2 WHERE m2."postId" = p.id) >= 2)
-    ORDER BY p."scheduledAt" DESC NULLS LAST, p."createdAt" DESC, p.id DESC
-    LIMIT 100`;
+    ORDER BY p."scheduledAt" DESC NULLS LAST, p."createdAt" DESC, p.id DESC`;
   const rows = await prisma.post.findMany({ where: { id: { in: ids.map((r) => r.id) } }, include: postInclude });
   const byId = new Map(rows.map((r) => [r.id, r]));
   return ids.map((r) => byId.get(r.id)).filter((r): r is PostRow => r !== undefined);
@@ -387,13 +386,12 @@ export async function finalizePostTime(prisma: PrismaClient, viewer: Viewer, id:
         const ids = new Map(users.map((user) => [user.id, user.discordId]));
         const roster = post.members.map((member) => ({ ign: parseSnapshot(member.snapshot).ign, discordId: ids.get(member.userId) ?? '' }));
         const thread = buildPartyThread(toPostSummaryDTO(post, null, forum.storage, now), forum.webOrigin, roster);
-        const payload = { ...thread.message, thread_name: thread.name };
+        const payload = { ...thread.message, thread_name: thread.name, _forum: { webOrigin: forum.webOrigin } };
         if (!row.forumThreadRequested) {
           await enqueueDelivery(tx, post.guildId, 'post.party_thread', payload, post.id);
           await tx.post.update({ where: { id }, data: { forumThreadRequested: true } });
         } else {
-          // If delivery has not started, use the latest time without making another thread.
-          await tx.webhookDelivery.updateMany({ where: { postId: id, eventType: 'post.party_thread', status: 'pending', attempts: 0, nextAttemptAt: { lte: now } }, data: { payload } });
+          await tx.webhookDelivery.updateMany({ where: { postId: id, eventType: 'post.party_thread', status: 'pending' }, data: { payload } });
         }
       }
     }
@@ -499,12 +497,7 @@ export interface EditResult {
   becameFull: boolean;
 }
 
-/**
- * Poster edits any field. The resulting post is validated as a whole, then applied. An edit never
- * touches the final time (scheduledAt) or expiresAt: finalizing and Renew do that. The one exception:
- * a finalized Recruiting post switched to LFP drops its final time (LFP posts have none) and gets
- * the flexible expiry.
- */
+/** Validate the complete edited post; switching to LFP clears legacy schedules. */
 export async function editPost(prisma: PrismaClient, viewer: Viewer, id: string, input: EditPostInput, now: Date): Promise<EditResult> {
   return prisma.$transaction(async (tx) => {
     const row = await loadPostForUpdate(tx, id);

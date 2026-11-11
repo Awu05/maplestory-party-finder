@@ -4,7 +4,6 @@ import { crc32 } from 'node:zlib';
 import sharp from 'sharp';
 import { describe, expect, it } from 'vitest';
 import { sniffImageType, readImageUpload } from '../src/storage/imageType.js';
-import { LocalDiskStorage } from '../src/storage/storage.js';
 import { buildTestApp } from './helpers.js';
 
 const PNG = Buffer.from(

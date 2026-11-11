@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import type { CharacterDTO, RefreshResultDTO } from '@pf/shared';
 import { MyCharactersPage } from '../src/pages/MyCharactersPage';
 import { mockApi, renderWithProviders } from './setup';
