@@ -1,9 +1,12 @@
 // DST-safe time-zone helpers. Never touches the host's local time zone:
 // all zone math goes through Intl with an explicit timeZone, all calendar math through UTC methods.
 
-export type WallTime = { year: number; month: number; day: number; hour: number };
+export type WallTime = { year: number; month: number; day: number; hour: number; minute?: number };
 
 const HOUR_MS = 3_600_000;
+export const SLOTS_PER_DAY = 48;
+export const SLOT_MINUTES = 30;
+const SLOT_MS = SLOT_MINUTES * 60_000;
 const formatters = new Map<string, Intl.DateTimeFormat>();
 
 function formatter(zone: string): Intl.DateTimeFormat {
@@ -72,7 +75,7 @@ export function instantToZoned(date: Date, zone: string): WallTime & { dayOfWeek
  * Fall-back overlap: the first occurrence.
  */
 export function zonedToInstant(wall: WallTime, zone: string): Date {
-  const target = Date.UTC(wall.year, wall.month - 1, wall.day, wall.hour);
+  const target = Date.UTC(wall.year, wall.month - 1, wall.day, wall.hour, wall.minute ?? 0);
   const offsets = new Set([offsetMs(target - 24 * HOUR_MS, zone), offsetMs(target + 24 * HOUR_MS, zone)]);
   const candidates = [...offsets].map((o) => target - o);
   const matching = candidates.filter((t) => offsetMs(t, zone) === target - t);
@@ -81,33 +84,65 @@ export function zonedToInstant(wall: WallTime, zone: string): Date {
   return new Date(Math.max(...candidates));
 }
 
-export function freeSlotsForViewer(freeTimes: number[], posterZone: string, viewerZone: string, now: Date): number[] {
+/**
+ * Returns a two-bit mask per viewer slot: bit 1 is its first 15 minutes and bit 2 its last.
+ * Quarter-hour zone offsets can place a source half-hour across two viewer slots.
+ */
+export function freeSlotCoverageForViewer(freeTimes: number[], posterZone: string, viewerZone: string, now: Date): Map<number, number> {
   const unique = [...new Set(freeTimes)].sort((a, b) => a - b);
-  if (posterZone === viewerZone) return unique;
-  const z = instantToZoned(now, posterZone);
-  const sundayUtc = Date.UTC(z.year, z.month - 1, z.day - z.dayOfWeek);
-  const out = new Set<number>();
-  for (const slot of unique) {
-    const w = new Date(sundayUtc + slot * HOUR_MS);
-    const instant = zonedToInstant(
-      { year: w.getUTCFullYear(), month: w.getUTCMonth() + 1, day: w.getUTCDate(), hour: w.getUTCHours() },
-      posterZone,
-    );
-    const v = instantToZoned(instant, viewerZone);
-    out.add(v.dayOfWeek * 24 + v.hour);
+  // Anchor each participant's occurrences to the same UTC week. Source-zone calendar
+  // weeks alone can straddle different sides of a DST change near the date line.
+  const weekStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - now.getUTCDay());
+  if (posterZone === viewerZone && offsetMs(weekStart, posterZone) === offsetMs(weekStart + 7 * 24 * HOUR_MS, posterZone)) {
+    return new Map(unique.map((slot) => [slot, 3]));
   }
-  return [...out].sort((a, b) => a - b);
+  const sourceAtStart = instantToZoned(new Date(weekStart), posterZone);
+  const sourceSunday = Date.UTC(sourceAtStart.year, sourceAtStart.month - 1, sourceAtStart.day - sourceAtStart.dayOfWeek);
+  const out = new Map<number, number>();
+  for (const slot of unique) {
+    const toInstant = (wallMs: number) => {
+      const w = new Date(wallMs);
+      return zonedToInstant({ year: w.getUTCFullYear(), month: w.getUTCMonth() + 1, day: w.getUTCDate(), hour: w.getUTCHours(), minute: w.getUTCMinutes() }, posterZone);
+    };
+    let wall = sourceSunday + slot * SLOT_MS;
+    let instant = toInstant(wall);
+    if (instant.getTime() < weekStart) {
+      wall += 7 * 24 * HOUR_MS;
+      instant = toInstant(wall);
+    }
+    // A wall time in a spring-forward gap never occurred in this week.
+    const expected = new Date(wall);
+    const actual = parts(instant.getTime(), posterZone);
+    if (actual.year !== expected.getUTCFullYear() || actual.month !== expected.getUTCMonth() + 1 ||
+      actual.day !== expected.getUTCDate() || actual.hour !== expected.getUTCHours() || actual.minute !== expected.getUTCMinutes()) continue;
+    for (const quarter of [0, 15]) {
+      const v = parts(instant.getTime() + quarter * 60_000, viewerZone);
+      const day = new Date(Date.UTC(v.year, v.month - 1, v.day)).getUTCDay();
+      const slot = day * SLOTS_PER_DAY + v.hour * 2 + Math.floor(v.minute / SLOT_MINUTES);
+      const mask = v.minute % SLOT_MINUTES < 15 ? 1 : 2;
+      out.set(slot, (out.get(slot) ?? 0) | mask);
+    }
+  }
+  return out;
 }
 
-/** Slots in a spring-forward gap are skipped to the next week where the hour exists. */
-export function nextOccurrence(hourOfWeek: number, zone: string, now: Date): Date {
+/** Viewer slots fully covered by the source availability. */
+export function freeSlotsForViewer(freeTimes: number[], posterZone: string, viewerZone: string, now: Date): number[] {
+  if (posterZone === viewerZone) return [...new Set(freeTimes)].sort((a, b) => a - b);
+  return [...freeSlotCoverageForViewer(freeTimes, posterZone, viewerZone, now)]
+    .filter(([, mask]) => mask === 3).map(([slot]) => slot).sort((a, b) => a - b);
+}
+
+/** Slots in a spring-forward gap are skipped to the next week where the time exists. */
+export function nextOccurrence(slotOfWeek: number, zone: string, now: Date): Date {
   const nowMs = now.getTime();
   const p = parts(nowMs, zone);
-  const start = nowMs - (((p.minute * 60 + p.second) * 1000) + (((nowMs % 1000) + 1000) % 1000));
-  for (let i = 0; i <= 24 * 14; i++) {
-    const t = start + i * HOUR_MS;
+  const start = nowMs - ((((p.minute % SLOT_MINUTES) * 60 + p.second) * 1000) + (((nowMs % 1000) + 1000) % 1000));
+  for (let i = 0; i <= SLOTS_PER_DAY * 14; i++) {
+    const t = start + i * SLOT_MS;
     const z = instantToZoned(new Date(t), zone);
-    if (z.dayOfWeek * 24 + z.hour === hourOfWeek) return new Date(t);
+    const minute = parts(t, zone).minute;
+    if (z.dayOfWeek * SLOTS_PER_DAY + z.hour * 2 + Math.floor(minute / SLOT_MINUTES) === slotOfWeek) return new Date(t);
   }
-  throw new Error(`No occurrence of hour-of-week ${hourOfWeek} in ${zone}`);
+  throw new Error(`No occurrence of half-hour slot ${slotOfWeek} in ${zone}`);
 }

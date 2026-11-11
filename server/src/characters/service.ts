@@ -342,7 +342,7 @@ export async function moveCharacterWorld(
       await tx.$queryRaw`SELECT id FROM "Character" WHERE id = ${id} FOR UPDATE`;
       const [membership, pending] = await Promise.all([
         tx.postMember.findFirst({
-          where: { characterId: id, post: { deletedAt: null, status: { in: ['open', 'full'] }, expiresAt: { gt: now } } },
+          where: { characterId: id, post: { deletedAt: null, expiresAt: { gt: now }, OR: [{ status: { in: ['open', 'full'] } }, { status: 'closed', closedReason: 'finalized' }] } },
           select: { id: true },
         }),
         tx.request.findFirst({ where: { characterId: id, status: 'pending' }, select: { id: true } }),
@@ -375,6 +375,8 @@ export async function deleteCharacter(
 ): Promise<{ closedPostIds: string[]; declinedRequestIds: string[] }> {
   return prisma.$transaction(async (tx) => {
     const { closedPostIds, declinedIds: declined } = await closeLivePosts(tx, { posterCharacterId: id }, 'character_deleted');
+    const character = await tx.character.findUniqueOrThrow({ where: { id }, select: { guildId: true } });
+    await tx.postMember.updateMany({ where: { characterId: id }, data: { reminderGuildId: character.guildId } });
     await tx.character.delete({ where: { id } });
     // The character's own requests cascade away with it; only the survivors still need an event.
     const survivors = await tx.request.findMany({ where: { id: { in: declined } }, select: { id: true } });

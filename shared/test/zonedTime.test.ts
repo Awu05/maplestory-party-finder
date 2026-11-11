@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   freeSlotsForViewer,
+  freeSlotCoverageForViewer,
   instantToZoned,
   canonicalTimeZone,
   isValidTimeZone,
@@ -57,13 +58,41 @@ describe('instantToZoned', () => {
 });
 
 describe('freeSlotsForViewer', () => {
+  it('preserves partial coverage in quarter-hour time zones', () => {
+    const now = new Date('2026-11-10T15:00:00Z');
+    const coverage = freeSlotCoverageForViewer([136, 137], 'UTC', 'Asia/Kathmandu', now);
+    expect([...coverage]).toEqual([[147, 2], [148, 3], [149, 1]]);
+    expect(freeSlotsForViewer([136, 137], 'UTC', 'Asia/Kathmandu', now)).toEqual([148]);
+  });
+  it('uses one reference week for both viewers when a daylight-saving transition crosses the week boundary', () => {
+    // London is already on Sunday while New York is still on Saturday. NY changes clocks on Sunday.
+    const now = new Date('2026-03-08T00:30:00Z');
+    expect(freeSlotsForViewer([16], NY, 'Europe/London', now)).toEqual([24]); // Sun 8a NY = noon London.
+    expect(freeSlotsForViewer([26], 'Europe/London', NY, now)).toEqual([18]); // Sun 1p London = 9a NY.
+  });
+  it('keeps date-line overlaps consistent for both viewers across daylight-saving changes', () => {
+    const now = new Date('2026-03-08T00:30:00Z');
+    expect(freeSlotsForViewer([0], 'Pacific/Kiritimati', NY, now)).toEqual([300]); // Sat 6a NY.
+    expect(freeSlotsForViewer([300], NY, 'Pacific/Kiritimati', now)).toEqual([0]); // Sun midnight.
+  });
+  it('does not invent availability in a spring-forward gap, while preserving the saved selection for editing', () => {
+    const now = new Date('2026-03-10T12:00:00Z');
+    expect([...freeSlotCoverageForViewer([5], NY, 'Europe/London', now)]).toEqual([]);
+    expect([...freeSlotCoverageForViewer([5], NY, NY, now)]).toEqual([]);
+    expect(freeSlotsForViewer([5], NY, NY, now)).toEqual([5]);
+  });
+  it('converts half-hour slots across time zones', () => {
+    const now = new Date('2026-11-10T15:00:00Z');
+    expect(freeSlotsForViewer([137], NY, 'America/Los_Angeles', now)).toEqual([131]);
+    expect(freeSlotsForViewer([137], NY, 'Asia/Kolkata', now)).toEqual([158]);
+  });
   it('shifts across zones', () => {
-    expect(freeSlotsForViewer([68], NY, 'America/Los_Angeles', new Date('2026-11-10T15:00:00Z'))).toEqual([65]);
-    expect(freeSlotsForViewer([68], NY, 'Asia/Kolkata', new Date('2026-11-10T15:00:00Z'))).toEqual([78]);
+    expect(freeSlotsForViewer([136], NY, 'America/Los_Angeles', new Date('2026-11-10T15:00:00Z'))).toEqual([130]);
+    expect(freeSlotsForViewer([136], NY, 'Asia/Kolkata', new Date('2026-11-10T15:00:00Z'))).toEqual([157]);
   });
   it('uses the DST rules of the week containing now', () => {
-    expect(freeSlotsForViewer([68], NY, 'Europe/London', new Date('2026-03-05T12:00:00Z'))).toEqual([73]);
-    expect(freeSlotsForViewer([68], NY, 'Europe/London', new Date('2026-03-10T12:00:00Z'))).toEqual([72]);
+    expect(freeSlotsForViewer([136], NY, 'Europe/London', new Date('2026-03-05T12:00:00Z'))).toEqual([146]);
+    expect(freeSlotsForViewer([136], NY, 'Europe/London', new Date('2026-03-10T12:00:00Z'))).toEqual([144]);
   });
   it('dedupes and sorts when zones are equal', () => {
     expect(freeSlotsForViewer([5, 3, 3], NY, NY, new Date('2026-11-10T15:00:00Z'))).toEqual([3, 5]);
@@ -72,17 +101,23 @@ describe('freeSlotsForViewer', () => {
 
 describe('nextOccurrence', () => {
   const now = new Date('2026-11-10T15:00:00Z');
+  it('finds a half-hour slot at 8:30pm', () => {
+    expect(nextOccurrence(137, NY, now).toISOString()).toBe('2026-11-11T01:30:00.000Z');
+  });
+  it('finds the correct boundary in a quarter-hour-offset zone', () => {
+    expect(nextOccurrence(138, 'Asia/Kathmandu', now).toISOString()).toBe('2026-11-10T15:15:00.000Z');
+  });
   it('finds the next matching hour', () => {
-    expect(nextOccurrence(68, NY, now).toISOString()).toBe('2026-11-11T01:00:00.000Z');
+    expect(nextOccurrence(136, NY, now).toISOString()).toBe('2026-11-11T01:00:00.000Z');
   });
   it('counts the current hour', () => {
-    expect(nextOccurrence(58, NY, now).toISOString()).toBe('2026-11-10T15:00:00.000Z');
+    expect(nextOccurrence(116, NY, now).toISOString()).toBe('2026-11-10T15:00:00.000Z');
   });
   it('wraps to next week', () => {
-    expect(nextOccurrence(57, NY, now).toISOString()).toBe('2026-11-17T14:00:00.000Z');
+    expect(nextOccurrence(114, NY, now).toISOString()).toBe('2026-11-17T14:00:00.000Z');
   });
   it('does not return an instant before the current hour during a repeated fall-back hour', () => {
-    expect(nextOccurrence(1, NY, new Date('2026-11-01T06:30:00Z')).toISOString()).toBe('2026-11-01T06:00:00.000Z');
+    expect(nextOccurrence(3, NY, new Date('2026-11-01T06:30:00Z')).toISOString()).toBe('2026-11-01T06:30:00.000Z');
   });
 });
 
@@ -110,11 +145,11 @@ describe('edge zones', () => {
 
   it('wraps Saturday to Sunday between zones (NY Sat 23 -> Kiritimati Sun 18, and back)', () => {
     const now = new Date('2026-11-10T15:00:00Z');
-    expect(freeSlotsForViewer([6 * 24 + 23], NY, 'Pacific/Kiritimati', now)).toEqual([18]);
-    expect(freeSlotsForViewer([0], 'Pacific/Kiritimati', NY, now)).toEqual([6 * 24 + 5]);
+    expect(freeSlotsForViewer([6 * 48 + 46], NY, 'Pacific/Kiritimati', now)).toEqual([36]);
+    expect(freeSlotsForViewer([0], 'Pacific/Kiritimati', NY, now)).toEqual([6 * 48 + 10]);
   });
 
   it('nextOccurrence skips the NY spring gap (Sun 2am on 2027-03-14) to the next week', () => {
-    expect(nextOccurrence(2, NY, new Date('2027-03-13T12:00:00Z')).toISOString()).toBe('2027-03-21T06:00:00.000Z');
+    expect(nextOccurrence(4, NY, new Date('2027-03-13T12:00:00Z')).toISOString()).toBe('2027-03-21T06:00:00.000Z');
   });
 });

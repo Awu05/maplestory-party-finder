@@ -123,14 +123,34 @@ a.post-card:hover {
   align-items: center;
 }
 .board-filters {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  margin-bottom: var(--space-4);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4) var(--space-6);
+  padding: var(--space-4);
+  margin-bottom: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
 }
 .board-filters__group {
   display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.board-filters__group legend {
+  margin-bottom: var(--space-3);
+  padding: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.board-filters__controls {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
@@ -138,7 +158,18 @@ a.post-card:hover {
 .board-filters__label {
   color: var(--muted);
   font-size: 0.8rem;
-  white-space: nowrap;
+}
+.board-filters__hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+@media (max-width: 640px) {
+  .board-filters {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-5);
+  }
 }
 .board-filters__worlds {
   min-width: 0;
@@ -215,6 +246,28 @@ a.post-card:hover {
 }
 .post-detail__actions {
   margin: var(--space-5) 0 var(--space-6);
+}
+.post-expiry {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  width: fit-content;
+  max-width: 100%;
+  margin: var(--space-5) 0 var(--space-6);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.post-expiry h2 {
+  margin: 0 0 var(--space-1);
+  font-size: 1rem;
+}
+.post-expiry p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
 }
 .post-warn {
   display: inline-block;
@@ -463,6 +516,17 @@ a.post-card:hover {
 }
 
 /* Finalize time popup */
+.finalize-dialog__repeat {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.finalize-dialog__help {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
 .finalize-dialog {
   width: min(28rem, calc(100vw - 16px));
   max-height: calc(100dvh - 16px);
@@ -490,5 +554,18 @@ a.post-card:hover {
   flex-direction: column;
   gap: var(--space-1);
   font-size: 0.85rem;
+  color: var(--muted);
+}
+.finalize-dialog__field input {
+  font-size: 1.05rem;
+  min-height: 2.75rem;
+}
+.discord-announcement {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.discord-announcement small {
   color: var(--muted);
 }

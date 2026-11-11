@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { usePost } from '../../api/postHooks';
 import { friendlyError } from '../../api/errors';
+import { ApiError } from '../../api/client';
 import { formatCp } from '../card/format';
 import { LineupView } from './LineupView';
 import { StatusPill } from './StatusPill';
@@ -53,14 +54,15 @@ function PreviewBody({
   outsideFilters: boolean;
   onUnavailable?: (id: string) => void;
 }) {
-  const post = usePost(postId);
-  const failed = post.isError;
+  const post = usePost(postId, { live: true });
+  const unavailable = post.error instanceof ApiError && (post.error.status === 403 || post.error.status === 404);
+  const failed = post.isError && (!post.data || unavailable);
   useEffect(() => {
     if (failed && outsideFilters) onUnavailable?.(postId);
   }, [failed, outsideFilters, postId]); // onUnavailable is the board's state setter (stable)
 
   let body;
-  if (post.isError) {
+  if (failed) {
     body = <p role="alert">{friendlyError(post.error)}</p>;
   } else if (!post.data) {
     body = <Skeleton />;
@@ -76,7 +78,7 @@ function PreviewBody({
         <p className="post-preview__meta">
           {[p.world.name, p.guild.name].join(' · ')}
         </p>
-        <WhenSection post={p} collapsible />
+        <WhenSection post={p} members={p.members} collapsible />
         {p.minCp !== null && <p className="post-preview__meta">{`Min CP ${formatCp(p.minCp)}`}</p>}
         {p.note && <p className="post-preview__note">{p.note}</p>}
         <LineupView post={p} compact />

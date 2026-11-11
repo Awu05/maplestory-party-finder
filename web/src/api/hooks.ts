@@ -208,6 +208,7 @@ export interface GuildInput {
   name?: string;
   iconUrl?: string | null;
   webhookUrl?: string | null;
+  partyForumWebhookUrl?: string | null;
   bossRoleIds?: Record<string, string>;
   active?: boolean;
   worldIds?: number[];

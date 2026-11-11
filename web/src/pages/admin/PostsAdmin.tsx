@@ -46,19 +46,21 @@ export function PostsAdmin() {
                 <td data-label="Status"><StatusPill status={p.status} deleted={p.deleted} /></td>
                 <td data-label="Closed reason">{p.closedReason ?? '—'}</td>
                 <td data-label="Created">{relativeTime(p.createdAt)}</td>
-                <td>
-                  <Link to={`/posts/${p.id}`} aria-label={`View ${p.id}`}>View</Link>{' '}
-                  <button
-                    type="button"
-                    className="btn btn--danger"
-                    aria-label={`Delete permanently ${p.id}`}
-                    disabled={remove.isPending}
-                    onClick={() => {
-                      if (window.confirm(`Permanently delete this post by ${ign}? This cannot be undone.`)) remove.mutate(p.id);
-                    }}
-                  >
-                    Delete permanently
-                  </button>
+                <td data-label="Actions">
+                  <div className="admin__post-actions">
+                    <Link className="btn btn--secondary" to={`/posts/${p.id}`} aria-label={`View ${p.id}`}>View</Link>
+                    <button
+                      type="button"
+                      className="btn btn--danger"
+                      aria-label={`Delete permanently ${p.id}`}
+                      disabled={remove.isPending}
+                      onClick={() => {
+                        if (window.confirm(`Permanently delete this post by ${ign}? This cannot be undone.`)) remove.mutate(p.id);
+                      }}
+                    >
+                      Delete permanently
+                    </button>
+                  </div>
                 </td>
               </tr>
             );

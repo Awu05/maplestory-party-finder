@@ -1,9 +1,9 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CharacterDTO, PartyMemberDTO, PostDetailDTO, RequestDTO } from '@pf/shared';
 import { PostDetailPage } from '../src/pages/PostDetailPage';
-import { mockApi, renderWithProviders } from './setup';
+import { mockApi, renderWithProviders, testQueryClient } from './setup';
 
 const character = (id: string, ign: string, cp = 1_500_000_000): CharacterDTO => ({
   id,
@@ -30,7 +30,7 @@ const member = (id: string, ign: string, role: 'poster' | 'member', over: Partia
   joinedAt: '2026-11-09T00:00:00Z',
   character: character(`c-${id}`, ign),
   snapshot: { ign, jobName: 'Bishop', level: 280, imageUrl: `http://img/${ign}.png`, worldName: 'Kronos', guildName: 'Maple Guild' },
-  isMine: false,
+  freeTimes: [], freeTimesZone: null, isMine: false,
   ...over,
 });
 
@@ -56,7 +56,7 @@ const post = (over: Partial<PostDetailDTO> = {}): PostDetailDTO => {
     bosses: [{ bossDifficultyId: 7, bossName: 'Lucid', difficulty: 'Hard' }],
     scheduledAt: '2026-12-01T20:00:00Z',
     freeTimes: [],
-    freeTimesZone: null,
+    weeklyTimeZone: null, freeTimesZone: null,
     expiresAt: '2026-12-02T00:00:00Z',
     createdAt: '2026-11-09T00:00:00Z',
     partySize: 4,
@@ -98,6 +98,57 @@ const called = (fetchMock: ReturnType<typeof mockApi>, url: string, method: stri
 afterEach(() => vi.restoreAllMocks());
 
 describe('PostDetailPage lineup', () => {
+  it('disables Discord announcements until the cooldown expires', async () => {
+    const availableAt = new Date(Date.now() + 60_000).toISOString();
+    renderPage({ '/api/posts/p1': post({ isPoster: true, discordAnnouncementAvailableAt: availableAt }) });
+    expect(await screen.findByRole('button', { name: 'Notify Discord' })).toBeDisabled();
+    expect(screen.getByText(/^Available /)).toBeInTheDocument();
+  });
+
+  it('allows the owner to queue a Discord announcement when eligible', async () => {
+    const p = post({ isPoster: true, discordAnnouncementAvailableAt: new Date(Date.now() - 60_000).toISOString() });
+    const fetchMock = renderPage({ '/api/posts/p1': p, 'POST /api/posts/p1/discord-announcement': { ...p, discordAnnouncementAvailableAt: new Date(Date.now() + 86_400_000).toISOString() } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Notify Discord' }));
+    await waitFor(() => expect(called(fetchMock, '/api/posts/p1/discord-announcement', 'POST')).toBe(true));
+    expect(await screen.findByText('Discord notification queued.')).toBeInTheDocument();
+  });
+
+  it('does not offer Discord announcements to other viewers', async () => {
+    renderPage({ '/api/posts/p1': post({ isPoster: false, discordAnnouncementAvailableAt: new Date(Date.now() - 1000).toISOString() }) });
+    await screen.findByText('Chill run');
+    expect(screen.queryByRole('button', { name: 'Notify Discord' })).toBeNull();
+  });
+  it('keeps a finalized party manageable while showing recruitment is closed', async () => {
+    const p = post({ isPoster: true, isMember: true, status: 'closed', recruitmentClosed: true });
+    renderPage({ '/api/posts/p1': p, '/api/auth/me': { id: 'u1' } });
+    expect(await screen.findByText('Recruitment closed')).toBeInTheDocument();
+    expect(screen.getByText('Recruitment is closed. Your party is scheduled.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Change time' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Edit' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Applicants')).not.toBeInTheDocument();
+  });
+  it('keeps an in-progress availability edit when a background refresh fails', async () => {
+    const p = post({ members: [member('m1', 'Lily', 'poster'), member('m2', 'Bob', 'member', { isMine: true })], isMember: true });
+    let fail = false;
+    vi.stubGlobal('fetch', vi.fn(async (url: RequestInfo | URL) => {
+      if (String(url) === '/api/posts/p1') return fail
+        ? new Response(JSON.stringify({ error: { code: 'INTERNAL', message: 'Unavailable' } }), { status: 500 })
+        : new Response(JSON.stringify(p), { status: 200 });
+      if (String(url) === '/api/rarity-tiers') return new Response('[]', { status: 200 });
+      return new Response(null, { status: 404 });
+    }));
+    const client = testQueryClient();
+    renderWithProviders(<Routes><Route path="/posts/:id" element={<PostDetailPage />} /></Routes>, { route: '/posts/p1', client });
+    fireEvent.click(await screen.findByRole('button', { name: /Edit availability for Bob/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Tue 8:30p/ }));
+    fail = true;
+    await act(async () => { await client.invalidateQueries({ queryKey: ['posts', 'detail', 'p1'] }); });
+    expect(await screen.findByText(/Couldn't refresh this post/)).toBeVisible();
+    expect(screen.getByRole('button', { name: /Tue 8:30p/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Save availability' })).toBeVisible();
+  });
+
   it('lineup renders poster + member cards and "CP at join" captions; recruiting partySize 4 with 2 members shows 2 Open slot placeholders', async () => {
     const p = post({
       members: [member('m1', 'Lily', 'poster'), member('m2', 'Bob', 'member', { character: character('c-m2', 'Bob', 1_600_000_000) })],
@@ -182,19 +233,43 @@ describe('PostDetailPage poster controls', () => {
 
   it('Renew shown only for flexible posts', async () => {
     renderPage({ '/api/posts/p1': post({ isPoster: true, scheduledAt: null, canRenew: true }) });
-    expect(await screen.findByRole('button', { name: 'Renew' })).toBeInTheDocument();
+    const expiry = await screen.findByRole('region', { name: 'Post expiry' });
+    expect(within(expiry).getByText('Automatically closes', { exact: false })).toBeInTheDocument();
+    expect(expiry.querySelector('time')).toHaveAttribute('datetime', '2026-12-02T00:00:00Z');
+    expect(within(expiry).getByRole('button', { name: 'Renew for 7 days' })).toBeInTheDocument();
   });
 
-  it('Renew shown on an expired flexible post (effectively closed, still renewable)', async () => {
+  it('refreshes the expiry displayed after the poster renews', async () => {
+    let p = post({ isPoster: true, scheduledAt: null, canRenew: true });
+    const fetchMock = renderPage({
+      '/api/posts/p1': () => p,
+      'POST /api/posts/p1/renew': () => { p = { ...p, expiresAt: '2026-12-09T00:00:00Z' }; return p; },
+    });
+    const expiry = await screen.findByRole('region', { name: 'Post expiry' });
+    fireEvent.click(within(expiry).getByRole('button', { name: 'Renew for 7 days' }));
+    await waitFor(() => expect(called(fetchMock, '/api/posts/p1/renew', 'POST')).toBe(true));
+    await waitFor(() => expect(expiry.querySelector('time')).toHaveAttribute('datetime', '2026-12-09T00:00:00Z'));
+  });
+
+  it('shows expiry to other viewers without a renewal button', async () => {
+    renderPage({ '/api/posts/p1': post({ isPoster: false, scheduledAt: null, canRenew: false }) });
+    const expiry = await screen.findByRole('region', { name: 'Post expiry' });
+    expect(expiry.querySelector('time')).toHaveAttribute('datetime', '2026-12-02T00:00:00Z');
+    expect(within(expiry).queryByRole('button', { name: 'Renew for 7 days' })).toBeNull();
+  });
+
+  it('Reopen is shown on an expired flexible post', async () => {
     renderPage({ '/api/posts/p1': post({ isPoster: true, scheduledAt: null, status: 'closed', canRenew: true }) });
     expect(await screen.findByText('This party has ended')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Renew' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reopen' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Renew for 7 days' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Post expiry' })).toBeNull();
   });
 
   it('Renew hidden for scheduled posts', async () => {
     renderPage({ '/api/posts/p1': post({ isPoster: true }) });
     await screen.findByRole('button', { name: 'Close' });
-    expect(screen.queryByRole('button', { name: 'Renew' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Renew for 7 days' })).toBeNull();
   });
 
   it('Edit link shown to poster only, hidden on closed posts', async () => {
@@ -215,13 +290,22 @@ describe('PostDetailPage poster controls', () => {
     expect(screen.queryByRole('button', { name: 'Accept' })).toBeNull();
   });
 
-  it('closed post shows ended banner and no poster actions except Delete', async () => {
+  it('closed post shows Reopen and explains what will happen', async () => {
     renderPage({ '/api/posts/p1': post({ isPoster: true, status: 'closed', scheduledAt: null }) });
     expect(await screen.findByText('This party has ended')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reopen' })).toBeInTheDocument();
+    expect(screen.getByText(/clears the final time and weekly reminders/)).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Edit' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Renew' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Renew for 7 days' })).toBeNull();
+  });
+
+  it('reopens a closed post when the owner selects Reopen', async () => {
+    const p = post({ isPoster: true, status: 'closed', scheduledAt: null });
+    const fetchMock = renderPage({ '/api/posts/p1': p, 'POST /api/posts/p1/reopen': { ...p, status: 'open' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Reopen' }));
+    await waitFor(() => expect(called(fetchMock, '/api/posts/p1/reopen', 'POST')).toBe(true));
   });
 });
 
@@ -244,7 +328,7 @@ describe('PostDetailPage when section', () => {
     const head = document.querySelector('.post-detail__head')!;
     expect(head).toHaveTextContent(/Kronos · /);
     expect(head).not.toHaveTextContent(/Dec/);
-    expect(screen.getAllByText(/Dec 1/)).toHaveLength(1);
+    expect(screen.getAllByText(/Final time: /)).toHaveLength(1);
   });
 
   it('an LFP post never shows a final time, even with a stale scheduledAt', async () => {

@@ -4,6 +4,7 @@ import { MAX_SCHEDULE_AHEAD_MS, type PostDetailDTO } from '@pf/shared';
 import { friendlyError } from '../../api/errors';
 import { useFinalizeTime } from '../../api/postHooks';
 import { localInputToUtcIso, utcIsoToLocalInput } from './time';
+import { browserTimeZone } from '../../lib/timeZone';
 import './post.css';
 
 interface Props {
@@ -17,6 +18,8 @@ export function FinalizeTimeDialog({ post, onClose }: Props) {
   const finalize = useFinalizeTime(post.id);
   const [value, setValue] = useState(post.scheduledAt ? utcIsoToLocalInput(post.scheduledAt) : '');
   const [error, setError] = useState('');
+  const [repeatWeekly, setRepeatWeekly] = useState(Boolean(post.weeklyTimeZone));
+  const timeZone = browserTimeZone();
   // The server takes now (less a small tolerance) through 30 days ahead.
   const [limits] = useState(() => {
     const now = Date.now();
@@ -47,7 +50,9 @@ export function FinalizeTimeDialog({ post, onClose }: Props) {
   const submit = () => {
     if (!value) return;
     setError('');
-    finalize.mutate(localInputToUtcIso(value), { onSuccess: onClose, onError: (e) => setError(friendlyError(e)) });
+    finalize.mutate({ scheduledAt: localInputToUtcIso(value), repeatWeekly, ...(repeatWeekly ? { timeZone } : {}) }, {
+      onSuccess: onClose, onError: (e) => setError(friendlyError(e)),
+    });
   };
 
   return (
@@ -71,6 +76,13 @@ export function FinalizeTimeDialog({ post, onClose }: Props) {
             onChange={(e) => setValue(e.target.value)}
           />
         </label>
+        <label className="finalize-dialog__repeat">
+          <input type="checkbox" checked={repeatWeekly} disabled={finalize.isPending} onChange={(event) => setRepeatWeekly(event.target.checked)} />
+          Repeat weekly
+        </label>
+        {repeatWeekly && (
+          <p className="finalize-dialog__help">Repeats on the selected day and time in {timeZone}. Everyone currently in the party gets a Discord reminder when it starts. Close the party or turn this off to stop reminders.</p>
+        )}
         {error && <p role="alert">{error}</p>}
         <div className="actions">
           <button type="button" className="btn btn--primary" disabled={!value || finalize.isPending} onClick={submit}>

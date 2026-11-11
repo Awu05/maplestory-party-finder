@@ -4,12 +4,14 @@ import { POST_TYPE_LABELS } from '@pf/shared';
 import { useRarityTiers } from '../api/hooks';
 import {
   useAcceptRequest,
+  useAnnouncePost,
   useCancelRequest,
   useClosePost,
   useDeclineRequest,
   useDeletePost,
   usePost,
   useRemoveMember,
+  useReopenPost,
   useRenewPost,
 } from '../api/postHooks';
 import { ApiError } from '../api/client';
@@ -21,17 +23,41 @@ import { RequestList, ViewerActions } from '../components/post/ViewerActions';
 import { StatusPill } from '../components/post/StatusPill';
 import { WhenSection } from '../components/post/WhenSection';
 import { FinalizeTimeDialog } from '../components/post/FinalizeTimeDialog';
+import { formatWhen } from '../components/post/time';
 import { useLastActionError } from '../components/post/useLastActionError';
 import '../components/post/post.css';
+
+function DiscordAnnouncementButton({ availableAt, pending, onClick }: { availableAt: string; pending: boolean; onClick: () => void }) {
+  const [now, setNow] = useState(() => Date.now());
+  const availableTime = new Date(availableAt).getTime();
+  useEffect(() => {
+    setNow(Date.now());
+    const delay = availableTime - Date.now();
+    if (!Number.isFinite(delay) || delay <= 0) return;
+    const timer = window.setTimeout(() => setNow(Date.now()), Math.min(delay, 2_147_483_647));
+    return () => window.clearTimeout(timer);
+  }, [availableTime]);
+  const coolingDown = !Number.isFinite(availableTime) || now < availableTime;
+  return (
+    <div className="discord-announcement">
+      <button type="button" className="btn btn--secondary" disabled={coolingDown || pending} onClick={onClick}>
+        {pending ? 'Sending…' : 'Notify Discord'}
+      </button>
+      {coolingDown && Number.isFinite(availableTime) && <small>{`Available ${new Date(availableTime).toLocaleString()}`}</small>}
+    </div>
+  );
+}
 
 export function PostDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const post = usePost(id);
+  const post = usePost(id, { live: true });
   const tiers = useRarityTiers();
   const close = useClosePost(id ?? '');
   const del = useDeletePost(id ?? '');
   const renew = useRenewPost(id ?? '');
+  const reopen = useReopenPost(id ?? '');
+  const announce = useAnnouncePost(id ?? '');
   const accept = useAcceptRequest();
   const decline = useDeclineRequest();
   const cancel = useCancelRequest();
@@ -43,6 +69,8 @@ export function PostDetailPage() {
     close,
     del,
     renew,
+    reopen,
+    announce,
     accept,
     decline,
     cancel,
@@ -62,7 +90,8 @@ export function PostDetailPage() {
   };
 
   if (post.isLoading) return <p>Loading…</p>;
-  if (post.error) {
+  const unavailable = post.error instanceof ApiError && (post.error.status === 403 || post.error.status === 404);
+  if (post.error && (!post.data || unavailable)) {
     const notFound =
       post.error instanceof ApiError && post.error.status === 404;
     return (
@@ -77,7 +106,9 @@ export function PostDetailPage() {
 
   const closed = p.status === 'closed';
   const posterCanManage = p.isPoster && !p.deleted;
-  const posterActive = posterCanManage && !closed;
+  const finalized = !!p.recruitmentClosed && !p.deleted;
+  const posterActive = posterCanManage && (!closed || finalized);
+  const posterRecruiting = posterActive && !finalized;
 
   const onDelete = () => {
     if (!window.confirm('Delete this post? This cannot be undone.')) return;
@@ -90,11 +121,12 @@ export function PostDetailPage() {
 
   return (
     <article className="post-detail">
+      {post.error && <p role="status">Couldn't refresh this post. Your changes are still here; we'll try again.</p>}
       <header className="post-detail__head">
         <span className={`post-badge post-badge--${p.type}`}>
           {POST_TYPE_LABELS[p.type]}
         </span>
-        <StatusPill status={p.status} deleted={p.deleted} />
+        <StatusPill status={p.status} deleted={p.deleted} recruitmentClosed={finalized} />
         {/* The When section below carries the time; the header stays compact. */}
         <span>
           {p.world.name} · {p.guild.name}
@@ -105,7 +137,7 @@ export function PostDetailPage() {
           <li key={b.bossDifficultyId}>{bossLabel(b)}</li>
         ))}
       </ul>
-      <WhenSection post={p} />
+      <WhenSection post={p} members={p.members} allowAvailabilityEdit />
       {p.type === 'recruiting' && (
         <div className="post-card__slots">
           <span>{`${p.memberCount}/${p.partySize}`}</span>
@@ -113,13 +145,13 @@ export function PostDetailPage() {
         </div>
       )}
       {p.note && <p>{p.note}</p>}
-      {closed && <div className="post-banner">This party has ended</div>}
+      {closed && <div className="post-banner">{finalized ? 'Recruitment is closed. Your party is scheduled.' : 'This party has ended'}</div>}
 
       {mutationError && <p role="alert">{friendlyError(mutationError)}</p>}
 
       {posterCanManage && (
         <div className="actions post-detail__actions">
-          {posterActive && (
+          {posterRecruiting && (
             <Link className="btn btn--secondary" to={`/posts/${p.id}/edit`}>
               Edit
             </Link>
@@ -144,14 +176,14 @@ export function PostDetailPage() {
               Close
             </button>
           )}
-          {p.canRenew && (
-            <button
-              type="button"
-              className="btn btn--secondary"
-              disabled={renew.isPending}
-              onClick={() => run('renew', () => renew.mutate())}
-            >
-              Renew
+          {posterRecruiting && p.status === 'open' && <DiscordAnnouncementButton
+            availableAt={p.discordAnnouncementAvailableAt ?? new Date(new Date(p.createdAt).getTime() + 86_400_000).toISOString()}
+            pending={announce.isPending}
+            onClick={() => run('announce', () => announce.mutate())}
+          />}
+          {closed && (
+            <button type="button" className="btn btn--secondary" disabled={reopen.isPending} onClick={() => run('reopen', () => reopen.mutate())}>
+              {reopen.isPending ? 'Reopening…' : 'Reopen'}
             </button>
           )}
           <button
@@ -163,6 +195,22 @@ export function PostDetailPage() {
             Delete
           </button>
         </div>
+      )}
+      {announce.isSuccess && <p role="status" className="when-section__caption">Discord notification queued.</p>}
+      {posterCanManage && closed && <p className="when-section__caption">Reopening keeps the lineup, clears the final time and weekly reminders, and opens recruitment for seven days.{p.type === 'recruiting' && p.partySize !== null && p.memberCount >= p.partySize ? ' The party is full; remove a member to show it on the board.' : ''}</p>}
+
+      {!closed && !p.deleted && (
+        <section className="post-expiry" aria-labelledby="post-expiry-title">
+          <div>
+            <h2 id="post-expiry-title">Post expiry</h2>
+            <p>Automatically closes <time dateTime={p.expiresAt}>{formatWhen(p.expiresAt)}</time></p>
+          </div>
+          {p.canRenew && (
+            <button type="button" className="btn btn--secondary" disabled={renew.isPending} onClick={() => run('renew', () => renew.mutate())}>
+              Renew for 7 days
+            </button>
+          )}
+        </section>
       )}
 
       {finalizing && <FinalizeTimeDialog post={p} onClose={closeFinalize} />}
@@ -176,11 +224,11 @@ export function PostDetailPage() {
             ? (memberId) => run('remove', () => remove.mutate(memberId))
             : undefined
         }
-        onLeave={!p.isPoster && !p.deleted && !closed ? onLeave : undefined}
+        onLeave={!p.isPoster && !p.deleted && (!closed || finalized) ? onLeave : undefined}
         busy={remove.isPending}
       />
 
-      {posterActive && (
+      {posterRecruiting && (
         <RequestList
           title="Applicants"
           requests={p.incomingRequests}
@@ -208,7 +256,7 @@ export function PostDetailPage() {
           )}
         />
       )}
-      {posterActive && (
+      {posterRecruiting && (
         <RequestList
           title="Invites sent"
           requests={p.sentInvites}

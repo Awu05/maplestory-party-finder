@@ -9,6 +9,7 @@ import { EventDispatcher } from './notifications/dispatcher.js';
 import { HttpWebhookSender } from './discord/sender.js';
 import { WebhookWorker } from './discord/outbox.js';
 import { DailySyncJob } from './jobs/dailySync.js';
+import { WeeklyReminderJob } from './jobs/weeklyReminders.js';
 import { LocalDiskStorage } from './storage/storage.js';
 
 const config = loadConfig(process.env);
@@ -40,12 +41,14 @@ await app.listen({ port: config.port, host: '0.0.0.0' });
 const log = { error: (obj: object, msg: string) => app.log.error(obj, msg) };
 const worker = new WebhookWorker({ prisma, sender: webhookSender, log });
 const job = new DailySyncJob({ prisma, nexon, log });
+const weeklyReminders = new WeeklyReminderJob({ prisma, storage, webOrigin: config.webOrigin, log });
 if (config.jobsEnabled) {
   worker.start(5_000);
   job.start(3_600_000);
-  app.log.info('Webhook worker and daily sync job started');
+  weeklyReminders.start();
+  app.log.info('Webhook worker, daily sync and weekly reminder jobs started');
 } else {
-  app.log.info('JOBS_ENABLED is false: webhook worker and daily sync job not started');
+  app.log.info('JOBS_ENABLED is false: background jobs not started');
 }
 
 let shuttingDown = false;
@@ -56,7 +59,7 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
   let code = 0;
   try {
     // Both stop quickly: each finishes only its in-flight unit of work, so Docker's 10s grace holds.
-    await Promise.all([job.stop(), worker.stop()]);
+    await Promise.all([job.stop(), weeklyReminders.stop(), worker.stop()]);
   } catch (err) {
     code = 1;
     app.log.error({ err }, 'Error stopping background jobs');

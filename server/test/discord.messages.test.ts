@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PostSummaryDTO } from '@pf/shared';
 import {
-  bossLabel, buildAcceptPing, buildNewPostMessage, buildRequestPing, buildTestMessage, buildTimeSetPing, discordTime, neutralize,
+  bossLabel, buildAcceptPing, buildNewPostMessage, buildPartyThread, buildRequestPing, buildTestMessage, buildTimeSetPing, discordTime, neutralize,
 } from '../src/discord/messages';
 
 const ZW = '​';
@@ -31,6 +31,18 @@ const fields = (p: ReturnType<typeof buildNewPostMessage>) =>
   Object.fromEntries((p.embeds![0] as any).fields.map((f: any) => [f.name, f.value]));
 
 describe('helpers', () => {
+  it('builds a safe, concise finalized party thread with time and link', () => {
+    const post = makePost({ bosses: [{ bossDifficultyId: 1, bossName: '@everyone', difficulty: 'Hard' }] });
+    const thread = buildPartyThread(post, ORIGIN, [{ ign: 'Alice', discordId: '123456789012345678' }, { ign: '@everyone', discordId: '234567890123456789' }, { ign: 'Invalid', discordId: 'bad-id' }]);
+    expect(thread.name.length).toBeLessThanOrEqual(100);
+    expect(thread.message.content).toContain('<t:1762804800:F>');
+    expect(thread.message.content).toContain(`${ORIGIN}/posts/p1`);
+    expect(thread.message.content).not.toContain('@everyone');
+    expect(thread.message.content).toContain('Alice: <@123456789012345678> (`123456789012345678`)');
+    expect(thread.message.content).toContain('<@234567890123456789>');
+    expect(thread.message.content).not.toContain('bad-id');
+    expect(thread.message.allowed_mentions).toEqual({ parse: [] });
+  });
   it('bossLabel', () => expect(bossLabel(makePost().bosses[0])).toBe('Hard Lucid'));
   it('discordTime', () => {
     expect(discordTime('2025-11-10T20:00:00Z')).toBe('<t:1762804800:F> (<t:1762804800:R>)');

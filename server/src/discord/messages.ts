@@ -6,6 +6,8 @@ export type WebhookPayload = {
   embeds?: object[];
   allowed_mentions: { parse: string[]; users?: string[]; roles?: string[] };
   username?: string;
+  thread_name?: string;
+  _weekly?: { nextAt: string; anchorAt: string; timeZone: string };
 };
 
 const ZWSP = '​';
@@ -116,4 +118,31 @@ export function buildTimeSetPing(args: {
 
 export function buildTestMessage(guildName: string): WebhookPayload {
   return { content: `✅ Party Finder is connected to ${neutralize(guildName)}.`, allowed_mentions: { parse: [] } };
+}
+
+/** Thread title and opening message for a finalized party. */
+export function buildPartyThread(post: PostSummaryDTO, webOrigin: string, members: { ign: string; discordId: string }[] = []): { name: string; message: WebhookPayload } {
+  const bosses = clip(neutralize(bossesLabel(post)), 700);
+  const poster = clip(neutralize(post.poster.snapshot.ign), 100);
+  const roster = members.filter((member) => /^[1-9]\d{16,19}$/.test(member.discordId))
+    .map((member) => `• ${clip(neutralize(member.ign), 50)}: <@${member.discordId}> (\`${member.discordId}\`)`).join('\n');
+  return {
+    name: clip(`${bosses} — ${poster}`, 100),
+    message: {
+      content: `**${bosses}**\nHosted by ${poster} · ${clip(neutralize(post.world.name), 100)}\nTime: ${discordTime(post.scheduledAt)}\nMembers:\n${roster || 'No Discord IDs available'}\nParty details: ${postLink(post, webOrigin)}`,
+      allowed_mentions: { parse: [] },
+    },
+  };
+}
+
+export function buildWeeklyReminder(args: {
+  recipientDiscordIds: string[];
+  post: PostSummaryDTO;
+  webOrigin: string;
+}): WebhookPayload {
+  const users = [...new Set(args.recipientDiscordIds)];
+  return {
+    content: `${users.map((id) => `<@${id}>`).join(' ')} Weekly party reminder: ${neutralize(bossesLabel(args.post))} is starting now (${discordTime(args.post.scheduledAt)}) → ${postLink(args.post, args.webOrigin)}`,
+    allowed_mentions: { parse: [], users },
+  };
 }

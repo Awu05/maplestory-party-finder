@@ -75,9 +75,9 @@ describe('GET /api/posts', () => {
 
   it('flexible=1 returns only unfinalized posts, with or without free times', async () => {
     const finalized = await mk({ scheduledAt: new Date(Date.now() + 2 * HOUR) });
-    const finalizedWithGrid = await mk({ scheduledAt: new Date(Date.now() + 2 * HOUR), freeTimes: [68], freeTimesZone: 'America/New_York' });
+    const finalizedWithGrid = await mk({ scheduledAt: new Date(Date.now() + 2 * HOUR), freeTimes: [136, 137], freeTimesZone: 'America/New_York' });
     const open = await mk({ scheduledAt: null });
-    const grid = await mk({ scheduledAt: null, freeTimes: [68], freeTimesZone: 'America/New_York' });
+    const grid = await mk({ scheduledAt: null, freeTimes: [136, 137], freeTimesZone: 'America/New_York' });
     const ids = (await list('?flexible=1')).map((p) => p.id).sort();
     expect(ids).toEqual([open.id, grid.id].sort());
     expect(ids).not.toContain(finalized.id);
@@ -93,12 +93,28 @@ describe('GET /api/posts', () => {
   });
 
   describe('freeAt', () => {
-    // Tue 2026-11-10 20:00 in New York (EST, UTC-5) is hour-of-week 2 * 24 + 20 = 68.
+    it('requires the whole selected half-hour when requested across quarter-hour zones', async () => {
+      const first = await mk({ freeTimes: [136], freeTimesZone: 'UTC' });
+      const both = await mk({ freeTimes: [136, 137], freeTimesZone: 'UTC' });
+      const second = await mk({ freeTimes: [137], freeTimesZone: 'UTC' });
+      const result = (await list('?freeAt=2026-11-10T20:15:00Z&freeFor=30')).map((p) => p.id);
+      expect(result).toContain(both.id);
+      expect(result).not.toContain(first.id);
+      expect(result).not.toContain(second.id);
+    });
+    // Tue 2026-11-10 20:00–21:00 in New York occupies half-hour slots 136 and 137.
     const ny = (over: Parameters<typeof makePost>[0] = {}) =>
-      mk({ scheduledAt: null, freeTimes: [68], freeTimesZone: 'America/New_York', ...over });
+      mk({ scheduledAt: null, freeTimes: [136, 137], freeTimesZone: 'America/New_York', ...over });
     const ids = async (qs: string) => (await list(qs)).map((p) => p.id).sort();
 
-    it("matches the instant's hour-of-week in the post's own zone", async () => {
+    it('distinguishes the first and second half of an hour', async () => {
+      const first = await ny({ freeTimes: [136] });
+      const second = await ny({ freeTimes: [137] });
+      expect(await ids('?freeAt=2026-11-11T01:29:00Z')).toEqual([first.id]);
+      expect(await ids('?freeAt=2026-11-11T01:30:00Z')).toEqual([second.id]);
+    });
+
+    it("matches the instant's half-hour slot in the post's own zone", async () => {
       const p = await ny();
       // Tue 5pm in Los Angeles = Tue 8pm in New York.
       expect(await ids('?freeAt=2026-11-11T01:00:00Z')).toEqual([p.id]);
@@ -108,7 +124,7 @@ describe('GET /api/posts', () => {
 
     it("uses each post's zone: the same wall hour in another zone matches a different instant", async () => {
       const nyPost = await ny();
-      const kolkata = await mk({ scheduledAt: null, freeTimes: [68], freeTimesZone: 'Asia/Kolkata' });
+      const kolkata = await mk({ scheduledAt: null, freeTimes: [136, 137], freeTimesZone: 'Asia/Kolkata' });
       // Tue 20:00 in Kolkata (UTC+5:30) = 14:30Z; any minute in that hour matches.
       expect(await ids('?freeAt=2026-11-10T14:30:00Z')).toEqual([kolkata.id]);
       expect(await ids('?freeAt=2026-11-10T15:29:00Z')).toEqual([kolkata.id]);
@@ -116,11 +132,11 @@ describe('GET /api/posts', () => {
       expect(await ids('?freeAt=2026-11-11T01:59:59Z')).toEqual([nyPost.id]);
     });
 
-    it('a NY post free at 68 is found by the instant a Kolkata viewer sends for cell 78 (the last minute of that hour)', async () => {
+    it('matches the instant a Kolkata viewer sends for a corresponding NY half-hour', async () => {
       const p = await ny();
-      // Kolkata cell 78 is Wed 6a IST; the web sends its last minute, 6:59 IST = 01:29Z = Tue 8:29pm EST.
+      // Wed 6:59 IST = 01:29Z = Tue 8:29pm EST.
       expect(await ids('?freeAt=2026-11-11T01:29:00.000Z')).toEqual([p.id]);
-      // The start of that cell (6:00 IST = Tue 7:30pm EST) would land in poster hour 67 instead.
+      // Wed 6:00 IST = Tue 7:30pm EST, before this availability.
       expect(await ids('?freeAt=2026-11-11T00:30:00.000Z')).toEqual([]);
     });
 
@@ -136,7 +152,7 @@ describe('GET /api/posts', () => {
       await mk({ scheduledAt: null });
       await mk({ scheduledAt: null, freeTimes: [], freeTimesZone: null });
       // Stored inconsistently (times without a zone): still never matches.
-      await mk({ scheduledAt: null, freeTimes: [68], freeTimesZone: null });
+      await mk({ scheduledAt: null, freeTimes: [136, 137], freeTimesZone: null });
       expect(await ids('?freeAt=2026-11-11T01:00:00Z')).toEqual([p.id]);
     });
 
@@ -154,7 +170,7 @@ describe('GET /api/posts', () => {
   });
 
   it('the Free-at prefilter only returns live open posts', async () => {
-    const free = { scheduledAt: null, freeTimes: [68], freeTimesZone: 'America/New_York' };
+    const free = { scheduledAt: null, freeTimes: [136, 137], freeTimesZone: 'America/New_York' };
     const live = await mk(free);
     await mk({ ...free, status: 'closed' });
     await mk({ ...free, status: 'full' });

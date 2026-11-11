@@ -64,21 +64,22 @@ describe('catalog', () => {
       method: 'POST',
       url: '/api/admin/guilds',
       headers: { cookie: admin },
-      payload: { name: 'Moonlight', webhookUrl: WEBHOOK, worldIds: [kronos.id] },
+      payload: { name: 'Moonlight', webhookUrl: WEBHOOK, partyForumWebhookUrl: WEBHOOK, worldIds: [kronos.id] },
     });
     expect(res.statusCode).toBe(201);
-    expect(res.json()).toMatchObject({ name: 'Moonlight', worldIds: [kronos.id], webhookUrl: WEBHOOK, active: true });
+    expect(res.json()).toMatchObject({ name: 'Moonlight', worldIds: [kronos.id], webhookUrl: WEBHOOK, partyForumWebhookUrl: WEBHOOK, active: true });
   });
 
   it('public GET /api/guilds never exposes webhook urls', async () => {
     const w = await makeWorld();
-    await makeGuild({ worldIds: [w.id], webhookUrl: WEBHOOK });
+    await makeGuild({ worldIds: [w.id], webhookUrl: WEBHOOK, partyForumWebhookUrl: WEBHOOK });
     for (const headers of [{}, { cookie: user }]) {
       const res = await app.inject({ method: 'GET', url: '/api/guilds', headers });
       expect(res.statusCode).toBe(200);
       expect(res.json()).toHaveLength(1);
       expect(JSON.stringify(res.json())).not.toContain('webhooks');
       expect(res.json()[0]).not.toHaveProperty('webhookUrl');
+      expect(res.json()[0]).not.toHaveProperty('partyForumWebhookUrl');
     }
   });
 
@@ -91,6 +92,8 @@ describe('catalog', () => {
     });
     expect(res.statusCode).toBe(400);
     expect(res.json().error.code).toBe('VALIDATION');
+    const forum = await app.inject({ method: 'POST', url: '/api/admin/guilds', headers: { cookie: admin }, payload: { name: 'Bad forum', partyForumWebhookUrl: 'https://evil.com/api/webhooks/1/a', worldIds: [] } });
+    expect(forum.statusCode).toBe(400);
   });
 
   it('duplicate guild name -> 409 and unknown world -> 400', async () => {

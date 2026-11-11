@@ -36,7 +36,7 @@ const poster: PartyMemberDTO = {
   joinedAt: '2026-11-09T00:00:00Z',
   character,
   snapshot: { ign: 'Lily', jobName: 'Bishop', level: 280, imageUrl: 'http://img/lily.png', worldName: 'Kronos', guildName: 'Maple Guild' },
-  isMine: false,
+  freeTimes: [], freeTimesZone: null, isMine: false,
 };
 
 const post: PostSummaryDTO = {
@@ -48,7 +48,7 @@ const post: PostSummaryDTO = {
   bosses: [{ bossDifficultyId: 7, bossName: 'Lucid', difficulty: 'Hard' }],
   scheduledAt: null,
   freeTimes: [],
-  freeTimesZone: null,
+  weeklyTimeZone: null, freeTimesZone: null,
   expiresAt: '2026-11-16T00:00:00Z',
   createdAt: '2026-11-09T00:00:00Z',
   partySize: 4,
@@ -128,12 +128,12 @@ describe('BoardPage', () => {
     expect(within(group).getAllByRole('radio').map((r) => r.textContent)).toEqual(['Any', 'Next 24h', 'This week', 'Not set']);
   });
 
-  // The last minute of the viewer's Tue 8p hour (Tue 8:59pm EST).
-  const FREE_AT = '/api/posts?freeAt=2026-11-11T01%3A59%3A00.000Z';
+  // The start of the viewer's Tue 8p half hour (Tue 8pm EST).
+  const FREE_AT = '/api/posts?freeAt=2026-11-11T01%3A00%3A00.000Z&freeFor=30';
   const pickTue8p = async () => {
-    fireEvent.click(screen.getByRole('button', { name: /^Free at/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Day/ }));
     fireEvent.click(await screen.findByRole('option', { name: 'Tue' }));
-    fireEvent.click(screen.getByRole('button', { name: /^Hour/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Time/ }));
     fireEvent.click(await screen.findByRole('option', { name: '8p' }));
   };
 
@@ -143,30 +143,50 @@ describe('BoardPage', () => {
     const fetchMock = mockApi({ ...base, '/api/auth/me': null, '/api/posts': [], [FREE_AT]: [post] });
     renderWithProviders(<App />);
     await screen.findByText('No open posts match. Be the first to post!');
-    expect(screen.getByRole('button', { name: /^Hour/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /^Time/ })).toBeDisabled();
     await pickTue8p();
     await waitFor(() => expect(postsCalls(fetchMock)).toContain(FREE_AT));
   });
 
-  it('a Kolkata viewer sends the last minute of their chosen hour, the instant a NY post free at that cell matches', async () => {
+  it('uses the saved 24-hour format for the time filter', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-10T15:00:00Z'));
+    window.localStorage.setItem('partyFinder.timeFormat', '24h');
+    try {
+      const freeAt = '/api/posts?freeAt=2026-11-11T01%3A30%3A00.000Z&freeFor=30';
+      const fetchMock = mockApi({ ...base, '/api/auth/me': null, '/api/posts': [], [freeAt]: [post] });
+      renderWithProviders(<App />);
+      await screen.findByText('No open posts match. Be the first to post!');
+      fireEvent.click(screen.getByRole('button', { name: /^Day/ }));
+      fireEvent.click(await screen.findByRole('option', { name: 'Tue' }));
+      fireEvent.click(screen.getByRole('button', { name: /^Time/ }));
+      fireEvent.click(await screen.findByRole('option', { name: '20:30' }));
+      await waitFor(() => expect(postsCalls(fetchMock)).toContain(freeAt));
+      expect(screen.getByRole('button', { name: /^Time/ })).toHaveTextContent('20:30');
+    } finally {
+      window.localStorage.removeItem('partyFinder.timeFormat');
+    }
+  });
+
+  it('a Kolkata viewer sends the start of their chosen half-hour', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-11-10T15:00:00Z'));
     tz.zone = 'Asia/Kolkata';
-    // Wed 6a IST is hour-of-week 78; its last minute, 6:59 IST, is 01:29Z (Tue 8:29pm in New York).
-    expect(boardQueryString({ freeAt: 78 })).toBe('freeAt=2026-11-11T01%3A29%3A00.000Z');
+    // Wed 6:30a IST is slot 157, or Tue 8pm in New York.
+    expect(boardQueryString({ freeAt: 157 })).toBe('freeAt=2026-11-11T01%3A00%3A00.000Z&freeFor=30');
   });
 
-  it('a day without an hour reads "<Day> · pick an hour" and sends no freeAt', async () => {
+  it('shows only the selected day and waits for a time before filtering', async () => {
     const fetchMock = mockApi({ ...base, '/api/auth/me': null, '/api/posts': [] });
     renderWithProviders(<App />);
     await screen.findByText('No open posts match. Be the first to post!');
-    fireEvent.click(screen.getByRole('button', { name: /^Free at/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Day/ }));
     fireEvent.click(await screen.findByRole('option', { name: 'Tue' }));
-    expect(screen.getByRole('button', { name: /^Free at/ })).toHaveTextContent('Free at: Tue · pick an hour');
+    expect(screen.getByRole('button', { name: 'Day: Tue' })).toBeInTheDocument();
     expect(postsCalls(fetchMock).every((u) => !u.includes('freeAt'))).toBe(true);
-    fireEvent.click(screen.getByRole('button', { name: /^Hour/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Time/ }));
     fireEvent.click(await screen.findByRole('option', { name: '8p' }));
-    expect(screen.getByRole('button', { name: /^Free at/ })).not.toHaveTextContent('pick an hour');
+    expect(screen.getByRole('button', { name: /^Day/ })).not.toHaveTextContent('pick a time');
   });
 
   it('the board query key holds the freeAt instant, so a passed occurrence is never served from cache', async () => {
@@ -179,7 +199,7 @@ describe('BoardPage', () => {
     await pickTue8p();
     await screen.findByText('2 / 4');
     const keys = client.getQueryCache().findAll({ queryKey: ['posts', 'board'] }).map((q) => q.queryKey);
-    expect(keys).toContainEqual(['posts', 'board', expect.objectContaining({ freeAt: 68 }), '2026-11-11T01:59:00.000Z']);
+    expect(keys).toContainEqual(['posts', 'board', expect.objectContaining({ freeAt: 136 }), '2026-11-11T01:00:00.000Z']);
   });
 
   it('Any time clears freeAt', async () => {
@@ -190,10 +210,10 @@ describe('BoardPage', () => {
     await screen.findByText('No open posts match. Be the first to post!');
     await pickTue8p();
     await screen.findByText('2 / 4');
-    fireEvent.click(screen.getByRole('button', { name: /^Free at/ }));
-    fireEvent.click(await screen.findByRole('option', { name: 'Any time' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Day/ }));
+    fireEvent.click(await screen.findByRole('option', { name: 'Any day' }));
     await waitFor(() => expect(postsCalls(fetchMock).at(-1)).toBe('/api/posts'));
-    expect(screen.getByRole('button', { name: /^Hour/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /^Time/ })).toBeDisabled();
   });
 
   it('Free at works with the keyboard only', async () => {
@@ -203,21 +223,21 @@ describe('BoardPage', () => {
     renderWithProviders(<App />);
     await screen.findByText('No open posts match. Be the first to post!');
     const key = (el: Element, k: string) => fireEvent.keyDown(el, { key: k });
-    const day = screen.getByRole('button', { name: /^Free at/ });
+    const day = screen.getByRole('button', { name: /^Day/ });
     day.focus();
     key(day, 'Enter');
-    const dayList = await screen.findByRole('listbox', { name: 'Free at' });
+    const dayList = await screen.findByRole('listbox', { name: 'Day' });
     expect(dayList).toHaveFocus();
     // Any time, Sun, Mon, Tue
     for (let i = 0; i < 3; i++) key(dayList, 'ArrowDown');
     key(dayList, 'Enter');
-    const hour = screen.getByRole('button', { name: /^Hour/ });
+    const hour = screen.getByRole('button', { name: /^Time/ });
     expect(hour).toBeEnabled();
     hour.focus();
     key(hour, 'ArrowDown');
-    const hourList = await screen.findByRole('listbox', { name: 'Hour' });
-    // Any hour, 12a ... 8p is index 1 + 20
-    for (let i = 0; i < 21; i++) key(hourList, 'ArrowDown');
+    const hourList = await screen.findByRole('listbox', { name: 'Time' });
+    // Any hour, then 40 half-hour slots before 8p.
+    for (let i = 0; i < 41; i++) key(hourList, 'ArrowDown');
     key(hourList, 'Enter');
     await waitFor(() => expect(postsCalls(fetchMock)).toContain(FREE_AT));
   });

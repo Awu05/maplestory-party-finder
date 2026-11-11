@@ -29,6 +29,28 @@ const open = (over: Parameters<typeof makePost>[0] = {}) =>
 const iso = (offsetMs: number) => new Date(Date.now() + offsetMs).toISOString();
 
 describe('PUT /api/posts/:id/final-time', () => {
+  it('saves a weekly time zone and can turn recurrence off', async () => {
+    const p = await open();
+    const at = iso(2 * DAY);
+    const res = await app.inject({ method: 'PUT', url: `/api/posts/${p.id}/final-time`, headers: { cookie }, payload: {
+      scheduledAt: at, repeatWeekly: true, timeZone: 'America/New_York',
+    } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().weeklyTimeZone).toBe('America/New_York');
+    const once = await finalize(p.id, at);
+    expect(once.json().weeklyTimeZone).toBeNull();
+  });
+
+  it('requires a valid time zone for weekly schedules', async () => {
+    const p = await open();
+    for (const timeZone of [undefined, 'Not/AZone']) {
+      const res = await app.inject({ method: 'PUT', url: `/api/posts/${p.id}/final-time`, headers: { cookie }, payload: {
+        scheduledAt: iso(DAY), repeatWeekly: true, timeZone,
+      } });
+      expect(res.statusCode).toBe(400);
+    }
+  });
+
   it('poster finalizes 2 days ahead: sets scheduledAt and expiresAt, emits post.finalized', async () => {
     const p = await open();
     const at = iso(2 * DAY);
@@ -37,6 +59,10 @@ describe('PUT /api/posts/:id/final-time', () => {
     expect(res.json().scheduledAt).toBe(at);
     const row = await prisma.post.findUniqueOrThrow({ where: { id: p.id } });
     expect(row.scheduledAt!.toISOString()).toBe(at);
+    expect(row).toMatchObject({ status: 'closed', closedReason: 'finalized' });
+    expect(res.json()).toMatchObject({ status: 'closed', recruitmentClosed: true });
+    expect((await app.inject({ method: 'GET', url: '/api/posts' })).json().map((post: { id: string }) => post.id)).not.toContain(p.id);
+    expect((await app.inject({ method: 'GET', url: `/api/posts/${p.id}`, headers: { cookie } })).statusCode).toBe(200);
     expect(row.expiresAt.getTime()).toBe(Date.parse(at) + SCHEDULED_GRACE_MS);
     expect(events.events).toContainEqual({ type: 'post.finalized', postId: p.id, actorUserId: userId });
   });
@@ -98,11 +124,41 @@ describe('PUT /api/posts/:id/final-time', () => {
     expect(res.json().error.code).toBe('VALIDATION');
   });
 
-  it('a full post stays full', async () => {
+  it('finalizing a full post closes recruitment', async () => {
     const p = await open({ partySize: 2, status: 'full' });
     const c = await makeCharacter();
     await addMember(p.id, c.id);
     expect((await finalize(p.id, iso(2 * DAY))).statusCode).toBe(200);
-    expect((await prisma.post.findUniqueOrThrow({ where: { id: p.id } })).status).toBe('full');
+    expect(await prisma.post.findUniqueOrThrow({ where: { id: p.id } })).toMatchObject({ status: 'closed', closedReason: 'finalized' });
+  });
+
+  it('declines pending applicants and invites when recruitment closes', async () => {
+    const p = await open();
+    const applicant = await makeCharacter({ worldId: p.worldId, guildId: p.guildId });
+    const request = await prisma.request.create({ data: { kind: 'join_request', postId: p.id, characterId: applicant.id, createdByUserId: applicant.ownerId } });
+    expect((await finalize(p.id, iso(DAY))).statusCode).toBe(200);
+    expect((await prisma.request.findUniqueOrThrow({ where: { id: request.id } })).status).toBe('declined');
+    expect(events.events).toContainEqual({ type: 'request.declined', requestId: request.id, auto: true, actorUserId: userId });
+  });
+
+  it('allows the owner to end a finalized recurring party', async () => {
+    const p = await open();
+    await app.inject({ method: 'PUT', url: `/api/posts/${p.id}/final-time`, headers: { cookie }, payload: { scheduledAt: iso(DAY), repeatWeekly: true, timeZone: 'UTC' } });
+    const response = await app.inject({ method: 'POST', url: `/api/posts/${p.id}/close`, headers: { cookie } });
+    expect(response.statusCode).toBe(200);
+    expect(await prisma.post.findUniqueOrThrow({ where: { id: p.id } })).toMatchObject({ status: 'closed', closedReason: 'manual' });
+  });
+
+  it('allows a member to leave without reopening recruitment', async () => {
+    const p = await open();
+    const memberCookie = await loginAs(app, 'member-1', 'member');
+    const user = await prisma.user.findUniqueOrThrow({ where: { discordId: 'member-1' } });
+    const character = await makeCharacter({ ownerId: user.id, worldId: p.worldId, guildId: p.guildId });
+    const member = await addMember(p.id, character.id);
+    await finalize(p.id, iso(DAY));
+    const result = await app.inject({ method: 'DELETE', url: `/api/posts/${p.id}/members/${member.id}`, headers: { cookie: memberCookie } });
+    expect(result.statusCode).toBe(200);
+    expect(await prisma.post.findUniqueOrThrow({ where: { id: p.id } })).toMatchObject({ status: 'closed', closedReason: 'finalized' });
+    expect((await app.inject({ method: 'GET', url: '/api/posts' })).json().map((post: { id: string }) => post.id)).not.toContain(p.id);
   });
 });

@@ -54,7 +54,7 @@ afterAll(async () => {
 });
 
 const call = (method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', url: string, cookie: string, body?: unknown) =>
-  app.inject({ method, url, headers: { cookie }, ...(body === undefined ? {} : { payload: body as object }) });
+  app.inject({ method, url, headers: { cookie, 'x-availability-version': '2' }, ...(body === undefined ? {} : { payload: body as object }) });
 const recruiting = (partySize = 4) => makePost({ posterCharacterId: alice.id, partySize, bossDifficultyIds: [lucid] });
 const join = async (postId: string, characterId: string, cookie: string): Promise<string> => {
   const res = await call('POST', `/api/posts/${postId}/requests`, cookie, { characterId });

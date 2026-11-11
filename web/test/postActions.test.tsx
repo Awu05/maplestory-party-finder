@@ -42,7 +42,7 @@ const member = (
     worldName: 'Kronos',
     guildName: 'Maple Guild',
   },
-  isMine: false,
+  freeTimes: [], freeTimesZone: null, isMine: false,
   ...over,
 });
 
@@ -57,7 +57,7 @@ const post = (over: Partial<PostDetailDTO> = {}): PostDetailDTO => {
     bosses: [{ bossDifficultyId: 7, bossName: 'Lucid', difficulty: 'Hard' }],
     scheduledAt: '2026-12-01T20:00:00Z',
     freeTimes: [],
-    freeTimesZone: null,
+    weeklyTimeZone: null, freeTimesZone: null,
     expiresAt: '2026-12-02T00:00:00Z',
     createdAt: '2026-11-09T00:00:00Z',
     partySize: 4,

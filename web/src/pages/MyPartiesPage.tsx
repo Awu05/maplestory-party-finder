@@ -29,7 +29,7 @@ function PartyItem({ party, tiers }: { party: PostDetailDTO; tiers: RarityTierDT
   return (
     <li className="post-card">
       <div className="post-card__head">
-        <StatusPill status={party.status} deleted={party.deleted} />
+        <StatusPill status={party.status} deleted={party.deleted} recruitmentClosed={party.recruitmentClosed} />
         <span className="post-card__when">{whenLabel(party)}</span>
       </div>
       <ul className="post-card__bosses">
@@ -50,7 +50,7 @@ function PartiesTab({ tiers }: { tiers: RarityTierDTO[] }) {
   if (parties.isLoading) return <p>Loading…</p>;
   if (parties.error) return <p role="alert">{friendlyError(parties.error)}</p>;
   const all = parties.data ?? [];
-  const isUpcoming = (p: PostDetailDTO) => !p.deleted && (p.status === 'open' || p.status === 'full');
+  const isUpcoming = (p: PostDetailDTO) => !p.deleted && (p.status === 'open' || p.status === 'full' || !!p.recruitmentClosed);
   const upcoming = all.filter(isUpcoming);
   const past = all.filter((p) => !isUpcoming(p));
   return (
@@ -91,7 +91,7 @@ function PostsTab({ tiers }: { tiers: RarityTierDTO[] }) {
     <ul className="post-list-plain my-parties__list">
       {list.map((p) => (
         <li key={p.id}>
-          <StatusPill status={p.status} deleted={p.deleted} />
+          <StatusPill status={p.status} deleted={p.deleted} recruitmentClosed={p.recruitmentClosed} />
           <PostCard post={p} tiers={tiers} />
         </li>
       ))}

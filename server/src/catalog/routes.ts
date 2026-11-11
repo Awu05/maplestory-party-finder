@@ -26,6 +26,7 @@ const guildCreate = z.object({
   name: z.string().trim().min(1),
   iconUrl: z.string().min(1).nullish(),
   webhookUrl: webhookUrl.nullish(),
+  partyForumWebhookUrl: webhookUrl.nullish(),
   bossRoleIds: bossRoleIds.optional(),
   worldIds,
 });
@@ -33,6 +34,7 @@ const guildPatch = z.object({
   name: z.string().trim().min(1).optional(),
   iconUrl: z.string().min(1).nullish(),
   webhookUrl: webhookUrl.nullish(),
+  partyForumWebhookUrl: webhookUrl.nullish(),
   bossRoleIds: bossRoleIds.optional(),
   active: z.boolean().optional(),
   worldIds: worldIds.optional(),
@@ -98,7 +100,7 @@ function toGuildDTO(g: GuildRow): GuildDTO {
 }
 
 function toAdminGuildDTO(g: GuildRow): AdminGuildDTO {
-  return { ...toGuildDTO(g), webhookUrl: g.webhookUrl, bossRoleIds: g.bossRoleIds as Record<string, string> };
+  return { ...toGuildDTO(g), webhookUrl: g.webhookUrl, partyForumWebhookUrl: g.partyForumWebhookUrl, bossRoleIds: g.bossRoleIds as Record<string, string> };
 }
 
 function toWorldDTO(w: { id: number; nexonWorldId: number; name: string; worldType: string; active: boolean }): WorldDTO {
@@ -204,6 +206,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
             name: body.name,
             iconUrl: body.iconUrl ?? null,
             webhookUrl: body.webhookUrl ?? null,
+            partyForumWebhookUrl: body.partyForumWebhookUrl ?? null,
             bossRoleIds: body.bossRoleIds ?? {},
             worlds: { create: [...new Set(body.worldIds)].map((worldId) => ({ worldId })) },
           },
@@ -236,6 +239,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
               name: body.name,
               iconUrl: body.iconUrl,
               webhookUrl: body.webhookUrl,
+              partyForumWebhookUrl: body.partyForumWebhookUrl,
               bossRoleIds: body.bossRoleIds,
               active: body.active,
             },

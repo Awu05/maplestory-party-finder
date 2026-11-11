@@ -29,7 +29,7 @@ afterAll(async () => {
 });
 
 const post = (payload: unknown, c: string | null = cookie) =>
-  app.inject({ method: 'POST', url: '/api/posts', headers: c ? { cookie: c } : {}, payload: payload as any });
+  app.inject({ method: 'POST', url: '/api/posts', headers: { ...(c ? { cookie: c } : {}), 'x-availability-version': '2' }, payload: payload as any });
 const body = (over: Record<string, unknown> = {}) => ({
   type: 'recruiting',
   characterId: lilyId,
@@ -40,6 +40,11 @@ const body = (over: Record<string, unknown> = {}) => ({
 });
 
 describe('POST /api/posts', () => {
+  it('rejects availability from a stale browser tab', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/posts', headers: { cookie }, payload: body({ freeTimes: [68], freeTimesZone: 'UTC' }) });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe('STALE_CLIENT');
+  });
   it('recruiting create -> 201', async () => {
     const res = await post(body());
     expect(res.statusCode).toBe(201);
@@ -103,10 +108,10 @@ describe('POST /api/posts', () => {
     ['recruiting without party size', { partySize: undefined }],
     ['lfp with partySize', { type: 'lfp' }],
     ['lfp with minCp', { type: 'lfp', partySize: undefined, minCp: 5 }],
-    ['freeTimes [168]', { freeTimes: [168], freeTimesZone: 'America/New_York' }],
+    ['freeTimes [336]', { freeTimes: [336], freeTimesZone: 'America/New_York' }],
     ['freeTimes [-1]', { freeTimes: [-1], freeTimesZone: 'America/New_York' }],
     ['freeTimes [1.5]', { freeTimes: [1.5], freeTimesZone: 'America/New_York' }],
-    ['169 freeTimes entries', { freeTimes: Array.from({ length: 169 }, (_, i) => i % 168), freeTimesZone: 'America/New_York' }],
+    ['337 freeTimes entries', { freeTimes: Array.from({ length: 337 }, (_, i) => i % 336), freeTimesZone: 'America/New_York' }],
     ['freeTimes not an array', { freeTimes: 5, freeTimesZone: 'America/New_York' }],
     ['non-empty freeTimes with no zone', { freeTimes: [20] }],
     ['non-empty freeTimes with a null zone', { freeTimes: [20], freeTimesZone: null }],

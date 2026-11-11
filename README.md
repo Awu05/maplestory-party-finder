@@ -23,7 +23,7 @@ Copy `.env.example` to `.env` (root, used by Docker) or `server/.env` (dev).
 | `WEB_ORIGIN` | Public origin of the site (https enables secure cookies) |
 | `ADMIN_DISCORD_IDS` | Comma-separated Discord IDs granted admin |
 | `UPLOAD_DIR` | Where screenshots are stored |
-| `JOBS_ENABLED` | Run the webhook worker and daily sync in this process (default `true`; `false` or `0` disables, e.g. on a second instance) |
+| `JOBS_ENABLED` | Run the webhook worker, daily sync and weekly party reminders in this process (default `true`; `false` or `0` disables, e.g. on a second instance) |
 | `WEB_DIST` | Built web app dir; when set the server serves it (set automatically in the Docker image) |
 
 ## Discord channel setup
@@ -37,20 +37,25 @@ Guilds can post new parties and pings to a Discord channel through a webhook.
 5. Links in Discord messages are built from `WEB_ORIGIN`, so set it to the public URL of the web app.
 6. Admin -> Webhooks is the delivery health page (recent deliveries and failures); the Send test message button on Admin -> Guilds verifies a guild's webhook.
 7. To notify boss roles on new posts, edit the guild in Admin -> Guilds and expand **Boss role pings**. Enter each boss's Discord role ID (enable Developer Mode in Discord, then right-click the role and Copy Role ID). Enable **Allow anyone to @mention this role** in Discord. All difficulties share the boss's role; each role is pinged once per new post. Leave a boss blank to skip its ping. Configure each guild's own role IDs; requests and accepts keep their direct user pings.
+8. To create a discussion for finalized parties, create a separate Discord webhook whose channel is the parties **forum**, then paste its URL into **Party forum webhook URL** for the hosting guild. Each newly finalized party gets one forum post with the bosses, host, time, member Discord IDs and party link. Changing the time does not create another thread. Keep the regular notification webhook configured separately.
 
 ## Notifications & jobs
 
 - The in-app bell polls the server periodically for new notifications (join requests, invites, accepts, declines, removals from a party and members leaving); there is no push connection.
 - A background worker delivers queued webhook messages every 5 seconds. Failed deliveries are retried with increasing delays (30 s, 2 min, 10 min, 1 h) and given up on after 5 attempts; Discord rate limits are respected.
 - A daily sync refreshes every character from Nexon (skipping banned users' characters), oldest first, throttled. It checks hourly and runs when the last run was 24 hours ago or more, so the time of day drifts with the last run. It also prunes notifications older than 60 days and sent or failed deliveries older than 30 days.
-- Set `JOBS_ENABLED=false` to disable both jobs in a given instance.
+- **Weekly parties:** in Finalize time (or Change time), check **Repeat weekly** to remind everyone currently in the party, including the owner, in their guild's Discord channel at the weekly start. The selected local day and time are saved with your time zone and follow daylight-saving changes. The party's next run advances automatically; turn off Repeat weekly or close/delete the party to stop it. The scheduler checks every 30 seconds; reminders use the existing webhook queue. On restart, occurrences more than 15 minutes late are skipped rather than sent in a backlog.
+- Set `JOBS_ENABLED=false` to disable background jobs in a given instance.
 
 ## Posts & free times
 
-- **Making a post.** Pick the hours you're free on the weekly "When you're free" grid. Leave it empty if you're flexible.
-- **Time zones.** Each viewer sees the free hours in their own time zone. The poster's time zone is stored with the post, so daylight-saving changes don't shift the hours; the server's own time zone (e.g. a home server in EST) doesn't matter. Viewers in half-hour time zones see whole-hour cells (rounded down).
-- **Finalize time.** The poster of a Recruiting post sets the actual time with **Finalize time** (**Change time** once set) on the post page. Party members get an in-app notification and a Discord ping showing the time in their own zone. A post with no final time expires 7 days after it's posted or renewed; once finalized it expires based on the final time.
-- **Board filters.** When: Any / Next 24h / This week / Not set (Next 24h and This week match finalized times). Free at picks a day and hour to find posts whose poster is free then.
+- **Making a post.** Pick the times you're free in 30-minute increments on the weekly "When you're free" grid. Leave it empty if you're flexible. The grid's 12-hour/24-hour choice is remembered in your browser and also applies to the board's time filter.
+- **Notify Discord again.** On an open post, the creator can use **Notify Discord** once every 24 hours, starting 24 hours after creation. It sends the same world-scoped announcement and configured boss-role pings as a new post.
+- **Party availability.** Accepted members can use **Edit my times** on the post to add or change their own availability. The legend identifies each member's color; stripes and a number show overlap, and a white outline marks a full half hour when everyone is free. Focus a cell to read who is available, including partial overlaps. The post view refreshes periodically to show other members' updates.
+- **Time zones.** Availability is stored in each person's time zone and shown in the viewer's zone. Split cells show partial availability when zones differ by 15 or 45 minutes. Editing uses the saved zone when needed to avoid losing part of a selected time.
+- **Finalize time.** The poster sets the time with **Finalize time** on the post page. This closes recruitment, removes the post from the board, and declines pending requests and invites. The party remains available to its members, and the poster can change the time or end it. Members get an in-app notification and a Discord ping showing the time in their own zone. A post with no final time expires 7 days after it's posted or renewed; once finalized it expires based on the final time.
+- **Reopen a party.** The poster can reopen a closed or past party from its post page. The existing lineup and availability stay, the old final time and weekly reminders are cleared, and recruitment gets a fresh seven-day window. Reopening sends a Discord announcement with boss-role pings to configured channels for that world and starts a new 24-hour cooldown for Notify Discord. A full party returns to the board once a member leaves or is removed.
+- **Board filters.** When: Any / Next 24h / This week / Not set (Next 24h and This week match finalized times). Free at picks a day and half-hour to find posts whose poster is free for that entire half-hour.
 - **Discord new-post messages** show the final time, or "Not set yet — see free times on the post", or "Flexible".
 
 ## Characters

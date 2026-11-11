@@ -3,6 +3,7 @@ import { effectivePostStatus } from '@pf/shared';
 import type { WebhookPayload } from './messages.js';
 import { SEND_TIMEOUT_MS, type SendResult, type WebhookSender } from './sender.js';
 import { errName, type Logger } from '../log.js';
+import { weeklyRecipients } from './weeklyRecipients.js';
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -13,6 +14,7 @@ const LEASE_MARGIN_MS = 30_000;
 const DEADLINE_MARGIN_MS = 10_000;
 const MIN_RETRY_AFTER_MS = 1_000;
 const MAX_RETRY_AFTER_MS = 3_600_000;
+const MAX_WEEKLY_REMINDER_AGE_MS = 15 * 60_000;
 
 export async function enqueueDelivery(db: Db, guildId: string, eventType: string, payload: WebhookPayload, postId?: string): Promise<void> {
   await db.webhookDelivery.create({
@@ -20,7 +22,7 @@ export async function enqueueDelivery(db: Db, guildId: string, eventType: string
   });
 }
 
-type Claimed = { id: string; payload: WebhookPayload; attempts: number; eventType: string; postId: string | null; webhookUrl: string | null; active: boolean };
+type Claimed = { id: string; guildId: string; payload: WebhookPayload; attempts: number; eventType: string; postId: string | null; webhookUrl: string | null; partyForumWebhookUrl: string | null; active: boolean; createdAt: Date };
 
 export class WebhookWorker {
   private readonly prisma: PrismaClient;
@@ -52,7 +54,7 @@ export class WebhookWorker {
     const deadline = now.getTime() + leaseMs - DEADLINE_MARGIN_MS;
     const claimed = await this.prisma.$transaction(async (tx) => {
       const rows = await tx.$queryRaw<Claimed[]>`
-        SELECT d.id, d.payload, d.attempts, d."eventType", d."postId", g."webhookUrl", g.active
+        SELECT d.id, d."guildId", d.payload, d.attempts, d."eventType", d."postId", d."createdAt", g."webhookUrl", g."partyForumWebhookUrl", g.active
         FROM "WebhookDelivery" d
         JOIN "Guild" g ON g.id = d."guildId"
         WHERE d.status = 'pending' AND d."nextAttemptAt" <= ${now}
@@ -83,23 +85,46 @@ export class WebhookWorker {
   private async process(row: Claimed, counts: { sent: number; retried: number; failed: number }): Promise<void> {
     const guard = { id: row.id, status: 'pending' as const };
     const upd = (data: Prisma.WebhookDeliveryUncheckedUpdateManyInput) => this.prisma.webhookDelivery.updateMany({ where: guard, data });
-    if (!row.webhookUrl || !row.active) {
+    const targetWebhook = row.eventType === 'post.party_thread' ? row.partyForumWebhookUrl : row.webhookUrl;
+    if (!targetWebhook || !row.active) {
       await upd({ status: 'failed', attempts: row.attempts + 1, lastError: 'Webhook not configured' });
       counts.failed++;
       return;
     }
-    if (row.eventType === 'post.created' && row.postId) {
+    if (row.eventType === 'post.weekly_reminder' && this.now().getTime() - row.createdAt.getTime() > MAX_WEEKLY_REMINDER_AGE_MS) {
+      await upd({ status: 'failed', attempts: row.attempts + 1, lastError: 'Weekly reminder is no longer current' });
+      counts.failed++;
+      return;
+    }
+    if ((row.eventType === 'post.created' || row.eventType === 'post.reopened' || row.eventType === 'post.announcement' || row.eventType === 'post.weekly_reminder' || row.eventType === 'post.party_thread') && row.postId) {
       // Announce only a post that is still live (open or full): not deleted, closed for any reason, or expired.
-      const post = await this.prisma.post.findUnique({ where: { id: row.postId }, select: { status: true, expiresAt: true, deletedAt: true } });
-      if (!post || effectivePostStatus(post, this.now()) === 'closed') {
+      const post = await this.prisma.post.findUnique({ where: { id: row.postId }, select: { status: true, closedReason: true, expiresAt: true, deletedAt: true, weeklyTimeZone: true, weeklyAnchorAt: true, scheduledAt: true } });
+      const weekly = row.payload._weekly;
+      const activeFinalized = (row.eventType === 'post.weekly_reminder' || row.eventType === 'post.party_thread') && post?.status === 'closed' && post.closedReason === 'finalized' && post.deletedAt === null && post.expiresAt > this.now();
+      if (!post || (effectivePostStatus(post, this.now()) === 'closed' && !activeFinalized) || (row.eventType === 'post.announcement' && effectivePostStatus(post, this.now()) !== 'open') || (row.eventType === 'post.party_thread' && !activeFinalized) || (row.eventType === 'post.weekly_reminder' &&
+        (!weekly || post.weeklyTimeZone !== weekly.timeZone || post.weeklyAnchorAt?.toISOString() !== weekly.anchorAt || post.scheduledAt?.toISOString() !== weekly.nextAt))) {
         await upd({ status: 'failed', attempts: row.attempts + 1, lastError: 'Post no longer available' });
+        if (row.eventType === 'post.party_thread' && post && !activeFinalized) {
+          await this.prisma.post.updateMany({ where: { id: row.postId, OR: [{ status: { not: 'closed' } }, { closedReason: { not: 'finalized' } }, { deletedAt: { not: null } }, { expiresAt: { lte: this.now() } }] }, data: { forumThreadRequested: false } });
+        }
         counts.failed++;
         return;
       }
     }
+    let payload = row.payload;
+    if (row.eventType === 'post.weekly_reminder' && row.postId) {
+      const ids = (await weeklyRecipients(this.prisma, row.postId)).get(row.guildId) ?? [];
+      if (!ids.length) {
+        await upd({ status: 'failed', attempts: row.attempts + 1, lastError: 'No current recipients' });
+        counts.failed++;
+        return;
+      }
+      const { _weekly, ...message } = row.payload;
+      payload = { ...message, content: (message.content ?? '').replace(/^(?:<@[^>]+>\s*)*/, `${ids.map((id) => `<@${id}>`).join(' ')} `), allowed_mentions: { parse: [], users: ids } };
+    }
     let res: SendResult;
     try {
-      res = await this.sender.send(row.webhookUrl, row.payload);
+      res = await this.sender.send(targetWebhook, payload);
     } catch (err) {
       res = { ok: false, status: null, error: errName(err) };
     }

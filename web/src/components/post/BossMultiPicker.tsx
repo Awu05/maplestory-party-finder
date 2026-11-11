@@ -1,4 +1,5 @@
 import type { BossDTO } from '@pf/shared';
+import { bossIconUrl } from './bossIcons';
 
 interface Props {
   value: number[];
@@ -16,7 +17,22 @@ export function BossMultiPicker({ value, onChange, bosses, max }: Props) {
       <p className="boss-picker__count">{`${value.length}/${max} selected`}</p>
       {bosses.map((boss) => (
         <fieldset key={boss.id} className="boss-picker__row">
-          <legend>{boss.name}</legend>
+          <legend>
+            <span className="boss-picker__name">
+              {bossIconUrl(boss) && (
+                <img
+                  className="boss-picker__icon"
+                  src={bossIconUrl(boss)}
+                  alt=""
+                  width={32}
+                  height={32}
+                  loading="lazy"
+                  onError={(event) => { event.currentTarget.style.visibility = 'hidden'; }}
+                />
+              )}
+              {boss.name}
+            </span>
+          </legend>
           {boss.difficulties.map((d) => {
             const checked = value.includes(d.id);
             return (

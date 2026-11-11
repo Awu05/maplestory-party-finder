@@ -6,10 +6,11 @@ import { useBosses, useCharacters, useGuilds, useMe, useWorlds } from '../api/ho
 import { usePosts, type PostFilters } from '../api/postHooks';
 import { friendlyError } from '../api/errors';
 import { ChipGroup, MenuChip, ToggleChip } from '../components/ui/Chips';
-import { DAY_LABELS, hourLabel } from '../components/post/FreeTimeGrid';
+import { DAY_LABELS, halfHourLabel } from '../components/post/FreeTimeGrid';
 import { PostRow } from '../components/post/PostRow';
 import { PostPreview } from '../components/post/PostPreview';
 import { usePhone } from '../hooks/useMediaQuery';
+import { useTimeFormat } from '../lib/timeFormat';
 
 export function BoardPage() {
   const me = useMe();
@@ -18,6 +19,7 @@ export function BoardPage() {
   const worlds = useWorlds();
   const bosses = useBosses();
   const isPhone = usePhone();
+  const timeFormat = useTimeFormat();
 
   const [type, setType] = useState<PostType | ''>('');
   const [bossId, setBossId] = useState('');
@@ -41,7 +43,7 @@ export function BoardPage() {
       guildId: guildId || undefined,
       worldIds: worldIds.length > 0 ? worldIds : undefined,
       when,
-      freeAt: freeDay !== '' && freeHour !== '' ? Number(freeDay) * 24 + Number(freeHour) : undefined,
+      freeAt: freeDay !== '' && freeHour !== '' ? Number(freeDay) * 48 + Number(freeHour) : undefined,
     },
     { enabled: defaultsReady },
   );
@@ -91,93 +93,86 @@ export function BoardPage() {
           </Link>
         )}
       </div>
-      <div className="board-filters">
-        <div className="board-filters__group">
-          <span className="board-filters__label" aria-hidden="true">
-            Type
-          </span>
+      <section className="board-filters" aria-label="Board filters">
+        <fieldset className="board-filters__group">
+          <legend>Party type</legend>
           <ChipGroup<PostType | ''>
-          label="Type"
-          value={type}
-          onChange={setType}
-          options={[
-            { value: '', label: 'All' },
-            { value: 'recruiting', label: 'Recruiting' },
-            { value: 'lfp', label: 'LFP' },
-          ]}
+            label="Type"
+            value={type}
+            onChange={setType}
+            options={[
+              { value: '', label: 'All' },
+              { value: 'recruiting', label: 'Recruiting' },
+              { value: 'lfp', label: 'Looking for party' },
+            ]}
           />
-        </div>
-        <div className="board-filters__group">
-          <span className="board-filters__label" aria-hidden="true">
-            When
-          </span>
+        </fieldset>
+        <fieldset className="board-filters__group">
+          <legend>Boss</legend>
+          <div className="board-filters__controls">
+            <MenuChip
+              label="Boss"
+              allLabel="All bosses"
+              valueLabel={selectedBoss?.name ?? null}
+              value={bossId}
+              onChange={(v) => { setBossId(v); setDifficultyId(''); }}
+              options={(bosses.data ?? []).map((b) => ({ value: String(b.id), label: b.name }))}
+            />
+            <MenuChip
+              label="Difficulty"
+              allLabel="Any difficulty"
+              valueLabel={selectedDifficulty?.difficulty ?? null}
+              value={difficultyId}
+              onChange={setDifficultyId}
+              disabled={!selectedBoss}
+              options={(selectedBoss?.difficulties ?? []).map((d) => ({ value: String(d.id), label: d.difficulty }))}
+            />
+          </div>
+          {!selectedBoss && <p className="board-filters__hint">Choose a boss to select a difficulty.</p>}
+        </fieldset>
+        <fieldset className="board-filters__group">
+          <legend>Availability</legend>
+          <span className="board-filters__label">Finalized time</span>
           <ChipGroup<NonNullable<PostFilters['when']>>
-          label="When"
-          value={when}
-          onChange={setWhen}
-          options={[
-            { value: 'any', label: 'Any' },
-            { value: '24h', label: 'Next 24h' },
-            { value: '7d', label: 'This week' },
-            { value: 'flexible', label: 'Not set' },
-          ]}
+            label="When"
+            value={when}
+            onChange={setWhen}
+            options={[
+              { value: 'any', label: 'Any' },
+              { value: '24h', label: 'Next 24h' },
+              { value: '7d', label: 'This week' },
+              { value: 'flexible', label: 'Not set' },
+            ]}
           />
-        </div>
-        {/* A day alone sends no freeAt; its label says the filter still needs an hour. */}
-        <MenuChip
-          label="Free at"
-          allLabel="Any time"
-          valueLabel={
-            freeDay === '' ? null : freeHour === '' ? `${DAY_LABELS[Number(freeDay)]} · pick an hour` : DAY_LABELS[Number(freeDay)]
-          }
-          value={freeDay}
-          onChange={(v) => {
-            setFreeDay(v);
-            if (v === '') setFreeHour('');
-          }}
-          options={DAY_LABELS.map((d, i) => ({ value: String(i), label: d }))}
-        />
-        <MenuChip
-          label="Hour"
-          allLabel="Any hour"
-          valueLabel={freeHour !== '' ? hourLabel(Number(freeHour)) : null}
-          value={freeHour}
-          onChange={setFreeHour}
-          disabled={freeDay === ''}
-          options={Array.from({ length: 24 }, (_, h) => ({ value: String(h), label: hourLabel(h) }))}
-        />
-        <MenuChip
-          label="Boss"
-          allLabel="All bosses"
-          valueLabel={selectedBoss?.name ?? null}
-          value={bossId}
-          onChange={(v) => {
-            setBossId(v);
-            setDifficultyId('');
-          }}
-          options={(bosses.data ?? []).map((b) => ({ value: String(b.id), label: b.name }))}
-        />
-        <MenuChip
-          label="Difficulty"
-          allLabel="Any difficulty"
-          valueLabel={selectedDifficulty?.difficulty ?? null}
-          value={difficultyId}
-          onChange={setDifficultyId}
-          disabled={!selectedBoss}
-          options={(selectedBoss?.difficulties ?? []).map((d) => ({ value: String(d.id), label: d.difficulty }))}
-        />
-        <MenuChip
-          label="Guild"
-          allLabel="All guilds"
-          valueLabel={guilds.data?.find((g) => g.id === guildId)?.name ?? null}
-          value={guildId}
-          onChange={setGuildId}
-          options={(guilds.data ?? []).map((g) => ({ value: g.id, label: g.name }))}
-        />
-        <div className="board-filters__group">
-          <span className="board-filters__label" aria-hidden="true">
-            Worlds
-          </span>
+          <span className="board-filters__label">Free times</span>
+          <div className="board-filters__controls">
+            {/* Both a day and a time are required to filter availability. */}
+            <MenuChip
+              label="Day"
+              allLabel="Any day"
+              valueLabel={freeDay === '' ? null : DAY_LABELS[Number(freeDay)]}
+              value={freeDay}
+              onChange={(v) => {
+                setFreeDay(v);
+                if (v === '') setFreeHour('');
+              }}
+              options={DAY_LABELS.map((d, i) => ({ value: String(i), label: d }))}
+            />
+            <MenuChip
+              label="Time"
+              allLabel="Any time"
+              valueLabel={freeHour !== '' ? halfHourLabel(Number(freeHour), timeFormat) : null}
+              value={freeHour}
+              onChange={setFreeHour}
+              disabled={freeDay === ''}
+              options={Array.from({ length: 48 }, (_, h) => ({ value: String(h), label: halfHourLabel(h, timeFormat) }))}
+            />
+          </div>
+          <p className="board-filters__hint">Choose a day and time to match free times in your time zone.</p>
+        </fieldset>
+        <fieldset className="board-filters__group">
+          <legend>Location</legend>
+          <span className="board-filters__label">Worlds</span>
           <div role="group" aria-label="Worlds" className="board-filters__worlds">
             {worlds.data?.map((w) => (
               <ToggleChip key={w.id} pressed={worldIds.includes(w.id)} onToggle={() => toggleWorld(w.id)}>
@@ -185,8 +180,17 @@ export function BoardPage() {
               </ToggleChip>
             ))}
           </div>
-        </div>
-      </div>
+          <span className="board-filters__label">Guild</span>
+          <MenuChip
+            label="Guild"
+            allLabel="All guilds"
+            valueLabel={guilds.data?.find((g) => g.id === guildId)?.name ?? null}
+            value={guildId}
+            onChange={setGuildId}
+            options={(guilds.data ?? []).map((g) => ({ value: g.id, label: g.name }))}
+          />
+        </fieldset>
+      </section>
       {posts.isError && <p role="alert">{friendlyError(posts.error)}</p>}
       <div className={isPhone ? 'board' : 'board board--split'}>
         <PostList
