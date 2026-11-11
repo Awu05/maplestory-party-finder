@@ -44,10 +44,13 @@ export function assertScheduleWindow(scheduledAt: Date, now: Date): void {
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
-/** Loads the difficulties for `ids`, throwing 400 VALIDATION if any is unknown. */
+/** Validate known difficulties and one selection per boss. */
 async function validateBosses(db: Db, ids: number[]) {
   const difficulties = await db.bossDifficulty.findMany({ where: { id: { in: ids } } });
   if (difficulties.length !== ids.length) throw new AppError(400, 'VALIDATION', 'Unknown bossDifficultyId');
+  if (new Set(difficulties.map((difficulty) => difficulty.bossId)).size !== difficulties.length) {
+    throw new AppError(400, 'VALIDATION', 'Select only one difficulty per boss');
+  }
   return difficulties;
 }
 
