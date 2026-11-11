@@ -6,21 +6,41 @@ import { getViewer } from './guards.js';
 const name = z.string().transform((value) => value.replace(/[\p{Cc}\p{Cf}]/gu, '').trim()).pipe(z.string().min(1).max(50));
 export const signupBody = z.object({ discordUsername: name.transform((value) => value.replace(/^@/, '')).pipe(z.string().min(1)), displayName: name }).strict();
 
+export interface AttemptLimiterOptions {
+  windowMs?: number;
+  /** Most keys tracked at once; past this the least recently used key is forgotten. */
+  maxKeys?: number;
+  now?: () => number;
+}
+
 export class AttemptLimiter {
   private readonly attempts = new Map<string, number[]>();
+  private readonly windowMs: number;
+  private readonly maxKeys: number;
+  private readonly now: () => number;
 
-  constructor(private readonly limit: number) {}
+  constructor(private readonly limit: number, options: AttemptLimiterOptions = {}) {
+    this.windowMs = options.windowMs ?? 10 * 60_000;
+    this.maxKeys = options.maxKeys ?? 5000;
+    this.now = options.now ?? Date.now;
+  }
 
   check(key: string): void {
-    const now = Date.now();
-    const cutoff = now - 10 * 60_000;
-    if (this.attempts.size >= 5000) {
-      for (const [id, times] of this.attempts) if (times.every((time) => time <= cutoff)) this.attempts.delete(id);
-      if (!this.attempts.has(key) && this.attempts.size >= 5000) throw this.tooMany();
-    }
+    const now = this.now();
+    const cutoff = now - this.windowMs;
     const recent = (this.attempts.get(key) ?? []).filter((time) => time > cutoff);
     if (recent.length >= this.limit) throw this.tooMany();
+    // Re-insert so the map stays ordered from least to most recently used.
+    this.attempts.delete(key);
     this.attempts.set(key, [...recent, now]);
+    if (this.attempts.size > this.maxKeys) {
+      for (const [id, times] of this.attempts) if (times.every((time) => time <= cutoff)) this.attempts.delete(id);
+      // Never reject a new key because the map is full: forget the least recently used ones instead.
+      for (const id of this.attempts.keys()) {
+        if (this.attempts.size <= this.maxKeys) break;
+        this.attempts.delete(id);
+      }
+    }
   }
 
   private tooMany() { return new AppError(429, 'TOO_MANY_ATTEMPTS', 'Too many sign-in attempts. Please try again in 10 minutes.'); }
