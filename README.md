@@ -41,7 +41,7 @@ Guilds can post new parties and pings to a Discord channel through a webhook.
 
 ## Notifications & jobs
 
-- The in-app bell polls the server periodically for new notifications (join requests, invites, accepts, declines, removals from a party and members leaving); there is no push connection.
+- The Board re-checks for new posts every 30 seconds and when you return to the tab. The in-app bell polls the server periodically for new notifications (join requests, invites, accepts, declines, removals from a party and members leaving); there is no push connection.
 - A background worker delivers queued webhook messages every 5 seconds. Failed deliveries are retried with increasing delays (30 s, 2 min, 10 min, 1 h) and given up on after 5 attempts; Discord rate limits are respected.
 - A daily sync refreshes every character from Nexon (skipping banned users' characters), oldest first, throttled. It checks hourly and runs when the last run was 24 hours ago or more, so the time of day drifts with the last run. It also prunes notifications older than 60 days and sent or failed deliveries older than 30 days.
 - **Weekly parties:** in Finalize time (or Change time), check **Repeat weekly** to remind everyone currently in the party, including the owner, in their guild's Discord channel at the weekly start. The selected local day and time are saved with your time zone and follow daylight-saving changes. The party's next run advances automatically; turn off Repeat weekly or close/delete the party to stop it. The scheduler checks every 30 seconds; reminders use the existing webhook queue. On restart, occurrences more than 15 minutes late are skipped rather than sent in a backlog.

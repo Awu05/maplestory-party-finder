@@ -120,6 +120,15 @@ describe('BoardPage', () => {
     tz.zone = 'America/New_York';
   });
 
+  it('the post list re-checks for new posts every 30s and when the tab regains focus', async () => {
+    const client = testQueryClient();
+    mockApi({ ...base, '/api/auth/me': null, '/api/posts': [] });
+    renderWithProviders(<App />, { client });
+    await screen.findByText('No open posts match. Be the first to post!');
+    const [q] = client.getQueryCache().findAll({ queryKey: ['posts', 'board'] });
+    expect(q.options).toMatchObject({ refetchInterval: 30_000, refetchOnWindowFocus: true });
+  });
+
   it('has no finalized-time filter', async () => {
     mockApi({ ...base, '/api/auth/me': null, '/api/posts': [] });
     renderWithProviders(<App />);
