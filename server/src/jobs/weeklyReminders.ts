@@ -30,16 +30,7 @@ export class WeeklyReminderJob {
             AND EXISTS (SELECT 1 FROM "User" u WHERE u.id = p."posterUserId" AND NOT u.banned)
           ORDER BY p."scheduledAt", p.id LIMIT 1 FOR UPDATE OF p SKIP LOCKED`;
         if (!due) return false;
-        const row = await tx.post.findUniqueOrThrow({
-          where: { id: due.id },
-          include: {
-            ...postSummaryInclude,
-            members: {
-              ...postSummaryInclude.members,
-              include: { ...postSummaryInclude.members.include, user: { select: { discordId: true, banned: true } } },
-            },
-          },
-        });
+        const row = await tx.post.findUniqueOrThrow({ where: { id: due.id }, include: postSummaryInclude });
         // Calendar weeks in the saved zone, rather than 168 elapsed hours. Keep the original
         // anchor so a DST gap never permanently changes the chosen wall-clock time.
         const [next] = await tx.$queryRaw<{ nextAt: Date }[]>`
