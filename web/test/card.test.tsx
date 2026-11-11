@@ -167,7 +167,7 @@ describe('CardDetailModal', () => {
     expect(within(dialog).getByRole('button', { name: 'Copy Discord username' })).toBeInTheDocument();
     const shot = within(dialog).getByRole('img', { name: 'Lily Scouter screenshot' });
     expect(shot).toHaveAttribute('src', '/uploads/lily.png');
-    expect(shot.closest('a')).toHaveAttribute('target', '_blank');
+    expect(shot.closest('a')).toBeNull(); // no new tab
     expect(within(dialog).getByText('CP updated 3 days ago')).toBeInTheDocument();
     for (const heading of ['Bosses', 'Note']) expect(within(dialog).queryByText(heading)).not.toBeInTheDocument();
     expect(within(dialog).queryByText(/Play times/)).not.toBeInTheDocument();
@@ -178,6 +178,26 @@ describe('CardDetailModal', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
     expect(onEdit).toHaveBeenCalledTimes(1);
+  });
+
+  it('clicking the screenshot opens a full-size viewer in the popup; Escape and Close return to the character', () => {
+    const onClose = vi.fn();
+    render(<CardDetailModal character={makeCharacter()} tiers={tiers} onClose={onClose} />);
+    const open = screen.getByRole('button', { name: 'View Scouter screenshot full size' });
+    fireEvent.click(open);
+    const viewer = screen.getByRole('dialog', { name: 'Lily Scouter screenshot' });
+    expect(within(viewer).getByRole('img', { name: 'Lily Scouter screenshot' })).toHaveAttribute('src', '/uploads/lily.png');
+    const close = within(viewer).getByRole('button', { name: 'Close screenshot' });
+    expect(close).toHaveFocus();
+    // Escape closes only the viewer, not the character popup.
+    fireEvent(screen.getAllByRole('dialog')[0], new Event('cancel', { cancelable: true }));
+    expect(screen.queryByRole('dialog', { name: 'Lily Scouter screenshot' })).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(open).toHaveFocus();
+    fireEvent.click(open);
+    fireEvent.click(screen.getByRole('button', { name: 'Close screenshot' }));
+    expect(screen.queryByRole('dialog', { name: 'Lily Scouter screenshot' })).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it('modal without screenshot shows placeholder', () => {

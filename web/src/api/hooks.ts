@@ -84,7 +84,7 @@ export interface CreateCharacterInput {
   ign: string;
   nexonWorldId: number;
   combatPower: number;
-  guildId: string;
+  guildId: string | null;
 }
 export interface ManualCharacterInput {
   ign: string;
@@ -92,7 +92,7 @@ export interface ManualCharacterInput {
   jobName: string;
   level: number;
   combatPower: number;
-  guildId: string;
+  guildId: string | null;
 }
 /** jobName and level are accepted for manual characters only. */
 export type UpdateCharacterInput = Partial<Omit<CreateCharacterInput, 'ign' | 'nexonWorldId'>> & {

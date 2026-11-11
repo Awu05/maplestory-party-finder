@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { mkdirSync } from 'node:fs';
 import { PrismaClient } from '@prisma/client';
-import { loadConfig } from './config.js';
+import { loadConfig, withUtcSession } from './config.js';
 import { buildApp } from './app.js';
 import { HttpNexonClient } from './nexon/client.js';
 import { HttpDiscordOAuth } from './auth/discordOAuth.js';
@@ -14,7 +14,7 @@ import { LocalDiskStorage } from './storage/storage.js';
 
 const config = loadConfig(process.env);
 mkdirSync(config.uploadDir, { recursive: true });
-const prisma = new PrismaClient({ datasources: { db: { url: config.databaseUrl } } });
+const prisma = new PrismaClient({ datasources: { db: { url: withUtcSession(config.databaseUrl) } } });
 const storage = new LocalDiskStorage(config.uploadDir);
 // The app logger only exists after buildApp; the shim forwards to it (events are emitted only by requests, after that).
 let appLog: { error(obj: object, msg: string): void } | undefined;

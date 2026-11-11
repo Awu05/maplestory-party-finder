@@ -120,12 +120,21 @@ describe('BoardPage', () => {
     tz.zone = 'America/New_York';
   });
 
-  it('When chips read Any, Next 24h, This week, Not set', async () => {
+  it('the post list re-checks for new posts every 30s and when the tab regains focus', async () => {
+    const client = testQueryClient();
+    mockApi({ ...base, '/api/auth/me': null, '/api/posts': [] });
+    renderWithProviders(<App />, { client });
+    await screen.findByText('No open posts match. Be the first to post!');
+    const [q] = client.getQueryCache().findAll({ queryKey: ['posts', 'board'] });
+    expect(q.options).toMatchObject({ refetchInterval: 30_000, refetchOnWindowFocus: true });
+  });
+
+  it('has no finalized-time filter', async () => {
     mockApi({ ...base, '/api/auth/me': null, '/api/posts': [] });
     renderWithProviders(<App />);
     await screen.findByText('No open posts match. Be the first to post!');
-    const group = screen.getByRole('radiogroup', { name: 'When' });
-    expect(within(group).getAllByRole('radio').map((r) => r.textContent)).toEqual(['Any', 'Next 24h', 'This week', 'Not set']);
+    expect(screen.queryByRole('radiogroup', { name: 'When' })).toBeNull();
+    expect(screen.queryByText('Finalized time')).toBeNull();
   });
 
   // The start of the viewer's Tue 8p half hour (Tue 8pm EST).
@@ -242,12 +251,22 @@ describe('BoardPage', () => {
     await waitFor(() => expect(postsCalls(fetchMock)).toContain(FREE_AT));
   });
 
-  it('When=Not set sends flexible=1', async () => {
-    const fetchMock = mockApi({ ...base, '/api/auth/me': null, '/api/posts': [], '/api/posts?flexible=1': [post] });
+  it('Reset clears the free-time day and time, and is disabled when nothing is picked', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-10T15:00:00Z'));
+    const fetchMock = mockApi({ ...base, '/api/auth/me': null, '/api/posts': [], [FREE_AT]: [post] });
     renderWithProviders(<App />);
     await screen.findByText('No open posts match. Be the first to post!');
-    fireEvent.click(screen.getByRole('radio', { name: 'Not set' }));
-    await waitFor(() => expect(postsCalls(fetchMock)).toContain('/api/posts?flexible=1'));
+    const reset = screen.getByRole('button', { name: 'Reset free time' });
+    expect(reset).toBeDisabled();
+    await pickTue8p();
+    await screen.findByText('2 / 4');
+    expect(reset).toBeEnabled();
+    fireEvent.click(reset);
+    await waitFor(() => expect(postsCalls(fetchMock).at(-1)).toBe('/api/posts'));
+    expect(screen.getByRole('button', { name: /^Day/ })).not.toHaveTextContent('Tue');
+    expect(screen.getByRole('button', { name: /^Time/ })).toBeDisabled();
+    expect(reset).toBeDisabled();
   });
 
   it('choosing a boss from the menu sends bossId and enables Difficulty', async () => {

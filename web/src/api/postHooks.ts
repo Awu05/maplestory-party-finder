@@ -44,6 +44,8 @@ export function freeAtInstant(slotOfWeek: number, now: Date = new Date()): strin
   return start.toISOString();
 }
 
+export const BOARD_POLL_MS = 30_000;
+
 export function usePosts(filters: PostFilters, opts: { enabled?: boolean } = {}) {
   // The key holds the freeAt instant, not just the half-hour slot, so a cached result never answers for
   // an occurrence that has passed.
@@ -57,6 +59,9 @@ export function usePosts(filters: PostFilters, opts: { enabled?: boolean } = {})
       return api<PostSummaryDTO[]>(qs ? `/api/posts?${qs}` : '/api/posts');
     },
     enabled: opts.enabled ?? true,
+    // New posts appear without a reload: re-check every 30s, and as soon as the tab is looked at again.
+    refetchInterval: BOARD_POLL_MS,
+    refetchOnWindowFocus: true,
     // Keep the current rows while a filter change refetches, so focus and selection aren't lost to skeletons.
     placeholderData: keepPreviousData,
   });

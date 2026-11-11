@@ -16,7 +16,8 @@ const createBody = z.object({
   ign: z.string().trim().min(1),
   nexonWorldId: z.number().int(),
   combatPower: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
-  guildId: z.string().min(1),
+  // Optional: a character can exist without a guild (it then can't post or join until one is picked).
+  guildId: z.string().min(1).nullable().optional().transform((v) => v ?? null),
 });
 
 const manualBody = z.object({
@@ -25,12 +26,17 @@ const manualBody = z.object({
   jobName: z.string().trim().min(1),
   level: z.number().int().min(1).max(300),
   combatPower: createBody.shape.combatPower,
-  guildId: z.string().min(1),
+  guildId: createBody.shape.guildId,
 });
 
 const updateBody = createBody
-  .pick({ combatPower: true, guildId: true })
-  .extend({ jobName: z.string().trim().min(1), level: z.number().int().min(1).max(300) })
+  .pick({ combatPower: true })
+  .extend({
+    // null clears the guild; omitted leaves it unchanged.
+    guildId: z.string().min(1).nullable(),
+    jobName: z.string().trim().min(1),
+    level: z.number().int().min(1).max(300),
+  })
   .partial();
 
 const moveBody = z.object({ worldId: z.number().int(), guildId: z.string().min(1).nullable() });

@@ -59,6 +59,11 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
   await app.register(multipart, { limits: { fileSize: 5 * 1024 * 1024, files: 1 } });
 
+  // API data is per-user and changes constantly: never let a browser or proxy reuse an old copy.
+  app.addHook('onSend', async (req, reply) => {
+    if (req.url.startsWith('/api/') || req.url === '/api') reply.header('Cache-Control', 'no-store');
+  });
+
   app.get<{ Params: { key: string } }>('/uploads/:key', async (req, reply) => {
     const found = await deps.storage.read(req.params.key);
     if (!found) return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'Not found' } });

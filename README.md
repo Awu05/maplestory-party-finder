@@ -41,7 +41,7 @@ Guilds can post new parties and pings to a Discord channel through a webhook.
 
 ## Notifications & jobs
 
-- The in-app bell polls the server periodically for new notifications (join requests, invites, accepts, declines, removals from a party and members leaving); there is no push connection.
+- The Board re-checks for new posts every 30 seconds and when you return to the tab. The in-app bell polls the server periodically for new notifications (join requests, invites, accepts, declines, removals from a party and members leaving); there is no push connection.
 - A background worker delivers queued webhook messages every 5 seconds. Failed deliveries are retried with increasing delays (30 s, 2 min, 10 min, 1 h) and given up on after 5 attempts; Discord rate limits are respected.
 - A daily sync refreshes every character from Nexon (skipping banned users' characters), oldest first, throttled. It checks hourly and runs when the last run was 24 hours ago or more, so the time of day drifts with the last run. It also prunes notifications older than 60 days and sent or failed deliveries older than 30 days.
 - **Weekly parties:** in Finalize time (or Change time), check **Repeat weekly** to remind everyone currently in the party, including the owner, in their guild's Discord channel at the weekly start. The selected local day and time are saved with your time zone and follow daylight-saving changes. The party's next run advances automatically; turn off Repeat weekly or close/delete the party to stop it. The scheduler checks every 30 seconds; reminders use the existing webhook queue. On restart, occurrences more than 15 minutes late are skipped rather than sent in a backlog.
@@ -55,7 +55,7 @@ Guilds can post new parties and pings to a Discord channel through a webhook.
 - **Time zones.** Availability is stored in each person's time zone and shown in the viewer's zone. Split cells show partial availability when zones differ by 15 or 45 minutes. Editing uses the saved zone when needed to avoid losing part of a selected time.
 - **Finalize time.** The poster sets the time with **Finalize time** on the post page. This closes recruitment, removes the post from the board, and declines pending requests and invites. The party remains available to its members, and the poster can change the time or end it. Members get an in-app notification and a Discord ping showing the time in their own zone. A post with no final time expires 7 days after it's posted or renewed; once finalized it expires based on the final time.
 - **Reopen a party.** The poster can reopen a closed or past party from its post page. The existing lineup and availability stay, the old final time and weekly reminders are cleared, and recruitment gets a fresh seven-day window. Reopening sends a Discord announcement with boss-role pings to configured channels for that world and starts a new 24-hour cooldown for Notify Discord. A full party returns to the board once a member leaves or is removed.
-- **Board filters.** When: Any / Next 24h / This week / Not set (Next 24h and This week match finalized times). Free at picks a day and half-hour to find posts whose poster is free for that entire half-hour.
+- **Board filters.** Free times: pick a day and half-hour to find posts whose poster is free for that entire half-hour; Reset clears it.
 - **Discord new-post messages** show the final time, or "Not set yet — see free times on the post", or "Flexible".
 
 ## Characters
@@ -63,7 +63,7 @@ Guilds can post new parties and pings to a Discord channel through a webhook.
 - **Display name.** Click your avatar or name in the header to open the Profile popup, where you choose a display name (up to 50 characters) or log out. Leave it blank to use your Discord username. Cards, party lineups and new Discord post messages use this name; character details still show your real Discord username for copying, and mentions still reach your Discord account.
 - **Characters Nexon can't find.** If Nexon can't find a character (e.g. on Challenger World), is unreachable or returns the wrong character, Add character offers "Add it manually": enter name, world, class and level. Manual characters use a default image, show "Added manually", and are skipped by the daily sync; their class and level can be edited.
 - **Refresh from Nexon on a manual character.** If Nexon now finds it on its own world, it becomes a normal synced character. If it is found on another active world of the same type (heroic/interactive), a popup offers to move it there. Moving clears the guild (or sets a newly picked one) and is refused while the character is in an open party or has pending requests/invites.
-- **Guild required.** A character with no guild can't post, request to join or be invited until a guild is picked on its edit page.
+- **Guild is optional.** A character can be added without a guild (or have it cleared on its edit page), but it can't post, request to join or be invited until a guild is picked.
 - Characters have no bosses, play times or note; those live on posts.
 - **Admin -> Classes** adds and removes classes and sets each class's type (warrior/magician/bowman/thief/pirate/xenon), which drives the card frame color. Lists are alphabetical. It is seeded with the known classes.
 

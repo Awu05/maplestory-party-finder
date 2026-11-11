@@ -73,6 +73,15 @@ describe('characters create', () => {
     expect(res.json()).not.toHaveProperty('note');
   });
 
+  it('guild is optional: omitted or null creates a character with no guild', async () => {
+    for (const guildId of [undefined, null]) {
+      await prisma.character.deleteMany();
+      const res = await create({ guildId });
+      expect(res.statusCode).toBe(201);
+      expect(res.json().guild).toBeNull();
+    }
+  });
+
   it('large combat power is exact', async () => {
     const res = await create({ combatPower: 1_500_000_000 });
     expect(res.statusCode).toBe(201);
