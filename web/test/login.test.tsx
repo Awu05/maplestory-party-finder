@@ -6,7 +6,7 @@ import { mockApi, renderWithProviders } from './setup';
 
 vi.mock('@simplewebauthn/browser', () => ({ browserSupportsWebAuthn: vi.fn(() => true), startAuthentication: vi.fn(), startRegistration: vi.fn() }));
 const user = { id: 'local1', discordUsername: 'maple_user', displayName: 'Maple Player', avatarUrl: null, isAdmin: false, discordLinked: false };
-const base = { '/api/auth/me': null, '/api/characters?mine=1': [], '/api/posts': [], '/api/worlds': [], '/api/bosses': [], '/api/rarity-tiers': [] };
+const base = { '/api/auth/config': { passwordAuth: true }, '/api/auth/me': null, '/api/characters?mine=1': [], '/api/posts': [], '/api/worlds': [], '/api/bosses': [], '/api/rarity-tiers': [] };
 const registration = { id: 'credential', rawId: 'credential', type: 'public-key' as const, clientExtensionResults: {}, response: { clientDataJSON: 'data', attestationObject: 'proof' } };
 const assertion = { id: 'credential', rawId: 'credential', type: 'public-key' as const, clientExtensionResults: {}, response: { clientDataJSON: 'data', authenticatorData: 'auth', signature: 'signature', userHandle: 'handle' } };
 beforeEach(() => { vi.stubGlobal('isSecureContext', true); vi.mocked(browserSupportsWebAuthn).mockReturnValue(true); });
@@ -119,7 +119,7 @@ it('signs back in with email and password', async () => {
   mockApi({ ...base, 'POST /api/auth/password/login': user });
   renderWithProviders(<App />);
   const dialog = await open();
-  fireEvent.click(within(dialog).getByRole('button', { name: 'Log in with email' }));
+  fireEvent.click(await within(dialog).findByRole('button', { name: 'Log in with email' }));
   const emailDialog = await screen.findByRole('dialog', { name: 'Log in with email' });
   expect(screen.getByLabelText('Email')).toHaveFocus();
   expect(screen.getByLabelText('Password')).toHaveAttribute('autocomplete', 'current-password');
@@ -137,7 +137,7 @@ it('keeps failed email sign-in in the dialog and clears the password when going 
     ? Promise.resolve(new Response(JSON.stringify({ error: { code: 'INVALID_CREDENTIALS', message: 'Email or password is incorrect.' } }), { status: 401 })) : fallback(url, init));
   renderWithProviders(<App />);
   const dialog = await open();
-  fireEvent.click(within(dialog).getByRole('button', { name: 'Log in with email' }));
+  fireEvent.click(await within(dialog).findByRole('button', { name: 'Log in with email' }));
   fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'maple@example.com' } });
   fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'wrong password' } });
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Log in' }));
@@ -159,4 +159,40 @@ it('shows a server verification error without signing in', async () => {
   fireEvent.click(within(dialog).getByRole('button', { name: 'Sign in with a passkey' }));
   await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Passkey verification failed.'));
   expect(screen.getByRole('dialog', { name: 'Log in' })).toBeInTheDocument();
+});
+
+it('with password login off, the popup offers only Discord and passkeys', async () => {
+  mockApi({ ...base, '/api/auth/config': { passwordAuth: false } });
+  renderWithProviders(<App />);
+  const dialog = await open();
+  expect(within(dialog).getByRole('link', { name: 'Log in with Discord' })).toBeInTheDocument();
+  expect(within(dialog).getByRole('button', { name: 'Sign in with a passkey' })).toBeEnabled();
+  expect(within(dialog).queryByRole('button', { name: 'Log in with email' })).toBeNull();
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Create account' }));
+  const create = await screen.findByRole('dialog', { name: 'Create account' });
+  expect(within(create).queryByRole('radio')).toBeNull();
+  expect(within(create).queryByLabelText('Email')).toBeNull();
+  expect(within(create).queryByLabelText('Password')).toBeNull();
+  expect(within(create).getByText(/save a passkey/)).toBeInTheDocument();
+});
+
+it('password login stays hidden when the setting cannot be loaded', async () => {
+  const { '/api/auth/config': _omit, ...withoutConfig } = base;
+  mockApi(withoutConfig);
+  renderWithProviders(<App />);
+  const dialog = await open();
+  await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Sign in with a passkey' })).toBeInTheDocument());
+  expect(within(dialog).queryByRole('button', { name: 'Log in with email' })).toBeNull();
+});
+
+it('with password login off and no passkey support, account creation points to Discord', async () => {
+  vi.mocked(browserSupportsWebAuthn).mockReturnValue(false);
+  mockApi({ ...base, '/api/auth/config': { passwordAuth: false } });
+  renderWithProviders(<App />);
+  const dialog = await open();
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Create account' }));
+  const create = await screen.findByRole('dialog', { name: 'Create account' });
+  expect(within(create).getByRole('button', { name: 'Create account' })).toBeDisabled();
+  expect(within(create).getByText(/You can log in with Discord instead\./)).toBeInTheDocument();
+  expect(within(create).queryByText(/email and password/i)).toBeNull();
 });

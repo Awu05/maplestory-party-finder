@@ -13,6 +13,11 @@ export interface Config {
    * limit) sees the real client. false, true, a hop count, or a list of proxy IPs/CIDRs.
    */
   trustProxy: boolean | number | string[];
+  /**
+   * Email + password accounts (sign-up, login, reset by email). Off by default: only Discord and
+   * passkeys are offered, and the password routes are not registered at all.
+   */
+  passwordAuth: boolean;
   adminDiscordIds: string[];
   uploadDir: string;
   /** Built web app directory; when set, the server serves it (production only). */
@@ -99,6 +104,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     discordRedirectUri: env.DISCORD_REDIRECT_URI ?? '',
     webOrigin,
     trustProxy: parseTrustProxy(env.TRUST_PROXY, webOrigin),
+    passwordAuth: ['true', '1'].includes((env.PASSWORD_AUTH_ENABLED ?? '').trim().toLowerCase()),
     adminDiscordIds: (env.ADMIN_DISCORD_IDS ?? '')
       .split(',')
       .map((s) => s.trim())

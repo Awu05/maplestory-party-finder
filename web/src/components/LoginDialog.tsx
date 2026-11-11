@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { browserSupportsWebAuthn, startRegistration, startAuthentication } from '@simplewebauthn/browser';
 import type { PublicKeyCredentialCreationOptionsJSON, PublicKeyCredentialRequestOptionsJSON } from '@simplewebauthn/browser';
 import type { MeDTO } from '@pf/shared';
@@ -36,7 +36,12 @@ function LoginDialog({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const supported = browserSupportsWebAuthn() && window.isSecureContext;
-  const [method, setMethod] = useState<'passkey' | 'password'>(() => supported ? 'passkey' : 'password');
+  // Email + password accounts are a server setting (PASSWORD_AUTH_ENABLED). Until the answer arrives,
+  // or if it can't be loaded, they stay hidden.
+  const authConfig = useQuery({ queryKey: ['auth-config'], queryFn: () => api<{ passwordAuth: boolean }>('/api/auth/config'), staleTime: 300_000 });
+  const passwordAuth = authConfig.data?.passwordAuth === true;
+  const [picked, setMethod] = useState<'passkey' | 'password'>(() => supported ? 'passkey' : 'password');
+  const method = passwordAuth ? picked : 'passkey';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
@@ -143,7 +148,7 @@ function LoginDialog({ onClose }: { onClose: () => void }) {
         <p className="profile-dialog__muted">Discord shares your user ID, username and avatar. We do not request your email or messages.</p>
         <button type="button" className="btn btn--secondary" disabled={busy} onClick={() => { setError(''); setStep('create'); }}>Create account</button>
         <p className="profile-dialog__muted">Already created an account?</p>
-        <button type="button" className="btn btn--secondary" disabled={busy} onClick={() => { setError(''); setStep('email'); }}>Log in with email</button>
+        {passwordAuth && <button type="button" className="btn btn--secondary" disabled={busy} onClick={() => { setError(''); setStep('email'); }}>Log in with email</button>}
         <button type="button" className="btn btn--secondary" disabled={busy || !supported} onClick={() => void signIn()}>{busy ? 'Signing in…' : 'Sign in with a passkey'}</button>
       </> : step === 'forgot' ? <form className="login-form" onSubmit={(e) => void requestReset(e)}>
         {resetSent ? <p role="status">If an account uses that email, a reset link will arrive shortly. Check your spam folder too.</p> : <>
@@ -169,18 +174,18 @@ function LoginDialog({ onClose }: { onClose: () => void }) {
           <input required autoComplete="nickname" maxLength={50} value={displayName} disabled={busy} onChange={(e) => setDisplayName(e.target.value)} />
         </label>
         <p className="profile-dialog__muted">Your Discord username is contact information only; this does not connect to Discord.</p>
-        <fieldset className="login-method" disabled={busy}>
+        {passwordAuth && <fieldset className="login-method" disabled={busy}>
           <legend>Sign-in method</legend>
           <label><input type="radio" name="sign-in-method" checked={method === 'passkey'} disabled={!supported} onChange={() => { setMethod('passkey'); setPassword(''); setConfirmation(''); setError(''); }} /> Passkey</label>
           <label><input type="radio" name="sign-in-method" checked={method === 'password'} onChange={() => { setMethod('password'); setError(''); }} /> Email and password</label>
-        </fieldset>
+        </fieldset>}
         {method === 'password' ? passwordFields : <p className="profile-dialog__muted">Next, save a passkey using your browser or password manager. Keep it to sign in again; there is no email or password recovery.</p>}
         <div className="actions">
           <button type="submit" className="btn btn--primary" disabled={busy || (method === 'passkey' && !supported)}>{busy ? 'Creating account…' : 'Create account'}</button>
           <button type="button" className="btn btn--secondary" disabled={busy} onClick={back}>Back</button>
         </div>
       </form>}
-      {!supported && <p className="profile-dialog__muted">Passkeys require a supported browser and HTTPS (or localhost). You can use email and password or Discord instead.</p>}
+      {!supported && <p className="profile-dialog__muted">Passkeys require a supported browser and HTTPS (or localhost). {passwordAuth ? 'You can use email and password or Discord instead.' : 'You can log in with Discord instead.'}</p>}
       {error && <p role="alert">{error}</p>}
       <button type="button" className="btn btn--secondary" disabled={busy} onClick={onClose}>Cancel</button>
     </div>

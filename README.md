@@ -32,7 +32,8 @@ Copy `.env.example` to `.env` (root, used by Docker) or `server/.env` (dev).
 | `DISCORD_REDIRECT_URI` | Must match the redirect URI registered with Discord |
 | `WEB_ORIGIN` | Public origin of the site (https enables secure cookies) |
 | `TRUST_PROXY` | Which reverse proxies may set `X-Forwarded-For`, so sign-in and other per-visitor limits see each visitor's real address. `false`, `true` (trust every hop), a hop count such as `1`, or comma-separated proxy IPs/CIDRs. Default when unset: if `WEB_ORIGIN` starts with `https://`, proxies on the same machine or a private network (loopback, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, link-local and the IPv6 equivalents) are trusted; otherwise `false`. A visitor connecting straight to the port from the internet is never trusted by default. Invalid values fail at startup. Only use `true` or a hop count when the port can't be reached except through your proxy: otherwise visitors can fake `X-Forwarded-For` and dodge the limits. |
-| `SMTP_HOST` / `SMTP_FROM` | SMTP server and verified sender email for password resets; leave all SMTP settings blank to disable |
+| `PASSWORD_AUTH_ENABLED` | Set to `true` to offer email + password accounts (sign-up, login and reset by email). Default off: the login popup shows only Discord and passkeys, and the password routes don't exist. Turning it off later keeps existing password accounts in the database but they can't sign in with a password until it is back on. |
+| `SMTP_HOST` / `SMTP_FROM` | SMTP server and verified sender email for password resets (only used when `PASSWORD_AUTH_ENABLED` is `true`); leave all SMTP settings blank to disable |
 | `SMTP_PORT` / `SMTP_SECURE` | Default 587 with required STARTTLS; use `465` / `true` for TLS from connection start. Certificate verification stays enabled. |
 | `SMTP_USER` / `SMTP_PASSWORD` | SMTP credentials; set both, or neither for a trusted relay |
 | `ADMIN_DISCORD_IDS` | Comma-separated Discord IDs granted admin |

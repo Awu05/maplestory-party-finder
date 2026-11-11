@@ -22,8 +22,14 @@ const profileBody = z
 export async function authRoutes(api: FastifyInstance): Promise<void> {
   const { prisma, discord, config } = api.deps;
   await api.register(passkeyRoutes);
-  await api.register(passwordRoutes);
-  await api.register(passwordResetRoutes);
+  // Password accounts are behind PASSWORD_AUTH_ENABLED; when off, these routes simply don't exist.
+  if (config.passwordAuth) {
+    await api.register(passwordRoutes);
+    await api.register(passwordResetRoutes);
+  }
+
+  /** Which sign-in methods the login popup should offer. */
+  api.get('/auth/config', async () => ({ passwordAuth: config.passwordAuth }));
 
   api.get('/auth/discord', async (req, reply) => {
     const state = randomBytes(16).toString('hex');

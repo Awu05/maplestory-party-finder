@@ -3,14 +3,14 @@ import { expect, it } from 'vitest';
 import { App } from '../src/App';
 import { mockApi, renderWithProviders } from './setup';
 
-const base = { '/api/auth/me': null, '/api/posts': [], '/api/worlds': [], '/api/bosses': [], '/api/rarity-tiers': [] };
+const base = { '/api/auth/config': { passwordAuth: true }, '/api/auth/me': null, '/api/posts': [], '/api/worlds': [], '/api/bosses': [], '/api/rarity-tiers': [] };
 const token = 'x'.repeat(43);
 
 it('requests a reset from email login and shows a generic confirmation', async () => {
   const fetch = mockApi({ ...base, 'POST /api/auth/password/forgot': { message: 'sent' } });
   renderWithProviders(<App />);
   fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Log in with email' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Log in with email' }));
   fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'maple@example.com' } });
   fireEvent.click(screen.getByRole('button', { name: 'Forgot password?' }));
   expect(screen.getByRole('dialog', { name: 'Reset password' })).toBeInTheDocument();
@@ -70,7 +70,7 @@ it('shows an email-configuration error instead of claiming a link was sent', asy
     ? Promise.resolve(new Response(JSON.stringify({ error: { code: 'RESET_UNAVAILABLE', message: 'Password reset email is not available yet. Please contact the administrator.' } }), { status: 503 })) : fallback(url, init));
   renderWithProviders(<App />);
   fireEvent.click(await screen.findByRole('button', { name: 'Log in' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Log in with email' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Log in with email' }));
   fireEvent.click(screen.getByRole('button', { name: 'Forgot password?' }));
   fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'maple@example.com' } });
   fireEvent.click(screen.getByRole('button', { name: 'Send reset link' }));
