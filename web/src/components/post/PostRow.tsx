@@ -56,7 +56,7 @@ export const PostRow = forwardRef<HTMLAnchorElement, Props>(function PostRow(
         <span className="post-row__meta">
           <span className="post-row__when">{whenLabel(post)}</span>
           <span aria-hidden="true">·</span>
-          <span className="post-row__who">{`${ign} · ${post.guild.name}`}</span>
+          <span className="post-row__who">{`${ign} · ${(post.guild?.name ?? 'No guild')}`}</span>
         </span>
       </span>
       {slots && (

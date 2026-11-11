@@ -129,7 +129,7 @@ export function PostDetailPage() {
         <StatusPill status={p.status} deleted={p.deleted} recruitmentClosed={finalized} />
         {/* The When section below carries the time; the header stays compact. */}
         <span>
-          {p.world.name} · {p.guild.name}
+          {p.world.name} · {(p.guild?.name ?? 'No guild')}
         </span>
       </header>
       <ul className="post-card__bosses">

@@ -52,7 +52,7 @@ const upload = (id: string, c = cookie) => {
 const igns = (res: { json(): any }) => res.json().map((c: any) => c.ign);
 
 describe('characters list', () => {
-  it('sorted by CP desc and filters by guildId, worldId, archetype=pirate, q=li', async () => {
+  it('sorted by CP desc and filters by worldId, archetype=pirate, q=li', async () => {
     const w2 = await makeWorld({ nexonWorldId: 46, name: 'Bera' });
     const g2 = await makeGuild({ worldIds: [w2.id] });
     await makeCharacter({ ign: 'Lily', jobName: 'Angelic Buster', combatPower: 5n, worldId, guildId });
@@ -62,7 +62,6 @@ describe('characters list', () => {
     await makeCharacter({ ign: 'Lisa', jobName: 'Jett', combatPower: 3n, worldId: w2.id, guildId: g2.id });
 
     expect(igns(await get('/api/characters'))).toEqual(['Lia', 'Bob', 'Liam', 'Lily', 'Lisa']);
-    expect(igns(await get(`/api/characters?guildId=${g2.id}`))).toEqual(['Lisa']);
     expect(igns(await get(`/api/characters?worldId=${worldId}`))).toHaveLength(4);
     expect(igns(await get('/api/characters?archetype=pirate'))).toEqual(['Lia', 'Bob', 'Lily', 'Lisa']);
     expect(igns(await get('/api/characters?q=li'))).toEqual(['Lia', 'Liam', 'Lily', 'Lisa']);

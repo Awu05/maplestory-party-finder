@@ -16,12 +16,6 @@ describe('friendlyError', () => {
     expect(friendlyError(new ApiError(400, code, 'server text'))).toBe(message);
   });
 
-  it('shows the server message for NO_GUILD', () => {
-    expect(friendlyError(new ApiError(400, 'NO_GUILD', 'Pick a guild for this character first'))).toBe(
-      'Pick a guild for this character first',
-    );
-  });
-
   it('falls back to the server message for unknown codes', () => {
     expect(friendlyError(new ApiError(400, 'SOMETHING_ELSE', 'server text'))).toBe('server text');
   });

@@ -81,7 +81,7 @@ export async function makeCharacter(over: Partial<Prisma.CharacterUncheckedCreat
   const n = next();
   const ownerId = over.ownerId ?? (await makeUser()).id;
   const worldId = over.worldId ?? (await prisma.world.findFirst())?.id ?? (await makeWorld()).id;
-  const guildId = over.guildId ?? (await makeGuild({ worldIds: [worldId] })).id;
+  const guildId = over.guildId !== undefined ? over.guildId : (await makeGuild({ worldIds: [worldId] })).id;
   const ign = over.ign ?? `Char${n}`;
   const jobName = over.jobName ?? 'Hero';
   return prisma.character.create({
@@ -145,7 +145,7 @@ export async function makePost(
       posterUserId: rest.posterUserId ?? poster.ownerId,
       posterCharacterId: poster.id,
       worldId: rest.worldId ?? poster.worldId,
-      guildId: rest.guildId ?? poster.guildId!,
+      guildId: rest.guildId !== undefined ? rest.guildId : poster.guildId,
       bosses: { create: bossDifficultyIds.map((bossDifficultyId) => ({ bossDifficultyId })) },
     },
   });

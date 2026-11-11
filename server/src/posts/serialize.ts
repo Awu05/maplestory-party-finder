@@ -71,7 +71,7 @@ export function toPostSummaryDTO(row: PostSummaryRow, viewerUserId: string | nul
     id: row.id,
     type: row.type,
     world: { id: row.world.id, name: row.world.name },
-    guild: { id: row.guild.id, name: row.guild.name },
+    guild: row.guild ? { id: row.guild.id, name: row.guild.name } : null,
     poster: toMemberDTO(poster, viewerUserId, storage),
     bosses: toBossDTOs(row),
     scheduledAt: row.scheduledAt?.toISOString() ?? null,

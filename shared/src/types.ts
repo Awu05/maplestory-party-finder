@@ -85,7 +85,7 @@ export interface PartyMemberDTO {
 }
 
 export interface PostSummaryDTO {
-  id: string; type: PostType; world: { id: number; name: string }; guild: { id: string; name: string };
+  id: string; type: PostType; world: { id: number; name: string }; guild: { id: string; name: string } | null;
   poster: PartyMemberDTO; bosses: PostBossDTO[];
   scheduledAt: string | null; expiresAt: string; createdAt: string;
   weeklyTimeZone: string | null;

@@ -131,13 +131,11 @@ describe('PATCH class and level', () => {
 });
 
 describe('guildless characters', () => {
-  it('appear publicly with guild null and drop out of guild-filtered lists', async () => {
+  it('appear publicly with guild null', async () => {
     const c = await makeCharacter({ ownerId, worldId, guildId, ign: 'Loner' });
     await prisma.character.update({ where: { id: c.id }, data: { guildId: null } });
     const list = await app.inject({ method: 'GET', url: '/api/characters' });
     expect(list.json()).toHaveLength(1);
     expect(list.json()[0]).toMatchObject({ ign: 'Loner', guild: null });
-    const filtered = await app.inject({ method: 'GET', url: `/api/characters?guildId=${guildId}` });
-    expect(filtered.json()).toEqual([]);
   });
 });

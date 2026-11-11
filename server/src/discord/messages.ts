@@ -64,7 +64,7 @@ export function buildNewPostMessage(post: PostSummaryDTO, webOrigin: string, bos
   if (recruiting && post.partySize != null) fields.push(field('Slots', `${post.memberCount}/${post.partySize}`));
   if (post.minCp != null) fields.push(field('Min CP', formatCpShort(post.minCp)));
   fields.push(field('Poster', `${snap.ign} · ${snap.jobName} · Lv ${snap.level} · CP ${formatCpShort(post.poster.cpAtJoin)}`));
-  fields.push(field('Guild', post.guild.name));
+  fields.push(field('Guild', (post.guild?.name ?? 'No guild')));
   const owner = post.poster.character?.owner;
   // Always include the real handle: a display name alone can't be searched on Discord and could copy someone else's.
   const discord = owner && (owner.displayName ? `${owner.displayName} (@${owner.discordUsername})` : owner.discordUsername);

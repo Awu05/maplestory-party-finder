@@ -72,9 +72,9 @@ describe('create join request', () => {
     expect((await getPost(post.id)).json().incomingRequests).toEqual([]);
   });
 
-  it('guildless applicant -> 400 NO_GUILD', async () => {
+  it('allows a guildless applicant to request to join', async () => {
     await prisma.character.update({ where: { id: bob.id }, data: { guildId: null } });
-    expectError(await requestJoin(post.id, bob.id, u2), 400, 'NO_GUILD');
+    expect((await requestJoin(post.id, bob.id, u2)).statusCode).toBe(201);
   });
 
   it('Zed (other world) -> 400 WRONG_WORLD', async () => {

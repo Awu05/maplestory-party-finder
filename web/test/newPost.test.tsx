@@ -101,9 +101,9 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe('NewPostPage (create)', () => {
-  it('submits a carrying post with party controls and shows its finalization controls', async () => {
-    const carrying = makePost({ type: 'carrying', scheduledAt: null });
-    const fetch = mockApi({ ...base, '/api/posts/p1': carrying, 'POST /api/posts': carrying });
+  it.each([false, true])('submits a carrying post and shows its finalization controls (guildless=%s)', async (guildless) => {
+    const carrying = makePost({ type: 'carrying', scheduledAt: null, ...(guildless ? { guild: null } : {}) });
+    const fetch = mockApi({ ...base, '/api/characters?mine=1': [{ ...lily, ...(guildless ? { guild: null } : {}) }], '/api/posts/p1': carrying, 'POST /api/posts': carrying });
     renderWithProviders(<App />, { route: '/posts/new' });
     fireEvent.click(await screen.findByRole('button', { name: 'Carrying' }));
     await pickCharacter();

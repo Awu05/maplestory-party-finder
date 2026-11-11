@@ -147,7 +147,6 @@ export async function createManualCharacter(
 export const REFRESH_COOLDOWN_MS = 600_000;
 
 export interface ListCharactersFilter {
-  guildId?: string;
   worldId?: number;
   archetype?: Archetype;
   q?: string;
@@ -161,7 +160,6 @@ export async function listCharacters(prisma: PrismaClient, filter: ListCharacter
       ...(filter.ownerId
         ? { ownerId: filter.ownerId }
         : { OR: [{ guildId: null }, { guild: { active: true } }], owner: { banned: false } }),
-      ...(filter.guildId ? { guildId: filter.guildId } : {}),
       ...(filter.worldId !== undefined ? { worldId: filter.worldId } : {}),
       ...(filter.archetype ? { archetype: filter.archetype } : {}),
       ...(filter.q ? { ignLower: { startsWith: filter.q.toLowerCase() } } : {}),

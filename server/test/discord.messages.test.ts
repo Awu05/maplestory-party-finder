@@ -91,6 +91,12 @@ describe('buildNewPostMessage', () => {
     expect(f.Note).toBe('bring pots');
   });
 
+  it('labels a guildless post without blocking its announcement', () => {
+    const message = buildNewPostMessage(makePost({ guild: null }), ORIGIN);
+    expect(fields(message).Guild).toBe('No guild');
+    expect(message.embeds).toHaveLength(1);
+  });
+
   it('neutralizes mentions in the note and other user text', () => {
     const p = buildNewPostMessage(makePost({ note: '@everyone come <@123> @here' }), ORIGIN);
     const note = fields(p).Note as string;
