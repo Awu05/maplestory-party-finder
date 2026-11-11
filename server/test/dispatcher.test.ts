@@ -3,8 +3,9 @@ import type { FastifyInstance } from 'fastify';
 import type { Storage } from '../src/storage/storage.js';
 import type { Character, Guild, PrismaClient } from '@prisma/client';
 import { EventDispatcher } from '../src/notifications/dispatcher.js';
+import { WebhookWorker } from '../src/discord/outbox.js';
 import {
-  addMember, buildTestApp, loginAs, makeBossDifficulty, makeCharacter, makeGuild, makePost, makeUser, makeWorld, prisma, resetDb,
+  addMember, buildTestApp, FakeWebhookSender, loginAs, makeBossDifficulty, makeCharacter, makeGuild, makePost, makeUser, makeWorld, prisma, resetDb,
   type LogEntry,
 } from './helpers.js';
 
@@ -233,7 +234,7 @@ describe('request.accepted', () => {
     const ns = await notes();
     expect(ns.map((n) => [n.userId, n.kind])).toEqual([[u2Id, 'invite'], [u1Id, 'accepted']]);
     expect(ns[1]).toMatchObject({ text: 'Bob accepted your invite', link: `/posts/${post.id}` });
-    expect((await deliveries()).map((d) => d.eventType)).toEqual(['request.created']);
+    expect((await deliveries()).map((d) => d.eventType)).toEqual(['request.created', 'post.closed']);
   });
 });
 
@@ -268,7 +269,7 @@ describe('request.declined', () => {
     const auto = (await notes()).filter((n) => n.kind === 'auto_declined');
     expect(auto).toHaveLength(1);
     expect(auto[0]).toMatchObject({ userId: u3Id, text: 'The Hard Lucid party filled or the post closed', link: '/me/parties?tab=requests' });
-    expect((await deliveries()).map((d) => d.eventType).sort()).toEqual(['request.accepted', 'request.created', 'request.created']);
+    expect((await deliveries()).map((d) => d.eventType).sort()).toEqual(['post.closed', 'request.accepted', 'request.created', 'request.created']);
   });
 
   it("accepting one invite auto-declines the invitee's other invites without notifying the invitee (the actor) or the inviter", async () => {
@@ -317,8 +318,32 @@ describe('member.left', () => {
   });
 });
 
-describe('ignored events', () => {
-  it('post close / edit / cancel produce no notifications or deliveries', async () => {
+describe('post closure', () => {
+  it.each(['manual', 'finalized'] as const)('%s sends a closure notice without configured boss-role pings', async (reason) => {
+    const difficulty = await prisma.bossDifficulty.findUniqueOrThrow({ where: { id: lucid } });
+    const role = '123456789012345678';
+    await prisma.guild.update({ where: { id: g1.id }, data: { bossRoleIds: { [String(difficulty.bossId)]: role } } });
+    const created = await call('POST', '/api/posts', u1, { type: 'carrying', characterId: alice.id, bossDifficultyIds: [lucid], partySize: 4, note: '' });
+    expect(created.statusCode).toBe(201);
+    await events.drain();
+    const sender = new FakeWebhookSender();
+    const worker = new WebhookWorker({ prisma, sender });
+    expect((await worker.runOnce()).sent).toBe(1);
+    expect(sender.calls[0]!.payload.allowed_mentions.roles).toEqual([role]);
+    sender.calls = [];
+    const id = created.json().id;
+    const closed = reason === 'manual'
+      ? await call('POST', `/api/posts/${id}/close`, u1)
+      : await call('PUT', `/api/posts/${id}/final-time`, u1, { scheduledAt: new Date(Date.now() + 86_400_000).toISOString() });
+    expect(closed.statusCode).toBe(200);
+    await events.drain();
+    expect((await worker.runOnce()).sent).toBe(1);
+    expect(sender.calls).toHaveLength(1);
+    expect(sender.calls[0]!.payload.content).toContain(`Post closed (${reason})`);
+    expect(sender.calls[0]!.payload.content).not.toContain('<@');
+    expect(sender.calls[0]!.payload.allowed_mentions).toEqual({ parse: [] });
+  });
+  it('close sends one channel notice without mentions; edit and cancel send nothing', async () => {
     const post = await recruiting();
     const reqId = await join(post.id, bob.id, u2);
     await events.drain();
@@ -328,7 +353,11 @@ describe('ignored events', () => {
     expect((await call('POST', `/api/posts/${post.id}/close`, u1)).statusCode).toBe(200);
     await events.drain();
     expect((await notes()).length).toBe(n0);
-    expect((await deliveries()).length).toBe(d0);
+    const ds = await deliveries();
+    expect(ds.length).toBe(d0 + 1);
+    expect(ds.at(-1)).toMatchObject({ guildId: g1.id, eventType: 'post.closed' });
+    expect(content(ds.at(-1)!)).toContain('Post closed (manual)');
+    expect((ds.at(-1)!.payload as { allowed_mentions: unknown }).allowed_mentions).toEqual({ parse: [] });
   });
 });
 
@@ -367,7 +396,7 @@ describe('errors', () => {
 });
 
 describe('post.finalized', () => {
-  it('notifies members (not the poster) and pings those in a webhook guild', async () => {
+  it('notifies members in-app and sends only a channel closure notice without pings', async () => {
     const post = await recruiting();
     await addMember(post.id, bob.id); // G5, webhook
     await addMember(post.id, carol.id); // G2, no webhook
@@ -384,35 +413,36 @@ describe('post.finalized', () => {
     expect(ns.every((n) => n.link === `/posts/${post.id}` && n.text === 'Alice set the time for Hard Lucid')).toBe(true);
     const ds = await deliveries();
     expect(ds).toHaveLength(1);
-    expect(ds[0]).toMatchObject({ guildId: g5.id, eventType: 'post.finalized' });
-    expect(content(ds[0]!)).toContain('<@u-2>');
+    expect(ds[0]).toMatchObject({ guildId: g1.id, eventType: 'post.closed' });
+    expect(content(ds[0]!)).toContain('Post closed (finalized)');
+    expect(content(ds[0]!)).not.toContain('<@');
     expect(content(ds[0]!)).toContain('<t:');
-    expect((ds[0]!.payload as { allowed_mentions: unknown }).allowed_mentions).toEqual({ parse: [], users: ['u-2'] });
+    expect((ds[0]!.payload as { allowed_mentions: unknown }).allowed_mentions).toEqual({ parse: [] });
   });
 
-  it("one member's failing ping is logged and the other members are still notified and pinged", async () => {
+  it("one member's failing notification does not stop other members or the closure notice", async () => {
     const post = await recruiting();
     await addMember(post.id, bob.id); // G5: its guild lookup fails below
     const erinUser = await makeUser({ discordId: 'u-8', username: 'eight' });
     const erin = await makeCharacter({ ownerId: erinUser.id, worldId: kronosId, guildId: g1.id, ign: 'Erin' });
     await addMember(post.id, erin.id);
     const errorLogs: LogEntry[] = [];
-    const guild = {
-      findUnique: (args: { where: { id: string } }) =>
-        args.where.id === g5.id ? Promise.reject(new TypeError('guild lookup failed')) : prisma.guild.findUnique(args as never),
+    const notification = {
+      create: (args: { data: { userId: string } }) =>
+        args.data.userId === u2Id ? Promise.reject(new TypeError('notification failed')) : prisma.notification.create(args as never),
     };
-    const flaky = new Proxy(prisma, { get: (t, k, r) => (k === 'guild' ? guild : Reflect.get(t, k, r)) });
+    const flaky = new Proxy(prisma, { get: (t, k, r) => (k === 'notification' ? notification : Reflect.get(t, k, r)) });
     const dispatcher = new EventDispatcher({
       prisma: flaky, storage, webOrigin: 'http://localhost:5173',
       log: { error: (obj, msg) => errorLogs.push({ obj, msg }) },
     });
     dispatcher.emit({ type: 'post.finalized', postId: post.id, actorUserId: u1Id });
     await dispatcher.drain();
-    expect((await notes()).map((n) => n.userId).sort()).toEqual([u2Id, erinUser.id].sort());
+    expect((await notes()).map((n) => n.userId)).toEqual([erinUser.id]);
     const ds = await deliveries();
     expect(ds).toHaveLength(1);
-    expect(ds[0]).toMatchObject({ guildId: g1.id, eventType: 'post.finalized' });
-    expect(content(ds[0]!)).toContain('<@u-8>');
+    expect(ds[0]).toMatchObject({ guildId: g1.id, eventType: 'post.closed' });
+    expect(content(ds[0]!)).not.toContain('<@');
     expect(errorLogs).toEqual([
       { obj: { event: 'post.finalized', postId: post.id, errName: 'TypeError' }, msg: 'member notification failed' },
     ]);

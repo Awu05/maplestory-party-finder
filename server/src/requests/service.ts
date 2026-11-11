@@ -34,7 +34,7 @@ export async function createJoinRequest(
       // Deleted posts are gone for everyone but their party; any other closed post answers POST_CLOSED
       // (an applicant holding the id of a post that just expired gets a useful error, not a 404).
       if (post.deletedAt !== null) assertVisible(post, viewer, now);
-      if (post.type !== 'recruiting') throw new AppError(409, 'WRONG_POST_TYPE', 'Only recruiting posts take join requests');
+      if (post.type === 'lfp') throw new AppError(409, 'WRONG_POST_TYPE', 'Only recruiting and carrying posts take join requests');
       assertOpen(post, now);
       const character = await tx.character.findUnique({ where: { id: characterId } });
       if (!character) throw new AppError(404, 'NOT_FOUND', 'Character not found');
@@ -68,7 +68,7 @@ function assertInviteRoles(lfp: PostRow, recruiting: PostRow, viewer: Viewer, no
   if (lfp.deletedAt !== null) assertVisible(lfp, viewer, now);
   if (lfp.type !== 'lfp') throw new AppError(409, 'WRONG_POST_TYPE', 'Invites come from looking-for-party posts');
   if (recruiting.posterUserId !== viewer.user.id) throw new AppError(403, 'NOT_OWNER', 'You do not own that post');
-  if (recruiting.type !== 'recruiting') throw new AppError(409, 'WRONG_POST_TYPE', 'Invites go onto recruiting posts');
+  if (recruiting.type === 'lfp') throw new AppError(409, 'WRONG_POST_TYPE', 'Invites go onto recruiting or carrying posts');
 }
 
 export async function createInvite(

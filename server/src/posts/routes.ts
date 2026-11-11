@@ -7,7 +7,7 @@ import { toPostDetailDTO, toPostSummaryDTO } from './serialize.js';
 import { AppError } from '../http/errors.js';
 
 // Field schemas are exported so the edit route can reuse them.
-export const postTypeSchema = z.enum(['lfp', 'recruiting']);
+export const postTypeSchema = z.enum(['lfp', 'recruiting', 'carrying']);
 export const bossDifficultyIdsSchema = z
   .array(z.number().int())
   .min(1)

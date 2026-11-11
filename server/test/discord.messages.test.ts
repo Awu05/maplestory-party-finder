@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PostSummaryDTO } from '@pf/shared';
 import {
-  bossLabel, buildAcceptPing, buildNewPostMessage, buildPartyThread, buildRequestPing, buildTestMessage, buildTimeSetPing, buildWeeklyReminder, discordTime, neutralize, weeklyReminderPost,
+  bossLabel, buildAcceptPing, buildNewPostMessage, buildPartyThread, buildPostClosedMessage, buildRequestPing, buildTestMessage, buildWeeklyReminder, discordTime, neutralize, weeklyReminderPost,
 } from '../src/discord/messages';
 
 const ZW = '​';
@@ -166,12 +166,13 @@ describe('pings', () => {
   });
 });
 
-describe('buildTimeSetPing', () => {
-  it('neutralizes an @everyone poster IGN and boss name, and only pings the recipient', () => {
+describe('buildPostClosedMessage', () => {
+  it('neutralizes mentions in boss names and permits no pings', () => {
     const post = makePost({ bosses: [{ bossDifficultyId: 1, bossName: '@everyone', difficulty: 'Hard' }] });
-    const p = buildTimeSetPing({ recipientDiscordId: '42', posterIgn: '@here Alice', post, scheduledAt: '2025-11-10T20:00:00Z', webOrigin: ORIGIN });
-    expect(p.content).toBe(`<@42> @${ZW}here Alice set the time for Hard @${ZW}everyone: <t:1762804800:F> → ${ORIGIN}/posts/p1`);
-    expect(p.allowed_mentions).toEqual({ parse: [], users: ['42'] });
+    const p = buildPostClosedMessage(post, ORIGIN, 'finalized');
+    expect(p.content).toContain(`Post closed (finalized): Hard @${ZW}everyone`);
+    expect(p.content).toContain(`${ORIGIN}/posts/p1`);
+    expect(p.allowed_mentions).toEqual({ parse: [] });
   });
 });
 

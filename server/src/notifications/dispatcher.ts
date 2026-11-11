@@ -1,8 +1,8 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
 import type { PostSummaryDTO } from '@pf/shared';
 import type { DomainEvent, DomainEvents } from '../events.js';
-import { bossLabel, buildAcceptPing, buildRequestPing, buildTimeSetPing, type WebhookPayload } from '../discord/messages.js';
-import { enqueuePostAnnouncement } from '../discord/postAnnouncement.js';
+import { bossLabel, buildAcceptPing, buildRequestPing, type WebhookPayload } from '../discord/messages.js';
+import { enqueuePostAnnouncement, enqueuePostClosure } from '../discord/postAnnouncement.js';
 import { enqueueDelivery } from '../discord/outbox.js';
 import { postSummaryInclude, toPostSummaryDTO } from '../posts/serialize.js';
 import type { Storage } from '../storage/storage.js';
@@ -81,8 +81,13 @@ export class EventDispatcher implements DomainEvents {
         return this.memberLeft(e);
       case 'post.finalized':
         return this.postFinalized(e.postId, e.actorUserId);
+      case 'post.closed': {
+        const row = await this.prisma.post.findUnique({ where: { id: e.postId }, include: postSummaryInclude });
+        if (row) await enqueuePostClosure(this.prisma, row, this.storage, this.webOrigin, e.reason);
+        return;
+      }
       default:
-        return; // post.updated, post.closed, post.reopened, request.cancelled notify no one
+        return;
     }
   }
 
@@ -163,20 +168,16 @@ export class EventDispatcher implements DomainEvents {
     const row = await this.prisma.post.findUnique({ where: { id: postId }, include: postSummaryInclude });
     if (!row?.scheduledAt) return;
     const post = this.dto(row);
-    const scheduledAt = row.scheduledAt.toISOString();
     const posterIgn = post.poster.snapshot.ign;
     const members = await this.prisma.postMember.findMany({
       where: { postId, role: 'member', characterId: { not: null }, userId: { not: row.posterUserId } },
-      select: { userId: true, character: { select: { guildId: true } } },
+      select: { userId: true },
       orderBy: { joinedAt: 'asc' },
     });
     for (const m of members) {
-      // One member's failure (a bad guild row, a lost connection) must not stop the rest.
+      // One failed notification must not stop the remaining members.
       try {
         await this.notify(m.userId, actorUserId, 'time_set', `${posterIgn} set the time for ${bossesLabel(post)}`, postId);
-        await this.ping(m.character?.guildId ?? null, m.userId, actorUserId, 'post.finalized', (recipientDiscordId) =>
-          buildTimeSetPing({ recipientDiscordId, posterIgn, post, scheduledAt, webOrigin: this.webOrigin }),
-        );
       } catch (err) {
         try {
           this.log.error({ event: 'post.finalized', postId, errName: errName(err), ...errCode(err) }, 'member notification failed');
@@ -185,6 +186,7 @@ export class EventDispatcher implements DomainEvents {
         }
       }
     }
+    await enqueuePostClosure(this.prisma, row, this.storage, this.webOrigin, 'finalized');
   }
 
   private async notify(userId: string, actorUserId: string | null, kind: NotificationKind, text: string, postId: string, link = postPath(postId)): Promise<void> {

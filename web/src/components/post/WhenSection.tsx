@@ -35,7 +35,7 @@ export function WhenSection({ post, collapsible = false, members, allowAvailabil
   return (
     <section className="when-section" aria-label="When">
       {/* LFP posts are never finalized: they only show the grid. */}
-      {post.type === 'recruiting' && (
+      {post.type !== 'lfp' && (
         <p className="when-section__final">
           {post.scheduledAt !== null ? `${post.weeklyTimeZone ? 'Next weekly run' : 'Final time'}: ${formatWhen(post.scheduledAt)}` : 'Time not set yet'}
           {post.weeklyTimeZone && <small className="when-section__caption">{` · Repeats weekly (${post.weeklyTimeZone})`}</small>}

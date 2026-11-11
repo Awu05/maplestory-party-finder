@@ -101,6 +101,7 @@ export function BoardPage() {
             options={[
               { value: '', label: 'All' },
               { value: 'recruiting', label: 'Recruiting' },
+              { value: 'carrying', label: 'Carrying' },
               { value: 'lfp', label: 'Looking for party' },
             ]}
           />

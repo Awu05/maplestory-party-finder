@@ -26,7 +26,7 @@ export function ViewerActions({ post }: { post: PostDetailDTO }) {
   const accept = useAcceptRequest();
   const decline = useDeclineRequest();
   const open = post.status === 'open' && !post.deleted;
-  const canRequest = loggedIn && open && post.type === 'recruiting';
+  const canRequest = loggedIn && open && post.type !== 'lfp';
   const canInvite = loggedIn && open && post.type === 'lfp';
   const characters = useCharacters(
     { mine: true },
@@ -49,7 +49,7 @@ export function ViewerActions({ post }: { post: PostDetailDTO }) {
   const alreadyInvited = new Set(post.sentInvitesToThis.map((r) => r.postId));
   const inviteTargets = (myPosts.data ?? []).filter(
     (mp) =>
-      mp.type === 'recruiting' &&
+      mp.type !== 'lfp' &&
       mp.status === 'open' &&
       !mp.deleted &&
       mp.world.id === post.world.id &&
@@ -177,10 +177,10 @@ export function ViewerActions({ post }: { post: PostDetailDTO }) {
       {canInvite &&
         panel === 'invite' &&
         (inviteTargets.length === 0 ? (
-          <p>{`You have no open recruiting posts on ${post.world.name}.`}</p>
+          <p>{`You have no open parties on ${post.world.name}.`}</p>
         ) : (
           <ul
-            aria-label="Your open recruiting posts"
+            aria-label="Your open parties"
             className="post-requests"
           >
             {inviteTargets.map((mp) => (

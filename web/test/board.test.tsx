@@ -105,13 +105,13 @@ describe('BoardPage', () => {
     expect(postsCalls(fetchMock)).toEqual(['/api/posts']);
   });
 
-  it('choosing type Recruiting refetches with type=recruiting', async () => {
-    const fetchMock = mockApi({ ...base, '/api/auth/me': null, '/api/posts': [], '/api/posts?type=recruiting': [post] });
+  it.each([['recruiting', 'Recruiting'], ['carrying', 'Carrying']] as const)('choosing type %s refetches with that category', async (type, label) => {
+    const fetchMock = mockApi({ ...base, '/api/auth/me': null, '/api/posts': [], [`/api/posts?type=${type}`]: [{ ...post, type }] });
     renderWithProviders(<App />);
     await screen.findByText('No open posts match. Be the first to post!');
-    fireEvent.click(screen.getByRole('radio', { name: 'Recruiting' }));
+    fireEvent.click(screen.getByRole('radio', { name: label }));
     expect(await screen.findByText('2 / 4')).toBeInTheDocument();
-    expect(postsCalls(fetchMock)).toContain('/api/posts?type=recruiting');
+    expect(postsCalls(fetchMock)).toContain(`/api/posts?type=${type}`);
   });
 
   afterEach(() => {

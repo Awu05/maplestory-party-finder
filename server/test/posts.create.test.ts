@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import {
-  buildTestApp, loginAs, makeBossDifficulty, makeCharacter, makeGuild, makeWorld, prisma, resetDb, type RecordingEvents,
+  buildTestApp, loginAs, makeBossDifficulty, makeCharacter, makeGuild, makePost, makeWorld, prisma, resetDb, type RecordingEvents,
 } from './helpers.js';
 
 const HOUR = 3_600_000;
@@ -40,6 +40,42 @@ const body = (over: Record<string, unknown> = {}) => ({
 });
 
 describe('POST /api/posts', () => {
+  it('allows a carrying post to invite and accept a player looking for a party', async () => {
+    const created = await post(body({ type: 'carrying' }));
+    expect(created.statusCode).toBe(201);
+    const guestCookie = await loginAs(app, 'guest', 'guest');
+    const guest = await prisma.user.findUniqueOrThrow({ where: { discordId: 'guest' } });
+    const character = await makeCharacter({ ownerId: guest.id, guildId, worldId: created.json().world.id });
+    const lfp = await makePost({ type: 'lfp', partySize: null, posterCharacterId: character.id, scheduledAt: null });
+    const invite = await app.inject({ method: 'POST', url: `/api/posts/${lfp.id}/invites`, headers: { cookie }, payload: { recruitingPostId: created.json().id } });
+    expect(invite.statusCode).toBe(201);
+    const accepted = await app.inject({ method: 'POST', url: `/api/requests/${invite.json().id}/accept`, headers: { cookie: guestCookie } });
+    expect(accepted.statusCode).toBe(200);
+    expect(accepted.json()).toMatchObject({ type: 'carrying', memberCount: 2 });
+  });
+  it('supports carrying posts through joining, finalizing, My Parties, and reopening', async () => {
+    const created = await post(body({ type: 'carrying' }));
+    expect(created.statusCode).toBe(201);
+    const id = created.json().id;
+    expect(created.json()).toMatchObject({ type: 'carrying', partySize: 4, status: 'open' });
+    const board = await app.inject({ method: 'GET', url: '/api/posts?type=carrying', headers: { cookie } });
+    expect(board.json().map((row: { id: string }) => row.id)).toContain(id);
+    const guestCookie = await loginAs(app, 'guest', 'guest');
+    const guest = await prisma.user.findUniqueOrThrow({ where: { discordId: 'guest' } });
+    const character = await makeCharacter({ ownerId: guest.id, guildId, worldId: created.json().world.id });
+    const request = await app.inject({ method: 'POST', url: `/api/posts/${id}/requests`, headers: { cookie: guestCookie }, payload: { characterId: character.id } });
+    expect(request.statusCode).toBe(201);
+    const accepted = await app.inject({ method: 'POST', url: `/api/requests/${request.json().id}/accept`, headers: { cookie } });
+    expect(accepted.statusCode).toBe(200);
+    const final = await app.inject({ method: 'PUT', url: `/api/posts/${id}/final-time`, headers: { cookie }, payload: { scheduledAt: new Date(Date.now() + 86_400_000).toISOString(), repeatWeekly: true, timeZone: 'America/New_York' } });
+    expect(final.statusCode).toBe(200);
+    expect(final.json()).toMatchObject({ type: 'carrying', status: 'closed', recruitmentClosed: true, weeklyTimeZone: 'America/New_York' });
+    const parties = await app.inject({ method: 'GET', url: '/api/me/parties', headers: { cookie } });
+    expect(parties.json().map((row: { id: string }) => row.id)).toContain(id);
+    const reopened = await app.inject({ method: 'POST', url: `/api/posts/${id}/reopen`, headers: { cookie } });
+    expect(reopened.statusCode).toBe(200);
+    expect(reopened.json()).toMatchObject({ type: 'carrying', status: 'open', scheduledAt: null });
+  });
   it('rejects multiple difficulties of one boss on create and edit without changing the post', async () => {
     const hard = await prisma.bossDifficulty.findUniqueOrThrow({ where: { id: hardLucid } });
     const normal = await makeBossDifficulty({ bossId: hard.bossId, difficulty: 'Normal', partyCap: 6 });

@@ -21,7 +21,7 @@ export function LineupView({ post, tiers = [], compact = false, onRemove, onLeav
   const [open, setOpen] = useState<CharacterDTO | null>(null);
   const showSlots = post.status !== 'closed' && !post.deleted;
   const emptySlots =
-    showSlots && post.type === 'recruiting' && post.partySize !== null
+    showSlots && post.type !== 'lfp' && post.partySize !== null
       ? Math.max(0, post.partySize - post.members.length)
       : 0;
 
