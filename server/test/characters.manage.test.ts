@@ -7,7 +7,7 @@ import {
 } from './helpers.js';
 
 const PNG = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==',
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADUlEQVQImWNgYGBgAAAABQABh6FO1AAAAABJRU5ErkJggg==',
   'base64',
 );
 
@@ -149,12 +149,27 @@ describe('characters screenshot', () => {
     const r1 = await upload(c.id);
     expect(r1.statusCode).toBe(200);
     const url1 = r1.json().screenshotUrl as string;
-    expect(url1).toMatch(/^\/uploads\/[a-f0-9]{24}\.png$/);
+    expect(url1).toMatch(/^\/uploads\/[a-f0-9]{24}\.webp$/);
     expect(fs.readdirSync(uploadDir)).toEqual([url1.replace('/uploads/', '')]);
     const r2 = await upload(c.id);
     const url2 = r2.json().screenshotUrl as string;
     expect(url2).not.toBe(url1);
     expect(fs.readdirSync(uploadDir)).toEqual([url2.replace('/uploads/', '')]);
+  });
+
+  it('limits each user to 10 screenshot uploads per 10 minutes', async () => {
+    const c = await makeCharacter({ ownerId, worldId, guildId });
+    for (let i = 0; i < 10; i++) expect((await upload(c.id)).statusCode).toBe(200);
+    const before = fs.readdirSync(uploadDir);
+    const blocked = await upload(c.id);
+    expect(blocked.statusCode).toBe(429);
+    expect(blocked.json().error.code).toBe('TOO_MANY_UPLOADS');
+    expect(fs.readdirSync(uploadDir)).toEqual(before);
+    // Another user is unaffected.
+    const otherCookie = await loginAs(app, 'u-up', 'uploader');
+    const otherId = (await prisma.user.findUniqueOrThrow({ where: { discordId: 'u-up' } })).id;
+    const mine = await makeCharacter({ ownerId: otherId, worldId, guildId });
+    expect((await upload(mine.id, otherCookie)).statusCode).toBe(200);
   });
 
   it('non-owner -> 403 and nothing saved', async () => {

@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getViewer, requireUser } from '../auth/guards.js';
 import { readImageUpload } from '../storage/imageType.js';
+import { UploadLimiter } from '../storage/uploadLimiter.js';
 import {
   claimRefresh, createCharacter, createManualCharacter, deleteCharacter, getCharacter, getOwnedCharacter, listCharacters, lookupCharacters,
   moveCharacterWorld, refreshCharacter, updateCharacter,
@@ -44,6 +45,7 @@ const listQuery = z.object({
 
 export async function characterRoutes(app: FastifyInstance): Promise<void> {
   const { prisma, nexon, storage, events } = app.deps;
+  const uploads = new UploadLimiter();
 
   app.post('/characters/lookup', async (req) => {
     await requireUser(req);
@@ -101,6 +103,7 @@ export async function characterRoutes(app: FastifyInstance): Promise<void> {
     const viewer = await requireUser(req);
     const { id } = req.params as { id: string };
     const row = await getOwnedCharacter(prisma, id, viewer.user.id);
+    uploads.take(viewer.user.id); // before reading or decoding anything
     const { buf, ext } = await readImageUpload(req);
     const key = await storage.save(buf, ext);
     let updated;

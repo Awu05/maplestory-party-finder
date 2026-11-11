@@ -103,7 +103,7 @@ function DetailsForm({ initial, lead, validate, guilds, onSubmit }: FormProps) {
       </label>
       <label>
         Scouter screenshot
-        <input type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+        <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
       </label>
       {error && (
         <p role="alert">
