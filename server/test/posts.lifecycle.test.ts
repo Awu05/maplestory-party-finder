@@ -192,6 +192,18 @@ describe('reopen', () => {
     expect((await call('POST', `/api/posts/${open.id}/reopen`, posterCookie)).statusCode).toBe(409);
   });
 
+  it('refuses to reopen a manually closed LFP post while its character is in another live party', async () => {
+    const lfp = await makePost({ posterUserId, type: 'lfp', partySize: null, scheduledAt: null, status: 'closed', closedReason: 'manual' });
+    const party = await makePost({ scheduledAt: null });
+    const membership = await addMember(party.id, lfp.posterCharacterId!);
+    const response = await call('POST', `/api/posts/${lfp.id}/reopen`, posterCookie);
+    expect(response.statusCode).toBe(409);
+    expect(response.json().error).toMatchObject({ code: 'IN_PARTY', message: 'Leave your current party before reopening this post.' });
+    expect((await prisma.post.findUniqueOrThrow({ where: { id: lfp.id } })).status).toBe('closed');
+    await prisma.postMember.delete({ where: { id: membership.id } });
+    expect((await call('POST', `/api/posts/${lfp.id}/reopen`, posterCookie)).statusCode).toBe(200);
+  });
+
   it('rejects a party whose posting character has been deleted', async () => {
     const p = await makePost({ posterUserId, status: 'closed', closedReason: 'manual' });
     await prisma.character.delete({ where: { id: p.posterCharacterId! } });

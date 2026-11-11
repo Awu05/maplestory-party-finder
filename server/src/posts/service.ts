@@ -256,6 +256,23 @@ export async function setMemberFreeTimes(
   });
 }
 
+/**
+ * Whether `characterId` is in a live party other than `excludePostId`: not deleted, not expired, and
+ * open, full or finalized. `role` limits it to memberships with that role (e.g. not its own posts).
+ */
+async function liveMembershipElsewhere(tx: Prisma.TransactionClient, characterId: string, excludePostId: string, now: Date, role?: 'member'): Promise<boolean> {
+  const membership = await tx.postMember.findFirst({
+    where: {
+      characterId,
+      postId: { not: excludePostId },
+      ...(role ? { role } : {}),
+      post: { deletedAt: null, expiresAt: { gt: now }, OR: [{ status: { in: ['open', 'full'] } }, { status: 'closed', closedReason: 'finalized' }] },
+    },
+    select: { id: true },
+  });
+  return membership !== null;
+}
+
 const postRequests = (postId: string): Prisma.RequestWhereInput => ({ OR: [{ postId }, { lfpPostId: postId }] });
 
 export interface LifecycleResult {
@@ -328,12 +345,9 @@ export async function reopenPost(prisma: PrismaClient, viewer: Viewer, id: strin
     if (character.worldId !== row.worldId && row.members.length > 1) {
       throw new AppError(409, 'WRONG_WORLD', 'The posting character has moved worlds. Create a new post for that world.');
     }
-    if (row.closedReason === 'lfp_matched') {
-      const currentParty = await tx.postMember.findFirst({ where: {
-        characterId: character.id, postId: { not: id }, role: 'member',
-        post: { deletedAt: null, expiresAt: { gt: now }, OR: [{ status: { in: ['open', 'full'] } }, { status: 'closed', closedReason: 'finalized' }] },
-      } });
-      if (currentParty) throw new AppError(409, 'IN_PARTY', 'Leave your current party before reopening this post.');
+    // An LFP post says the character is looking; however it was closed, not while it is in a party.
+    if (row.type === 'lfp' && (await liveMembershipElsewhere(tx, character.id, id, now, 'member'))) {
+      throw new AppError(409, 'IN_PARTY', 'Leave your current party before reopening this post.');
     }
     const declinedRequestIds = await autoDeclinePending(tx, postRequests(id));
     const full = row.type === 'recruiting' && row.partySize !== null && row.members.length >= row.partySize;
@@ -429,15 +443,7 @@ async function reopenMatchedLfpPost(
   if (!lfp || lfp.status !== 'closed' || lfp.closedReason !== 'lfp_matched' || lfp.deletedAt !== null) return null;
   if (lfp.expiresAt.getTime() <= now.getTime()) return null;
   // Still in another live party (e.g. joined one by join request): the character is not looking.
-  const otherParty = await tx.postMember.findFirst({
-    where: {
-      characterId,
-      postId: { not: recruitingPostId },
-      post: { deletedAt: null, expiresAt: { gt: now }, OR: [{ status: { in: ['open', 'full'] } }, { status: 'closed', closedReason: 'finalized' }] },
-    },
-    select: { id: true },
-  });
-  if (otherParty) return null;
+  if (await liveMembershipElsewhere(tx, characterId, recruitingPostId, now)) return null;
   await tx.post.update({ where: { id: lfp.id }, data: { status: 'open', closedReason: null } });
   return lfp.id;
 }
