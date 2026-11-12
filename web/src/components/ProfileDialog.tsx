@@ -11,18 +11,21 @@ interface Props {
   onLogout: () => void;
 }
 
-/** Account popup opened from the header: edit the display name, or log out. */
+/** Account popup opened from the header: edit the display name (and a typed Discord name), link Discord, or log out. */
 export function ProfileDialog({ me, onClose, onLogout }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
+  const displayNameRef = useRef<HTMLInputElement>(null);
   const headingId = useId();
   const update = useUpdateProfile();
   const [draft, setDraft] = useState(me.displayName ?? '');
+  const unlinked = me.discordLinked === false;
+  const [nameDraft, setNameDraft] = useState(me.discordUsername);
 
   useEffect(() => {
     const d = ref.current;
     if (!d) return;
     if (!d.open) d.showModal();
-    d.querySelector<HTMLElement>('input')?.focus();
+    displayNameRef.current?.focus();
     return () => {
       if (d.open) d.close();
     };
@@ -38,7 +41,10 @@ export function ProfileDialog({ me, onClose, onLogout }: Props) {
 
   function save(e: FormEvent) {
     e.preventDefault();
-    update.mutate(draft.trim() || null, { onSuccess: onClose });
+    const discordUsername = nameDraft.trim();
+    // Only an unlinked account types its Discord name; an empty or unchanged field leaves it as is.
+    const changedName = unlinked && discordUsername !== '' && discordUsername !== me.discordUsername;
+    update.mutate({ displayName: draft.trim() || null, ...(changedName ? { discordUsername } : {}) }, { onSuccess: onClose });
   }
 
   return (
@@ -52,11 +58,35 @@ export function ProfileDialog({ me, onClose, onLogout }: Props) {
     >
       <form className="profile-dialog__content" onSubmit={save}>
         <h2 id={headingId}>Profile</h2>
-        <p className="profile-dialog__muted">{me.discordLinked === false ? `Discord name (unverified): ${me.discordUsername}` : `Discord: @${me.discordUsername}`}</p>
-        {me.discordLinked === false && <p className="profile-dialog__muted">Your Discord account is not linked, so Discord pings are unavailable for this account.</p>}
+        {unlinked ? (
+          <>
+            <p className="profile-dialog__muted">Your Discord account is not linked, so Discord pings are unavailable for this account.</p>
+            <a className="btn btn--secondary" href="/api/auth/discord/link">Link Discord account</a>
+            <small className="profile-dialog__muted">Linking verifies your Discord name and turns on Discord pings.</small>
+            <label className="profile-dialog__field">
+              <span>Discord username <span className="unverified-note" title="Typed at sign-up and not confirmed through Discord">unverified</span></span>
+              <input
+                value={nameDraft}
+                maxLength={50}
+                autoComplete="off"
+                disabled={update.isPending}
+                onChange={(e) => {
+                  setNameDraft(e.target.value);
+                  update.reset();
+                }}
+              />
+            </label>
+            {me.discordUsername === '' && (
+              <small className="profile-dialog__muted">Your Discord username was claimed by its owner. Enter a different one or link your Discord account.</small>
+            )}
+          </>
+        ) : (
+          <p className="profile-dialog__muted">{`Discord: @${me.discordUsername}`}</p>
+        )}
         <label className="profile-dialog__field">
           Display name
           <input
+            ref={displayNameRef}
             value={draft}
             maxLength={50}
             disabled={update.isPending}

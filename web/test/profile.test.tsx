@@ -68,11 +68,65 @@ it.each([
   expect(btn).toHaveFocus();
 });
 
-it('shows a typed Discord name as unverified, without an @, for accounts not linked to Discord', async () => {
-  mockApi({ ...NOTIF, '/api/auth/me': { id: 'u1', discordUsername: 'typed_name', displayName: null, avatarUrl: null, isAdmin: false, discordLinked: false } });
+it('shows a typed Discord name as unverified and editable, with a Link Discord button, for accounts not linked to Discord', async () => {
+  let me = { id: 'u1', discordUsername: 'typed_name', displayName: 'Typed', avatarUrl: null, isAdmin: false, discordLinked: false };
+  const fetch = mockApi({
+    ...NOTIF,
+    '/api/auth/me': () => me,
+    'PATCH /api/auth/me': (init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body));
+      me = { ...me, displayName: body.displayName, discordUsername: body.discordUsername ?? me.discordUsername };
+      return me;
+    },
+  });
   renderWithProviders(<App />);
-  fireEvent.click(await screen.findByRole('button', { name: 'Profile: typed_name' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Profile: Typed' }));
   const dialog = screen.getByRole('dialog', { name: 'Profile' });
-  expect(within(dialog).getByText('Discord name (unverified): typed_name')).toBeVisible();
   expect(within(dialog).queryByText(/@typed_name/)).toBeNull();
+  const link = within(dialog).getByRole('link', { name: 'Link Discord account' });
+  expect(link).toHaveAttribute('href', '/api/auth/discord/link');
+  expect(link).toHaveClass('btn', 'btn--secondary');
+  expect(within(dialog).getByText(/verifies your Discord name and turns on Discord pings/)).toBeVisible();
+  const name = within(dialog).getByLabelText(/Discord username/);
+  expect(name).toHaveValue('typed_name');
+  expect(within(dialog).getByText('unverified')).toBeVisible();
+  fireEvent.change(name, { target: { value: ' new_name ' } });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(fetch).toHaveBeenCalledWith('/api/auth/me', expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ displayName: 'Typed', discordUsername: 'new_name' }) }));
+});
+
+it('shows a taken Discord username error and keeps the popup open', async () => {
+  const fetch = mockApi({ ...NOTIF, '/api/auth/me': { id: 'u1', discordUsername: 'typed_name', displayName: 'Typed', avatarUrl: null, isAdmin: false, discordLinked: false } });
+  const fallback = fetch.getMockImplementation()!;
+  fetch.mockImplementation((url, init) => (init as RequestInit | undefined)?.method === 'PATCH'
+    ? Promise.resolve(new Response(JSON.stringify({ error: { code: 'USERNAME_TAKEN', message: 'That Discord username is already in use.' } }), { status: 409 })) : fallback(url, init));
+  renderWithProviders(<App />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Profile: Typed' }));
+  fireEvent.change(screen.getByLabelText(/Discord username/), { target: { value: 'someone_else' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  const dialog = screen.getByRole('dialog', { name: 'Profile' });
+  expect(await within(dialog).findByRole('alert')).toHaveTextContent('That Discord username is already in use.');
+});
+
+it('explains a Discord username claimed by its owner and never shows it blank', async () => {
+  const fetch = mockApi({ ...NOTIF, '/api/auth/me': { id: 'u1', discordUsername: '', displayName: null, avatarUrl: null, isAdmin: false, discordLinked: false } });
+  renderWithProviders(<App />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Profile' }));
+  const dialog = screen.getByRole('dialog', { name: 'Profile' });
+  expect(within(dialog).getByText('Your Discord username was claimed by its owner. Enter a different one or link your Discord account.')).toBeVisible();
+  expect(within(dialog).getByLabelText(/Discord username/)).toHaveValue('');
+  // Saving with the name still empty only saves the display name.
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/auth/me', expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ displayName: null }) })));
+});
+
+it('keeps the read-only Discord handle for linked accounts, with no link button or name field', async () => {
+  mockApi({ ...NOTIF, '/api/auth/me': { id: 'u1', discordUsername: 'maple_fan', displayName: null, avatarUrl: null, isAdmin: false, discordLinked: true } });
+  renderWithProviders(<App />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Profile: maple_fan' }));
+  const dialog = screen.getByRole('dialog', { name: 'Profile' });
+  expect(within(dialog).getByText('Discord: @maple_fan')).toBeVisible();
+  expect(within(dialog).queryByRole('link', { name: 'Link Discord account' })).toBeNull();
+  expect(within(dialog).queryByLabelText(/Discord username/)).toBeNull();
 });

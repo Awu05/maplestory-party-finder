@@ -2,6 +2,7 @@ import type { KeyboardEvent } from 'react';
 import { rarityFor } from '@pf/shared';
 import type { CharacterDTO, RarityTierDTO } from '@pf/shared';
 import { formatCp } from './format';
+import { accountName } from '../../lib/discordName';
 import './card.css';
 
 interface Props {
@@ -67,8 +68,8 @@ export function CharacterCard({ character: c, tiers, onOpen }: Props) {
           {/* Only the owner line truncates; "Added manually" gets its own line so a long name can't hide it. */}
           <span className="card__owner">
             <span className="card__footer-label">Discord</span>{' '}
-            {!c.owner.discordLinked && <><span className="unverified-note" title="Typed at sign-up and not confirmed through Discord">unverified</span>{' '}</>}
-            <span className="card__discord">{c.owner.displayName ?? c.owner.discordUsername}</span>
+            {!c.owner.discordLinked && c.owner.discordUsername && <><span className="unverified-note" title="Typed at sign-up and not confirmed through Discord">unverified</span>{' '}</>}
+            <span className="card__discord">{accountName(c.owner)}</span>
           </span>
           {c.manual && <span className="card__manual">Added manually</span>}
         </footer>

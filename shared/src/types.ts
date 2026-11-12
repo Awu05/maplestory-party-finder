@@ -12,7 +12,10 @@ export interface CharacterDTO {
   guild: { id: string; name: string; iconUrl: string | null } | null;
   manual: boolean;
   screenshotUrl: string | null;
-  /** discordLinked: signed in with Discord. Otherwise discordUsername was typed at signup and is unverified. */
+  /**
+   * discordLinked: signed in with (or linked to) Discord. Otherwise discordUsername was typed at signup and is
+   * unverified, and is '' when its real Discord owner claimed it (show "Discord name not set", never a blank).
+   */
   owner: { discordUsername: string; displayName: string | null; discordLinked: boolean };
   isOwner: boolean;
   syncStatus: 'ok' | 'stale';
@@ -61,6 +64,7 @@ export type BossDTO = {
 
 export type RarityTierDTO = { id: number; name: string; minCp: number; sortOrder: number };
 
+/** discordUsername is '' for an unlinked account whose typed name was claimed by its real Discord owner. */
 export type MeDTO = { id: string; discordUsername: string; displayName: string | null; avatarUrl: string | null; isAdmin: boolean; discordLinked?: boolean } | null;
 
 export type PostType = 'lfp' | 'recruiting' | 'carrying';

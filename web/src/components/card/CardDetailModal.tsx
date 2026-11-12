@@ -3,6 +3,7 @@ import type { MouseEvent, SyntheticEvent } from 'react';
 import type { CharacterDTO, RarityTierDTO } from '@pf/shared';
 import { CharacterCard } from './CharacterCard';
 import { cpUpdatedLabel } from './format';
+import { accountName, discordHandle, DISCORD_NAME_NOT_SET } from '../../lib/discordName';
 import './card.css';
 
 interface Props {
@@ -106,12 +107,16 @@ export function CardDetailModal({ character: c, tiers, onClose, onEdit }: Props)
           <section>
             <h3>Discord</h3>
             <div className="card-modal__discord">
-              <span>{c.owner.displayName ?? c.owner.discordUsername}</span>
-              <small className="card-modal__muted">{c.owner.discordLinked ? `@${c.owner.discordUsername}` : c.owner.discordUsername}</small>
-              {!c.owner.discordLinked && <small className="unverified-note" title="Typed at sign-up and not confirmed through Discord">unverified</small>}
-              <button type="button" className="btn btn--secondary btn--compact" onClick={copyUsername} aria-label="Copy Discord username">
-                {copied ? 'Copied' : 'Copy'}
-              </button>
+              <span>{accountName(c.owner)}</span>
+              {c.owner.discordUsername ? (
+                <>
+                  <small className="card-modal__muted">{discordHandle(c.owner)}</small>
+                  {!c.owner.discordLinked && <small className="unverified-note" title="Typed at sign-up and not confirmed through Discord">unverified</small>}
+                  <button type="button" className="btn btn--secondary btn--compact" onClick={copyUsername} aria-label="Copy Discord username">
+                    {copied ? 'Copied' : 'Copy'}
+                  </button>
+                </>
+              ) : c.owner.displayName && <small className="card-modal__muted">{DISCORD_NAME_NOT_SET}</small>}
             </div>
           </section>
 
