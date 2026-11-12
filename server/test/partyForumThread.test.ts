@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
+import type { Prisma, PrismaClient } from '@prisma/client';
 import { WebhookWorker } from '../src/discord/outbox.js';
 import { addMember, buildTestApp, FakeWebhookSender, loginAs, makeBossDifficulty, makeCharacter, makeGuild, makePost, makeUser, makeWorld, prisma, resetDb } from './helpers.js';
 
@@ -24,6 +25,83 @@ beforeEach(async () => {
 afterEach(async () => { await app.close(); });
 
 const finalize = (at: Date) => app.inject({ method: 'PUT', url: `/api/posts/${postId}/final-time`, headers: { cookie }, payload: { scheduledAt: at.toISOString() } });
+
+it('atomically fails a discarded thread before a concurrent finalization queues its replacement', async () => {
+  expect((await finalize(new Date(Date.now() + 86_400_000))).statusCode).toBe(200);
+  expect((await app.inject({ method: 'POST', url: `/api/posts/${postId}/reopen`, headers: { cookie } })).statusCode).toBe(200);
+  let paused!: () => void;
+  let release!: () => void;
+  const failureRecorded = new Promise<void>((resolve) => { paused = resolve; });
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  function wrap(db: PrismaClient | Prisma.TransactionClient): PrismaClient | Prisma.TransactionClient {
+    return new Proxy(db, { get(target, key) {
+      if (key === '$transaction') return (callback: (tx: Prisma.TransactionClient) => Promise<unknown>) => prisma.$transaction((tx) => callback(wrap(tx) as Prisma.TransactionClient));
+      if (key !== 'webhookDelivery') return Reflect.get(target, key);
+      return new Proxy(target.webhookDelivery, { get(model, operation) {
+        if (operation !== 'updateMany') return Reflect.get(model, operation);
+        return async (args: Prisma.WebhookDeliveryUpdateManyArgs) => {
+          const result = await model.updateMany(args);
+          if (args.data.status === 'failed') { paused(); await gate; }
+          return result;
+        };
+      } });
+    } });
+  }
+  const worker = new WebhookWorker({ prisma: wrap(prisma) as PrismaClient, sender: new FakeWebhookSender() }).runOnce();
+  await failureRecorded;
+  let during;
+  let refinalizing;
+  try {
+    during = await prisma.webhookDelivery.findFirstOrThrow({ where: { postId, eventType: 'post.party_thread' } });
+    refinalizing = finalize(new Date(Date.now() + 2 * 86_400_000)).then((response) => response);
+  } finally { release(); }
+  const [, finalized] = await Promise.all([worker, refinalizing]);
+  expect(during.status).toBe('pending');
+  expect(finalized!.statusCode).toBe(200);
+  expect(await prisma.webhookDelivery.count({ where: { postId, eventType: 'post.party_thread', status: 'pending' } })).toBe(1);
+  expect((await prisma.post.findUniqueOrThrow({ where: { id: postId } })).forumThreadRequested).toBe(true);
+  expect((await new WebhookWorker({ prisma, sender: new FakeWebhookSender() }).runOnce()).sent).toBe(1);
+});
+
+it('loads the post only once to validate and build a forum delivery', async () => {
+  expect((await finalize(new Date(Date.now() + 86_400_000))).statusCode).toBe(200);
+  let reads = 0;
+  const db = new Proxy(prisma, { get(target, key) {
+    if (key !== 'post') return Reflect.get(target, key);
+    return new Proxy(target.post, { get(model, operation) {
+      if (operation !== 'findUnique') return Reflect.get(model, operation);
+      return (args: Prisma.PostFindUniqueArgs) => { reads++; return model.findUnique(args); };
+    } });
+  } });
+  expect((await new WebhookWorker({ prisma: db, sender: new FakeWebhookSender() }).runOnce()).sent).toBe(1);
+  expect(reads).toBe(1);
+});
+
+it('retries a discarded thread if finalization completes before the failure obtains its post lock', async () => {
+  expect((await finalize(new Date(Date.now() + 86_400_000))).statusCode).toBe(200);
+  expect((await app.inject({ method: 'POST', url: `/api/posts/${postId}/reopen`, headers: { cookie } })).statusCode).toBe(200);
+  let refinalized = false;
+  const db = new Proxy(prisma, { get(target, key) {
+    if (key !== '$transaction') return Reflect.get(target, key);
+    return (callback: (tx: Prisma.TransactionClient) => Promise<unknown>) => prisma.$transaction((tx) => callback(new Proxy(tx, { get(transaction, operation) {
+      if (operation !== '$queryRaw') return Reflect.get(transaction, operation);
+      return async (query: TemplateStringsArray, ...values: unknown[]) => {
+        if (!refinalized && query.join('').includes('FROM "Post"') && query.join('').includes('FOR UPDATE')) {
+          refinalized = true;
+          expect((await finalize(new Date(Date.now() + 2 * 86_400_000))).statusCode).toBe(200);
+        }
+        return transaction.$queryRaw(query, ...values);
+      };
+    } })));
+  } });
+  const sender = new FakeWebhookSender();
+  expect(await new WebhookWorker({ prisma: db, sender }).runOnce()).toEqual({ sent: 0, retried: 0, failed: 0 });
+  expect(refinalized).toBe(true);
+  expect(await prisma.webhookDelivery.count({ where: { postId, eventType: 'post.party_thread', status: 'pending' } })).toBe(1);
+  expect((await prisma.post.findUniqueOrThrow({ where: { id: postId } })).forumThreadRequested).toBe(true);
+  expect((await new WebhookWorker({ prisma, sender }).runOnce()).sent).toBe(1);
+  expect(sender.calls).toHaveLength(1);
+});
 
 it('creates a forum thread through a configured world channel when the host has no guild', async () => {
   const post = await prisma.post.findUniqueOrThrow({ where: { id: postId } });

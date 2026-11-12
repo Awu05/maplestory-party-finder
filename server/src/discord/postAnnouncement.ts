@@ -4,10 +4,10 @@ import { toPostSummaryDTO } from '../posts/serialize.js';
 import type { Storage } from '../storage/storage.js';
 import { buildNewPostMessage, buildPostClosedMessage } from './messages.js';
 
-/** Queue the same world-scoped announcement and configured boss-role pings used for new posts. */
+/** Queue announcements only for the post's selected notification guild. */
 export async function enqueuePostAnnouncement(db: PrismaClient | Prisma.TransactionClient, row: PostSummaryRow, storage: Storage, webOrigin: string, now: Date, eventType: 'post.created' | 'post.announcement' | 'post.reopened' = 'post.created'): Promise<number> {
   const guilds = await db.guild.findMany({
-    where: { active: true, webhookUrl: { not: null }, worlds: { some: { worldId: row.worldId } } },
+    where: { id: row.notificationGuildId ?? '', active: true, webhookUrl: { not: null }, worlds: { some: { worldId: row.worldId } } },
     select: { id: true, bossRoleIds: true }, orderBy: { id: 'asc' },
   });
   if (!guilds.length) return 0;
@@ -24,7 +24,7 @@ export async function enqueuePostAnnouncement(db: PrismaClient | Prisma.Transact
 
 export async function enqueuePostClosure(db: PrismaClient, row: PostSummaryRow, storage: Storage, webOrigin: string, reason: string): Promise<void> {
   const guilds = await db.guild.findMany({
-    where: { active: true, webhookUrl: { not: null }, worlds: { some: { worldId: row.worldId } } },
+    where: { id: row.notificationGuildId ?? '', active: true, webhookUrl: { not: null }, worlds: { some: { worldId: row.worldId } } },
     select: { id: true },
   });
   if (!guilds.length) return;

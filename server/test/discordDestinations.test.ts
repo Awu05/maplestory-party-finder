@@ -1,0 +1,128 @@
+import { afterEach, beforeEach, expect, it } from 'vitest';
+import type { FastifyInstance } from 'fastify';
+import type { EventDispatcher } from '../src/notifications/dispatcher.js';
+import { WebhookWorker } from '../src/discord/outbox.js';
+import { buildTestApp, FakeWebhookSender, loginAs, makeBossDifficulty, makeCharacter, makeGuild, makeWorld, prisma, resetDb } from './helpers.js';
+
+const notificationUrl = 'https://discord.com/api/webhooks/101/notification';
+const forumUrl = 'https://discord.com/api/webhooks/202/forum';
+let app: FastifyInstance;
+let events: EventDispatcher;
+let cookie: string;
+let worldId: number;
+let otherWorldId: number;
+let ownerId: string;
+let characterId: string;
+let bossId: number;
+let guildId: string;
+let chatGuildId: string;
+let wrongGuildId: string;
+beforeEach(async () => {
+  await resetDb();
+  ({ app, events } = await buildTestApp({ events: 'dispatcher' }));
+  cookie = await loginAs(app, 'owner');
+  ownerId = (await prisma.user.findUniqueOrThrow({ where: { discordId: 'owner' } })).id;
+  worldId = (await makeWorld()).id;
+  otherWorldId = (await makeWorld({ nexonWorldId: 70, name: 'Hyperion' })).id;
+  characterId = (await makeCharacter({ ownerId, worldId, guildId: null })).id;
+  bossId = (await makeBossDifficulty()).id;
+  guildId = (await makeGuild({ worldIds: [worldId], webhookUrl: notificationUrl })).id;
+  chatGuildId = (await makeGuild({ worldIds: [worldId], webhookUrl: 'https://discord.com/api/webhooks/203/other', partyForumWebhookUrl: forumUrl })).id;
+  wrongGuildId = (await makeGuild({ worldIds: [otherWorldId], webhookUrl: notificationUrl, partyForumWebhookUrl: forumUrl })).id;
+});
+afterEach(async () => { await events.drain(); await app.close(); });
+const call = (method: 'POST' | 'PATCH' | 'PUT', path: string, payload: object, session = cookie) => app.inject({ method, url: `/api/posts${path}`, headers: { cookie: session }, payload });
+const create = (over: object = {}) => call('POST', '', { type: 'recruiting', characterId, bossDifficultyIds: [bossId], partySize: 4, note: '', notificationGuildId: guildId, partyForumGuildId: chatGuildId, ...over });
+const finalize = (id: string) => call('PUT', `/${id}/final-time`, { scheduledAt: new Date(Date.now() + 86_400_000).toISOString() });
+
+it('lists only active configured destinations, with capabilities and worlds but no webhook URLs', async () => {
+  const inactive = await makeGuild({ active: false, worldIds: [worldId], webhookUrl: notificationUrl });
+  const unconfigured = await makeGuild({ worldIds: [worldId] });
+  const response = await app.inject({ url: '/api/discord-destinations', headers: { cookie } });
+  expect(response.statusCode).toBe(200);
+  expect(response.json()).toContainEqual(expect.objectContaining({ id: guildId, worldIds: [worldId], notifications: true, partyForum: false }));
+  expect(response.json()).not.toContainEqual(expect.objectContaining({ id: inactive.id }));
+  expect(response.json()).not.toContainEqual(expect.objectContaining({ id: unconfigured.id }));
+  expect(response.body).not.toContain('webhooks');
+  expect((await app.inject({ url: '/api/discord-destinations' })).statusCode).toBe(401);
+});
+
+it('sends a guildless host’s announcement and closure to one guild, and the forum thread to their separate selection', async () => {
+  const created = await create();
+  expect(created.statusCode).toBe(201);
+  expect(created.json()).toMatchObject({ guild: null, notificationGuild: { id: guildId }, partyForumGuild: { id: chatGuildId } });
+  expect(created.body).not.toContain('webhooks');
+  await events.drain();
+  const sender = new FakeWebhookSender();
+  const worker = new WebhookWorker({ prisma, sender });
+  expect((await worker.runOnce()).sent).toBe(1);
+  expect(sender.calls[0]!.url).toBe(notificationUrl);
+  sender.calls = [];
+  expect((await finalize(created.json().id)).statusCode).toBe(200);
+  await events.drain();
+  expect((await worker.runOnce()).sent).toBe(2);
+  expect(sender.calls.map((sent) => sent.url).sort()).toEqual([notificationUrl, forumUrl].sort());
+  expect(sender.calls.every((sent) => JSON.stringify(sent.payload.allowed_mentions) === JSON.stringify({ parse: [] }))).toBe(true);
+});
+
+it('treats None as no destination, without automatically choosing any guild', async () => {
+  const created = await create({ notificationGuildId: null, partyForumGuildId: null });
+  expect(created.statusCode).toBe(201);
+  expect(created.json()).toMatchObject({ notificationGuild: null, partyForumGuild: null });
+  expect((await finalize(created.json().id)).statusCode).toBe(200);
+  await events.drain();
+  expect(await prisma.webhookDelivery.count()).toBe(0);
+});
+
+it('rejects destinations from another world, unknown guilds, inactive guilds and missing forum configurations', async () => {
+  for (const invalid of [wrongGuildId, 'missing']) {
+    expect((await create({ notificationGuildId: invalid })).statusCode).toBe(400);
+    expect((await create({ partyForumGuildId: invalid })).statusCode).toBe(400);
+  }
+  expect((await create({ partyForumGuildId: guildId })).statusCode).toBe(400);
+  await prisma.guild.update({ where: { id: guildId }, data: { active: false } });
+  expect((await create()).statusCode).toBe(400);
+  expect(await prisma.post.count()).toBe(0);
+});
+
+it('updates only for the creator, cancels pending deliveries to an old selection, and honors the changed selection when reopened', async () => {
+  const created = await create();
+  const id = created.json().id;
+  await events.drain();
+  const other = await loginAs(app, 'other');
+  expect((await call('PATCH', `/${id}`, { notificationGuildId: chatGuildId }, other)).statusCode).toBe(403);
+  expect((await call('PATCH', `/${id}`, { notificationGuildId: chatGuildId })).statusCode).toBe(200);
+  const sender = new FakeWebhookSender();
+  expect((await new WebhookWorker({ prisma, sender }).runOnce()).sent).toBe(0);
+  expect(sender.calls).toHaveLength(0);
+  await call('POST', `/${id}/close`, {});
+  await events.drain();
+  await prisma.webhookDelivery.deleteMany();
+  expect((await call('POST', `/${id}/reopen`, {})).statusCode).toBe(200);
+  expect(await prisma.webhookDelivery.findFirstOrThrow()).toMatchObject({ guildId: chatGuildId, eventType: 'post.reopened' });
+});
+
+it('allows notification destination changes after finalization but locks the requested party forum', async () => {
+  const created = await create();
+  const id = created.json().id;
+  expect((await finalize(id)).statusCode).toBe(200);
+  expect((await call('PATCH', `/${id}`, { notificationGuildId: chatGuildId })).statusCode).toBe(200);
+  expect((await call('PATCH', `/${id}`, { partyForumGuildId: null })).json().error.code).toBe('PARTY_CHAT_LOCKED');
+  expect((await call('PATCH', `/${id}`, { note: 'Not allowed' })).statusCode).toBe(409);
+});
+
+it('clears old selections when changing to a character in another world', async () => {
+  const created = await create();
+  const character = await makeCharacter({ ownerId, worldId: otherWorldId, guildId: null });
+  const response = await call('PATCH', `/${created.json().id}`, { characterId: character.id });
+  expect(response.statusCode).toBe(200);
+  expect(response.json()).toMatchObject({ notificationGuild: null, partyForumGuild: null });
+});
+
+it('never falls back to a different forum if the selected forum becomes unavailable', async () => {
+  const created = await create();
+  await prisma.guild.update({ where: { id: guildId }, data: { partyForumWebhookUrl: 'https://discord.com/api/webhooks/301/fallback' } });
+  await prisma.guild.update({ where: { id: chatGuildId }, data: { partyForumWebhookUrl: null } });
+  expect((await finalize(created.json().id)).statusCode).toBe(200);
+  expect(await prisma.webhookDelivery.count({ where: { eventType: 'post.party_thread' } })).toBe(0);
+});

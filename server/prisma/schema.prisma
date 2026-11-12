@@ -113,7 +113,9 @@ model Guild {
   active            Boolean           @default(true)
   worlds            GuildWorld[]
   characters        Character[]
-  posts             Post[]
+  posts             Post[] @relation("PostGuild")
+  notificationPosts Post[] @relation("PostNotificationGuild")
+  partyForumPosts   Post[] @relation("PostPartyForumGuild")
   webhookDeliveries WebhookDelivery[]
 }
 
@@ -226,7 +228,11 @@ model Post {
   worldId           Int
   world             World        @relation(fields: [worldId], references: [id])
   guildId           String?
-  guild             Guild?       @relation(fields: [guildId], references: [id], onDelete: SetNull)
+  guild             Guild?       @relation("PostGuild", fields: [guildId], references: [id], onDelete: SetNull)
+  notificationGuildId String?
+  notificationGuild Guild?       @relation("PostNotificationGuild", fields: [notificationGuildId], references: [id], onDelete: SetNull)
+  partyForumGuildId String?
+  partyForumGuild  Guild?        @relation("PostPartyForumGuild", fields: [partyForumGuildId], references: [id], onDelete: SetNull)
   /// The final time; null until the poster finalizes it.
   scheduledAt       DateTime?
   weeklyTimeZone    String?
@@ -281,8 +287,6 @@ model PostMember {
   joinedAt    DateTime   @default(now())
   freeTimes   Int[]      @default([])
   freeTimesZone String?
-  /// Last known guild for routing reminders if this member's character is deleted.
-  reminderGuildId String?
 
   @@unique([postId, characterId])
   @@index([userId])

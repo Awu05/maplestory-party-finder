@@ -30,7 +30,7 @@ const FRIENDLY: Record<string, string> = {
   HAS_MEMBERS: 'Others have already joined, so this can no longer be changed.',
   NO_WEBHOOK: 'This guild has no webhook set.',
   ANNOUNCEMENT_COOLDOWN: 'Discord notifications can be sent once every 24 hours.',
-  NO_ANNOUNCEMENT_WEBHOOK: 'No active Discord notification webhook is configured for this world.',
+  NO_ANNOUNCEMENT_WEBHOOK: 'Choose an available notification guild in this post’s Discord settings first.',
   CANNOT_BAN_ADMIN: "Admins can't be banned.",
   WRONG_POST_TYPE: "That isn't allowed for this type of post.",
 };

@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { MyRequestsDTO, PostDetailDTO, PostSummaryDTO, PostType, RequestDTO } from '@pf/shared';
+import type { DiscordDestinationDTO, MyRequestsDTO, PostDetailDTO, PostSummaryDTO, PostType, RequestDTO } from '@pf/shared';
 import { api } from './client';
 import { useMe } from './hooks';
 
@@ -51,6 +51,8 @@ function useInvalidatePosts() {
 }
 
 export interface PostInput {
+  notificationGuildId?: string | null;
+  partyForumGuildId?: string | null;
   type: PostType;
   characterId: string;
   bossDifficultyIds: number[];
@@ -62,6 +64,8 @@ export interface PostInput {
   note: string;
 }
 export type UpdatePostInput = Partial<Omit<PostInput, 'minCp'>> & { minCp?: number | null };
+
+export const useDiscordDestinations = () => useQuery({ queryKey: ['discord-destinations'], queryFn: () => api<DiscordDestinationDTO[]>('/api/discord-destinations'), staleTime: 60_000 });
 
 export function useCreatePost() {
   const invalidate = useInvalidatePosts();

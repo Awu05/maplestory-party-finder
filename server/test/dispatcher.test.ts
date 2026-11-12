@@ -72,9 +72,9 @@ const deliveries = () => prisma.webhookDelivery.findMany({ orderBy: { createdAt:
 const content = (d: { payload: unknown }) => (d.payload as { content?: string }).content ?? '';
 
 describe('post.created', () => {
-  it('announces a guildless host in configured world channels', async () => {
+  it('announces a guildless host in their selected notification guild', async () => {
     await prisma.character.update({ where: { id: alice.id }, data: { guildId: null } });
-    const created = await call('POST', '/api/posts', u1, { type: 'recruiting', characterId: alice.id, bossDifficultyIds: [lucid], partySize: 4, note: '' });
+    const created = await call('POST', '/api/posts', u1, { type: 'recruiting', characterId: alice.id, bossDifficultyIds: [lucid], partySize: 4, note: '', notificationGuildId: g1.id });
     expect(created.statusCode).toBe(201);
     expect(created.json().guild).toBeNull();
     await events.drain();
@@ -87,6 +87,7 @@ describe('post.created', () => {
     const res = await call('POST', '/api/posts', u1, {
       type: 'recruiting', characterId: alice.id, bossDifficultyIds: [lucid],
       freeTimes: [68], freeTimesZone: 'America/New_York', partySize: 4, note: 'hi',
+      notificationGuildId: g1.id,
     });
     expect(res.statusCode).toBe(201);
     await events.drain();
@@ -98,17 +99,17 @@ describe('post.created', () => {
     expect(await notes()).toEqual([]);
   });
 
-  it('broadcasts one pending delivery per matching guild, all with the same payload and postId', async () => {
+  it('announces only in the selected guild even when multiple guilds cover the same world', async () => {
     const g6 = await makeGuild({ name: 'G6', worldIds: [kronosId], webhookUrl: HOOK });
     const res = await call('POST', '/api/posts', u1, {
       type: 'recruiting', characterId: alice.id, bossDifficultyIds: [lucid],
       partySize: 4, note: 'hi',
+      notificationGuildId: g6.id,
     });
     await events.drain();
     const ds = await deliveries();
-    expect(ds.map((d) => d.guildId).sort()).toEqual([g1.id, g6.id].sort());
+    expect(ds.map((d) => d.guildId)).toEqual([g6.id]);
     for (const d of ds) expect(d).toMatchObject({ eventType: 'post.created', status: 'pending', postId: res.json().id, attempts: 0 });
-    expect(ds[0]!.payload).toEqual(ds[1]!.payload);
   });
 });
 
@@ -127,14 +128,14 @@ describe('request.created', () => {
     expect(ds[0]!.payload).toMatchObject({ allowed_mentions: { parse: [], users: ['u-1'] } });
   });
 
-  it("join request ping goes to the poster character's current guild, not the post's snapshot guild", async () => {
+  it('keeps join request pings in the selected guild after the poster changes guilds', async () => {
     const post = await recruiting();
     await prisma.character.update({ where: { id: alice.id }, data: { guildId: g5.id } });
     await join(post.id, bob.id, u2);
     await events.drain();
     const ds = await deliveries();
     expect(ds).toHaveLength(1);
-    expect(ds[0]).toMatchObject({ guildId: g5.id, eventType: 'request.created' });
+    expect(ds[0]).toMatchObject({ guildId: g1.id, eventType: 'request.created' });
   });
 
   it('routes an invite to a guildless character through a configured world channel', async () => {
@@ -152,7 +153,7 @@ describe('request.created', () => {
     expect(await deliveries()).toMatchObject([{ guildId: g1.id, eventType: 'request.created' }]);
   });
 
-  it('invite -> invitee notified; ping to invitee guild mentioning invitee', async () => {
+  it('invite -> invitee notified; ping to the selected guild mentioning invitee', async () => {
     const post = await recruiting();
     const lfp = await makePost({ type: 'lfp', partySize: null, posterCharacterId: bob.id, bossDifficultyIds: [lucid] });
     await invite(lfp.id, post.id, u1);
@@ -162,7 +163,7 @@ describe('request.created', () => {
     expect(ns[0]).toMatchObject({ userId: u2Id, kind: 'invite', text: 'Alice invited Bob to Hard Lucid', link: `/posts/${post.id}` });
     const ds = await deliveries();
     expect(ds).toHaveLength(1);
-    expect(ds[0]).toMatchObject({ guildId: g5.id, eventType: 'request.created' });
+    expect(ds[0]).toMatchObject({ guildId: g1.id, eventType: 'request.created' });
     expect(content(ds[0]!)).toContain('<@u-2>');
   });
 
@@ -220,7 +221,7 @@ describe('request.created', () => {
 });
 
 describe('request.accepted', () => {
-  it('accept join request -> applicant notified accepted + accept ping to applicant guild', async () => {
+  it('accept join request -> applicant notified accepted and pinged in the selected guild', async () => {
     const post = await recruiting();
     const reqId = await join(post.id, bob.id, u2);
     await events.drain();
@@ -231,7 +232,7 @@ describe('request.accepted', () => {
     expect(ns[1]!.link).toBe(`/posts/${post.id}`);
     const accepts = (await deliveries()).filter((d) => d.eventType === 'request.accepted');
     expect(accepts).toHaveLength(1);
-    expect(accepts[0]!.guildId).toBe(g5.id);
+    expect(accepts[0]!.guildId).toBe(g1.id);
     expect(content(accepts[0]!)).toContain('<@u-2>');
   });
 
@@ -245,7 +246,7 @@ describe('request.accepted', () => {
     const ns = await notes();
     expect(ns.map((n) => [n.userId, n.kind])).toEqual([[u2Id, 'invite'], [u1Id, 'accepted']]);
     expect(ns[1]).toMatchObject({ text: 'Bob accepted your invite', link: `/posts/${post.id}` });
-    expect((await deliveries()).map((d) => d.eventType)).toEqual(['request.created', 'post.closed']);
+    expect((await deliveries()).map((d) => d.eventType)).toEqual(['request.created']);
   });
 });
 
@@ -334,7 +335,7 @@ describe('post closure', () => {
     const difficulty = await prisma.bossDifficulty.findUniqueOrThrow({ where: { id: lucid } });
     const role = '123456789012345678';
     await prisma.guild.update({ where: { id: g1.id }, data: { bossRoleIds: { [String(difficulty.bossId)]: role } } });
-    const created = await call('POST', '/api/posts', u1, { type: 'carrying', characterId: alice.id, bossDifficultyIds: [lucid], partySize: 4, note: '' });
+    const created = await call('POST', '/api/posts', u1, { type: 'carrying', characterId: alice.id, bossDifficultyIds: [lucid], partySize: 4, note: '', notificationGuildId: g1.id });
     expect(created.statusCode).toBe(201);
     await events.drain();
     const sender = new FakeWebhookSender();

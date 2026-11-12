@@ -150,14 +150,6 @@ export function uploadScreenshot(id: string, file: File) {
   return api<CharacterDTO>(`/api/characters/${id}/screenshot`, { method: 'PUT', body });
 }
 
-export function useUploadScreenshot(id: string) {
-  const invalidate = useInvalidateCharacters();
-  return useMutation({
-    mutationFn: (file: File) => uploadScreenshot(id, file),
-    onSuccess: invalidate,
-  });
-}
-
 export function useLookupCharacter() {
   return useMutation({
     mutationFn: (ign: string) =>

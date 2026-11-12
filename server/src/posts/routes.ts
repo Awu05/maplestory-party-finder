@@ -44,6 +44,8 @@ const postFields = z.object({
   partySize: partySizeSchema.optional(),
   minCp: minCpSchema.optional(),
   note: noteSchema,
+  notificationGuildId: z.string().min(1).nullable().optional(),
+  partyForumGuildId: z.string().min(1).nullable().optional(),
 });
 
 export const createPostBody = postFields.superRefine(checkFreeTimes(false));

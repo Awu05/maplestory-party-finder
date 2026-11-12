@@ -50,7 +50,7 @@ const post = (over: Partial<PostDetailDTO> = {}): PostDetailDTO => ({
 });
 
 function renderPage(routes: Record<string, unknown>) {
-  const fetchMock = mockApi({ '/api/rarity-tiers': [], ...routes });
+  const fetchMock = mockApi({ '/api/discord-destinations': [], '/api/rarity-tiers': [], ...routes });
   renderWithProviders(
     <Routes>
       <Route path="/posts/:id" element={<PostDetailPage />} />

@@ -5,10 +5,11 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { POST_TYPE_LABELS, freeSlotCoverageForViewer, freeSlotsForViewer, maxPartySizeFor } from '@pf/shared';
 import type { BossDTO, CharacterDTO, PostDetailDTO, PostType } from '@pf/shared';
 import { useBosses, useCharacters, useMe } from '../api/hooks';
-import { useCreatePost, usePost, useUpdatePost } from '../api/postHooks';
+import { useCreatePost, useDiscordDestinations, usePost, useUpdatePost } from '../api/postHooks';
 import type { UpdatePostInput } from '../api/postHooks';
 import { friendlyError } from '../api/errors';
 import { BossMultiPicker } from '../components/post/BossMultiPicker';
+import { DiscordDestinationFields } from '../components/post/DiscordDestinationFields';
 import { FreeTimeGrid } from '../components/post/FreeTimeGrid';
 import { browserTimeZone } from '../lib/timeZone';
 import './characters.css';
@@ -24,6 +25,8 @@ interface Values {
   partySize: number;
   minCp: string;
   note: string;
+  notificationGuildId: string;
+  partyForumGuildId: string;
 }
 
 function sizeRange(bosses: BossDTO[], bossIds: number[], lowest: number) {
@@ -45,6 +48,8 @@ function valuesFromPost(post: PostDetailDTO, editingZone: string): Values {
     partySize: post.partySize ?? DEFAULT_PARTY_SIZE,
     minCp: post.minCp === null ? '' : post.minCp.toLocaleString('en-US'),
     note: post.note,
+    notificationGuildId: post.notificationGuild?.id ?? '',
+    partyForumGuildId: post.partyForumGuild?.id ?? '',
   };
 }
 
@@ -74,6 +79,8 @@ function changedFields(v: Values, orig: Values, editingZone: string): UpdatePost
     }
   }
   if (v.note !== orig.note) out.note = v.note;
+  if (v.notificationGuildId !== orig.notificationGuildId) out.notificationGuildId = v.notificationGuildId || null;
+  if (v.partyForumGuildId !== orig.partyForumGuildId) out.partyForumGuildId = v.partyForumGuildId || null;
   if (!sameSet(v.freeTimes, orig.freeTimes)) {
     out.freeTimes = v.freeTimes;
     out.freeTimesZone = v.freeTimes.length > 0 ? editingZone : null;
@@ -89,6 +96,8 @@ const EMPTY: Values = {
   partySize: DEFAULT_PARTY_SIZE,
   minCp: '',
   note: '',
+  notificationGuildId: '',
+  partyForumGuildId: '',
 };
 
 interface FormProps {
@@ -101,6 +110,7 @@ function PostForm({ characters, bosses, post }: FormProps) {
   const navigate = useNavigate();
   const create = useCreatePost();
   const update = useUpdatePost(post?.id ?? '');
+  const destinations = useDiscordDestinations();
   const browserZone = browserTimeZone();
   const hasPartialSlots = useMemo(() => {
     if (!post?.freeTimesZone) return false;
@@ -114,6 +124,19 @@ function PostForm({ characters, bosses, post }: FormProps) {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const freeHintId = useId();
+  const selectedCharacter = characters.find((character) => character.id === v.characterId);
+  const worldId = selectedCharacter?.world.id ?? post?.world.id;
+  const choices = (destinations.data ?? []).filter((guild) => guild.worldIds.includes(worldId ?? -1));
+
+  function setCharacter(characterId: string) {
+    const character = characters.find((candidate) => candidate.id === characterId);
+    const worldChanged = character?.world.id !== worldId;
+    const eligible = (destinations.data ?? []).filter((guild) => guild.worldIds.includes(character?.world.id ?? -1));
+    setV((current) => ({ ...current, characterId,
+      notificationGuildId: !worldChanged && eligible.some((guild) => guild.id === current.notificationGuildId && guild.notifications) ? current.notificationGuildId : '',
+      partyForumGuildId: !worldChanged && eligible.some((guild) => guild.id === current.partyForumGuildId && guild.partyForum) ? current.partyForumGuildId : '',
+    }));
+  }
 
   const locked = !!post && post.memberCount > 1;
   const lowest = post ? Math.max(2, post.memberCount) : 2;
@@ -154,6 +177,8 @@ function PostForm({ characters, bosses, post }: FormProps) {
           freeTimesZone: v.freeTimes.length > 0 ? browserTimeZone() : null,
           ...(v.type !== 'lfp' ? { partySize: v.partySize, ...(cp !== null ? { minCp: cp } : {}) } : {}),
           note: v.note,
+          notificationGuildId: v.notificationGuildId || null,
+          partyForumGuildId: v.type === 'lfp' ? null : v.partyForumGuildId || null,
         });
         navigate(`/posts/${created.id}`);
       }
@@ -178,13 +203,19 @@ function PostForm({ characters, bosses, post }: FormProps) {
       </div>
       <label>
         Character
-        <select value={v.characterId} disabled={locked} onChange={(e) => set({ characterId: e.target.value })}>
+        <select value={v.characterId} disabled={locked} onChange={(e) => setCharacter(e.target.value)}>
           <option value="">Select a character</option>
           {characters.map((c) => (
             <option key={c.id} value={c.id}>{`${c.ign} (${c.world.name})`}</option>
           ))}
         </select>
       </label>
+      <DiscordDestinationFields
+        choices={choices} loading={destinations.isPending} failed={destinations.isError} worldId={worldId}
+        notificationGuildId={v.notificationGuildId} partyForumGuildId={v.partyForumGuildId}
+        post={post} lfp={v.type === 'lfp'} disabled={saving}
+        onChange={(field, value) => set({ [field]: value })}
+      />
       <div>
         <h3>Bosses</h3>
         <BossMultiPicker value={v.bossIds} onChange={setBosses} bosses={bosses} />

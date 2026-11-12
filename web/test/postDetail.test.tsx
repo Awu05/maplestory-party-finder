@@ -78,7 +78,7 @@ const post = (over: Partial<PostDetailDTO> = {}): PostDetailDTO => {
   };
 };
 
-const tiers = { '/api/rarity-tiers': [{ id: 1, name: 'Common', minCp: 0, sortOrder: 0 }] };
+const tiers = { '/api/discord-destinations': [], '/api/rarity-tiers': [{ id: 1, name: 'Common', minCp: 0, sortOrder: 0 }] };
 
 function renderPage(routes: Record<string, unknown>) {
   const fetchMock = mockApi({ ...tiers, ...routes });

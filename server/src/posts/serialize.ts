@@ -12,6 +12,8 @@ export const postSummaryInclude = {
   world: true,
   // Only public fields: never the guild webhookUrl.
   guild: { select: { id: true, name: true } },
+  notificationGuild: { select: { id: true, name: true } },
+  partyForumGuild: { select: { id: true, name: true } },
   bosses: { include: { bossDifficulty: { include: { boss: true } } } },
   members: { include: { character: { include: characterInclude } }, orderBy: { joinedAt: 'asc' } },
 } satisfies Prisma.PostInclude;
@@ -108,6 +110,9 @@ export function toPostDetailDTO(row: PostRow, viewer: Viewer | null, storage: St
   );
   return {
     ...toPostSummaryDTO(row, viewerUserId, storage, now),
+    notificationGuild: row.notificationGuild,
+    partyForumGuild: row.partyForumGuild,
+    partyChatRequested: row.forumThreadRequested,
     members: members.map((m) => toMemberDTO(m, viewerUserId, storage)),
     isMember: viewerUserId !== null && row.members.some((m) => m.userId === viewerUserId),
     incomingRequests: requestDTOs('join_request'),

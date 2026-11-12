@@ -96,31 +96,36 @@ export async function characterRoutes(app: FastifyInstance): Promise<void> {
   app.delete('/characters/:id', async (req, reply) => {
     const viewer = await requireUser(req);
     const { id } = req.params as { id: string };
-    const row = await getOwnedCharacter(prisma, id, viewer.user.id);
-    const { closedPostIds, declinedRequestIds } = await deleteCharacter(prisma, id);
+    await getOwnedCharacter(prisma, id, viewer.user.id);
+    const { closedPostIds, declinedRequestIds, screenshotKey } = await deleteCharacter(prisma, id);
     closedPostIds.forEach((postId) => events.emit({ type: 'post.closed', postId, reason: 'character_deleted' }));
     declinedRequestIds.forEach((requestId) => events.emit({ type: 'request.declined', requestId, auto: true, actorUserId: viewer.user.id }));
-    if (row.screenshotKey) await storage.remove(row.screenshotKey).catch(() => undefined);
+    if (screenshotKey) await storage.remove(screenshotKey).catch(() => undefined);
     return reply.status(204).send();
   });
 
   app.put('/characters/:id/screenshot', async (req) => {
     const viewer = await requireUser(req);
     const { id } = req.params as { id: string };
-    const row = await getOwnedCharacter(prisma, id, viewer.user.id);
+    await getOwnedCharacter(prisma, id, viewer.user.id);
     uploads.take(viewer.user.id); // before reading or decoding anything
     const { buf, ext } = await readImageUpload(req);
     await app.deps.scouterValidator.validate(buf);
     const key = await storage.save(buf, ext);
-    let updated;
+    let replacement;
     try {
-      updated = await prisma.character.update({ where: { id }, data: { screenshotKey: key }, include: characterInclude });
+      replacement = await prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM "Character" WHERE id = ${id} FOR UPDATE`;
+        const current = await getOwnedCharacter(tx, id, viewer.user.id);
+        const character = await tx.character.update({ where: { id }, data: { screenshotKey: key }, include: characterInclude });
+        return { character, previousKey: current.screenshotKey };
+      });
     } catch (err) {
       await storage.remove(key).catch(() => undefined);
       throw err;
     }
-    if (row.screenshotKey) await storage.remove(row.screenshotKey).catch(() => undefined);
-    return toCharacterDTO(updated, viewer.user.id, storage);
+    if (replacement.previousKey) await storage.remove(replacement.previousKey).catch(() => undefined);
+    return toCharacterDTO(replacement.character, viewer.user.id, storage);
   });
 
   app.post('/characters/:id/refresh', async (req): Promise<RefreshResultDTO> => {

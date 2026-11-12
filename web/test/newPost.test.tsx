@@ -75,6 +75,7 @@ function makePost(over: Partial<PostDetailDTO> = {}): PostDetailDTO {
 }
 
 const base = {
+  '/api/discord-destinations': [],
   '/api/auth/me': user,
   '/api/bosses': bosses,
   '/api/characters?mine=1': [lily],
@@ -101,6 +102,38 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe('NewPostPage (create)', () => {
+  it('lets a guildless character select different notification and party chat guilds', async () => {
+    const destinations = [
+      { id: 'notify', name: 'Notification guild', worldIds: [5], notifications: true, partyForum: false },
+      { id: 'chat', name: 'Chat guild', worldIds: [5], notifications: false, partyForum: true },
+      { id: 'wrong', name: 'Other world', worldIds: [6], notifications: true, partyForum: true },
+    ];
+    const fetch = mockApi({ ...base, '/api/discord-destinations': destinations, '/api/characters?mine=1': [{ ...lily, guild: null }], '/api/posts/p1': makePost(), 'POST /api/posts': makePost() });
+    renderWithProviders(<App />, { route: '/posts/new' });
+    await pickCharacter();
+    await pickBoss('Hard Lucid');
+    expect(screen.getByLabelText('Notification guild')).toHaveValue('');
+    expect(screen.getByLabelText('Party chat guild')).toHaveValue('');
+    expect(screen.queryByRole('option', { name: 'Other world' })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Notification guild'), { target: { value: 'notify' } });
+    fireEvent.change(screen.getByLabelText('Party chat guild'), { target: { value: 'chat' } });
+    save();
+    await screen.findByRole('heading', { name: 'Lineup' });
+    expect(body(writes(fetch)[0])).toMatchObject({ notificationGuildId: 'notify', partyForumGuildId: 'chat' });
+  });
+
+  it('clears incompatible Discord selections when the character changes worlds', async () => {
+    mockApi({ ...base, '/api/discord-destinations': [{ id: 'g1', name: 'Maple Guild', worldIds: [5], notifications: true, partyForum: true }], '/api/characters?mine=1': [lily, { ...lily, id: 'c2', guild: null, world: { id: 6, name: 'Hyperion' } }] });
+    renderWithProviders(<App />, { route: '/posts/new' });
+    await pickCharacter();
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Maple Guild' })).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText('Notification guild'), { target: { value: 'g1' } });
+    fireEvent.change(screen.getByLabelText('Party chat guild'), { target: { value: 'g1' } });
+    expect(screen.getByLabelText('Party chat guild')).toHaveValue('g1');
+    fireEvent.change(screen.getByLabelText('Character'), { target: { value: 'c2' } });
+    expect(screen.getByLabelText('Notification guild')).toHaveValue('');
+    expect(screen.getByLabelText('Party chat guild')).toHaveValue('');
+  });
   it.each([false, true])('submits a carrying post and shows its finalization controls (guildless=%s)', async (guildless) => {
     const carrying = makePost({ type: 'carrying', scheduledAt: null, ...(guildless ? { guild: null } : {}) });
     const fetch = mockApi({ ...base, '/api/characters?mine=1': [{ ...lily, ...(guildless ? { guild: null } : {}) }], '/api/posts/p1': carrying, 'POST /api/posts': carrying });
@@ -139,6 +172,8 @@ describe('NewPostPage (create)', () => {
       partySize: 4,
       minCp: 300000000,
       note: '',
+      notificationGuildId: null,
+      partyForumGuildId: null,
     });
   });
 
@@ -159,6 +194,8 @@ describe('NewPostPage (create)', () => {
       freeTimes: [],
       freeTimesZone: null,
       note: '',
+      notificationGuildId: null,
+      partyForumGuildId: null,
     });
   });
 
@@ -236,6 +273,25 @@ describe('NewPostPage (create)', () => {
 });
 
 describe('NewPostPage (edit)', () => {
+  it('clears Discord destinations on world changes even when the guild serves both worlds', async () => {
+    const guild = { id: 'shared', name: 'Shared guild' };
+    const post = makePost({ notificationGuild: guild, partyForumGuild: guild });
+    const fetch = mockApi({
+      ...base,
+      '/api/posts/p1': post,
+      'PATCH /api/posts/p1': post,
+      '/api/characters?mine=1': [lily, { ...lily, id: 'c2', world: { id: 6, name: 'Hyperion' } }],
+      '/api/discord-destinations': [{ ...guild, worldIds: [5, 6], notifications: true, partyForum: true }],
+    });
+    renderWithProviders(<App />, { route: '/posts/p1/edit' });
+    await waitFor(() => expect(screen.getByLabelText('Notification guild')).toBeEnabled());
+    fireEvent.change(screen.getByLabelText('Character'), { target: { value: 'c2' } });
+    expect(screen.getByLabelText('Notification guild')).toHaveValue('');
+    expect(screen.getByLabelText('Party chat guild')).toHaveValue('');
+    save();
+    await screen.findByRole('heading', { name: 'Lineup' });
+    expect(body(writes(fetch)[0])).toEqual({ characterId: 'c2', notificationGuildId: null, partyForumGuildId: null });
+  });
   it('prefills from the post and PATCHes only changed fields (note + partySize)', async () => {
     const m = mockApi({ ...base, '/api/posts/p1': makePost(), 'PATCH /api/posts/p1': makePost() });
     renderWithProviders(<App />, { route: '/posts/p1/edit' });

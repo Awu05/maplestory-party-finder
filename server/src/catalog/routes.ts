@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import type { AdminGuildDTO, BossDTO, GuildDTO, JobClassDTO, RarityTierDTO, WorldDTO } from '@pf/shared';
-import { getViewer, requireAdmin } from '../auth/guards.js';
+import { getViewer, requireAdmin, requireUser } from '../auth/guards.js';
 import { AppError } from '../http/errors.js';
 import { CLASS_CATEGORIES } from '@pf/shared';
 
@@ -153,6 +153,15 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
   const { prisma } = app.deps;
 
   // ---- Public ----
+  app.get('/discord-destinations', async (req) => {
+    await requireUser(req);
+    const guilds = await prisma.guild.findMany({
+      where: { active: true, OR: [{ webhookUrl: { not: null } }, { partyForumWebhookUrl: { not: null } }] },
+      select: { id: true, name: true, worlds: { select: { worldId: true } }, webhookUrl: true, partyForumWebhookUrl: true },
+      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+    });
+    return guilds.map((guild) => ({ id: guild.id, name: guild.name, worldIds: guild.worlds.map((world) => world.worldId), notifications: !!guild.webhookUrl, partyForum: !!guild.partyForumWebhookUrl }));
+  });
   app.get('/worlds', async (req) => {
     const all = (req.query as { all?: string }).all === '1';
     const viewer = all ? await getViewer(req) : null;

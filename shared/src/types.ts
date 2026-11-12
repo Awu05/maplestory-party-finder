@@ -109,6 +109,9 @@ export interface RequestDTO {
 }
 
 export interface PostDetailDTO extends PostSummaryDTO {
+  notificationGuild?: { id: string; name: string } | null;
+  partyForumGuild?: { id: string; name: string } | null;
+  partyChatRequested?: boolean;
   members: PartyMemberDTO[]; // poster first, then by joinedAt
   isMember: boolean;
   incomingRequests: RequestDTO[]; // poster only: pending join requests
@@ -136,3 +139,4 @@ export interface AdminUserDTO { id: string; discordUsername: string; displayName
 export interface AdminPostDTO extends PostSummaryDTO { deletedAt: string | null; closedReason: string | null; posterDiscordUsername: string; posterDiscordLinked: boolean }
 
 export type JobClassDTO = { id: number; name: string; archetype: Exclude<Archetype, 'unknown'>; category: ClassCategory };
+export interface DiscordDestinationDTO { id: string; name: string; worldIds: number[]; notifications: boolean; partyForum: boolean }

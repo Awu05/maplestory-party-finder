@@ -17,6 +17,15 @@ const DEADLINE_MARGIN_MS = 10_000;
 const MIN_RETRY_AFTER_MS = 1_000;
 const MAX_RETRY_AFTER_MS = 3_600_000;
 const MAX_WEEKLY_REMINDER_AGE_MS = 15 * 60_000;
+const POST_DELIVERIES = new Set(['post.created', 'post.reopened', 'post.announcement', 'post.closed', 'post.weekly_reminder', 'post.party_thread', 'request.created', 'request.accepted']);
+const deliveryPostSelect = {
+  id: true, notificationGuildId: true, partyForumGuildId: true, worldId: true,
+  status: true, closedReason: true, expiresAt: true, deletedAt: true,
+  weeklyTimeZone: true, weeklyAnchorAt: true, scheduledAt: true,
+} satisfies Prisma.PostSelect;
+type ForumState = { status: string; closedReason: string | null; deletedAt: Date | null; expiresAt: Date; partyForumGuildId: string | null };
+const isActiveFinalized = (post: Omit<ForumState, 'partyForumGuildId'> | null | undefined, now: Date) =>
+  post?.status === 'closed' && post.closedReason === 'finalized' && post.deletedAt === null && post.expiresAt > now;
 
 export async function enqueueDelivery(db: Db, guildId: string, eventType: string, payload: WebhookPayload, postId?: string): Promise<void> {
   await db.webhookDelivery.create({
@@ -82,21 +91,50 @@ export class WebhookWorker {
   private async process(row: Claimed, counts: { sent: number; retried: number; failed: number }): Promise<void> {
     const guard = { id: row.id, status: 'pending' as const };
     const upd = (data: Prisma.WebhookDeliveryUncheckedUpdateManyInput) => this.prisma.webhookDelivery.updateMany({ where: guard, data });
-    // A failed thread may be queued again on the next finalize.
-    const fail = async (attempts: number, lastError: string) => {
-      const { count } = await upd({ status: 'failed', attempts, lastError });
-      if (count > 0 && row.eventType === 'post.party_thread' && row.postId) {
-        await this.prisma.post.updateMany({ where: { id: row.postId }, data: { forumThreadRequested: false } });
-      }
+    const fail = async (attempts: number, lastError: string, recheckForum = false) => {
+      const data = { status: 'failed' as const, attempts, lastError };
+      const postId = row.postId;
+      if (row.eventType === 'post.party_thread' && postId) {
+        const failed = await this.prisma.$transaction(async (tx) => {
+          // Finalization also locks the post before touching its deliveries.
+          const [current] = await tx.$queryRaw<ForumState[]>`SELECT status, "closedReason", "deletedAt", "expiresAt", "partyForumGuildId" FROM "Post" WHERE id = ${postId} FOR UPDATE`;
+          if (recheckForum && isActiveFinalized(current, this.now()) && current.partyForumGuildId === row.guildId) {
+            await tx.webhookDelivery.updateMany({ where: guard, data: { nextAttemptAt: this.now() } });
+            return false;
+          }
+          const { count } = await tx.webhookDelivery.updateMany({ where: guard, data });
+          if (count) await tx.post.updateMany({ where: { id: postId }, data: { forumThreadRequested: false } });
+          return count > 0;
+        });
+        if (!failed) return;
+      } else await upd(data);
       counts.failed++;
     };
-    const targetWebhook = row.eventType === 'post.party_thread' ? row.partyForumWebhookUrl : row.webhookUrl;
+    const isForum = row.eventType === 'post.party_thread';
+    const targetWebhook = isForum ? row.partyForumWebhookUrl : row.webhookUrl;
     if (!targetWebhook || !row.active) {
       await fail(row.attempts + 1, 'Webhook not configured');
       return;
     }
+    const forumPost = row.postId && isForum ? await this.prisma.post.findUnique({
+      where: { id: row.postId }, select: {
+        ...deliveryPostSelect,
+        world: { select: { name: true } },
+        bosses: { include: { bossDifficulty: { include: { boss: true } } } },
+        members: { include: { user: { select: { discordId: true, username: true } } }, orderBy: { joinedAt: 'asc' } },
+      },
+    }) : null;
+    const post = isForum ? forumPost : row.postId && POST_DELIVERIES.has(row.eventType)
+      ? await this.prisma.post.findUnique({ where: { id: row.postId }, select: deliveryPostSelect }) : null;
+    if (row.postId && POST_DELIVERIES.has(row.eventType)) {
+      const selected = row.eventType === 'post.party_thread' ? post?.partyForumGuildId : post?.notificationGuildId;
+      const world = post && await this.prisma.guildWorld.findUnique({ where: { guildId_worldId: { guildId: row.guildId, worldId: post.worldId } } });
+      if (selected !== row.guildId || !world) {
+        await fail(row.attempts + 1, 'Discord destination changed or is unavailable');
+        return;
+      }
+    }
     if (row.eventType === 'post.closed' && row.postId) {
-      const post = await this.prisma.post.findUnique({ where: { id: row.postId } });
       if (!post || effectivePostStatus(post, this.now()) === 'open') {
         await fail(row.attempts + 1, 'Post is no longer closed');
         return;
@@ -108,24 +146,19 @@ export class WebhookWorker {
     }
     if ((row.eventType === 'post.created' || row.eventType === 'post.reopened' || row.eventType === 'post.announcement' || row.eventType === 'post.weekly_reminder' || row.eventType === 'post.party_thread') && row.postId) {
       // Forum threads and weekly reminders also support active finalized parties.
-      const post = await this.prisma.post.findUnique({ where: { id: row.postId }, select: { status: true, closedReason: true, expiresAt: true, deletedAt: true, weeklyTimeZone: true, weeklyAnchorAt: true, scheduledAt: true } });
       const weekly = row.payload._weekly;
-      const activeFinalized = (row.eventType === 'post.weekly_reminder' || row.eventType === 'post.party_thread') && post?.status === 'closed' && post.closedReason === 'finalized' && post.deletedAt === null && post.expiresAt > this.now();
+      const activeFinalized = (row.eventType === 'post.weekly_reminder' || isForum) && isActiveFinalized(post, this.now());
       if (!post || (effectivePostStatus(post, this.now()) === 'closed' && !activeFinalized) || ((row.eventType === 'post.created' || row.eventType === 'post.announcement' || row.eventType === 'post.reopened') && effectivePostStatus(post, this.now()) !== 'open') || (row.eventType === 'post.party_thread' && !activeFinalized) || (row.eventType === 'post.weekly_reminder' &&
         (!weekly || post.weeklyTimeZone !== weekly.timeZone || post.weeklyAnchorAt?.toISOString() !== weekly.anchorAt || post.scheduledAt?.toISOString() !== weekly.nextAt))) {
-        await fail(row.attempts + 1, 'Post no longer available');
+        await fail(row.attempts + 1, 'Post no longer available', isForum);
         return;
       }
     }
     let payload = row.payload;
     if (row.eventType === 'post.party_thread' && row.postId) {
-      const post = await this.prisma.post.findUnique({ where: { id: row.postId }, include: {
-        world: { select: { name: true } },
-        bosses: { include: { bossDifficulty: { include: { boss: true } } } },
-        members: { include: { user: { select: { discordId: true, username: true } } }, orderBy: { joinedAt: 'asc' } },
-      } });
+      const post = forumPost;
       const poster = post?.members.find((member) => member.role === 'poster');
-      if (!post || !poster || post.status !== 'closed' || post.closedReason !== 'finalized' || post.deletedAt || post.expiresAt <= this.now()) {
+      if (!post || !poster) {
         await fail(row.attempts + 1, 'Post no longer available');
         return;
       }

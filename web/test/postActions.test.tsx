@@ -87,6 +87,7 @@ const me = {
 };
 const scania = { id: 6, name: 'Scania' };
 const base = {
+  '/api/discord-destinations': [],
   '/api/rarity-tiers': [{ id: 1, name: 'Common', minCp: 0, sortOrder: 0 }],
   '/api/auth/me': me,
   '/api/me/parties': [],

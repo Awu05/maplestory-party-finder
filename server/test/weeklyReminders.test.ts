@@ -45,13 +45,13 @@ it.each(['rescheduled', 'disabled', 'closed'] as const)('preserves a party %s af
 async function party(over: Parameters<typeof makePost>[0] = {}) {
   const guild = await makeGuild({ webhookUrl: 'https://discord.com/api/webhooks/1/test' });
   const character = await makeCharacter({ guildId: guild.id });
+  await prisma.guildWorld.create({ data: { guildId: guild.id, worldId: character.worldId } });
   const post = await makePost({ posterCharacterId: character.id, scheduledAt: at, weeklyAnchorAt: at, weeklyTimeZone: 'America/New_York', ...over });
   return { guild, character, post };
 }
 
 it('routes guildless party members to a configured world channel', async () => {
   const { guild, character, post } = await party();
-  await prisma.guildWorld.create({ data: { guildId: guild.id, worldId: post.worldId } });
   await prisma.character.update({ where: { id: character.id }, data: { guildId: null } });
   await prisma.post.update({ where: { id: post.id }, data: { guildId: null } });
   expect(await job.runOnce(at)).toBe(1);
@@ -131,7 +131,7 @@ it('skips stale reminders after downtime and advances straight to the next futur
   expect(updated.scheduledAt!.toISOString()).toBe('2027-03-28T23:30:00.000Z');
 });
 
-it('excludes removed and banned members and guilds without a webhook', async () => {
+it('excludes removed and banned members while including members from other guilds', async () => {
   const { guild, post } = await party();
   const member = await makeCharacter({ guildId: guild.id });
   const membership = await addMember(post.id, member.id);
@@ -144,7 +144,7 @@ it('excludes removed and banned members and guilds without a webhook', async () 
   await job.runOnce(at);
   const deliveries = await prisma.webhookDelivery.findMany();
   expect(deliveries).toHaveLength(1);
-  expect((deliveries[0]!.payload as { allowed_mentions: { users: string[] } }).allowed_mentions.users).toHaveLength(1);
+  expect((deliveries[0]!.payload as { allowed_mentions: { users: string[] } }).allowed_mentions.users).toHaveLength(2);
 });
 
 it('returns to the original wall time after the spring-forward gap', async () => {
@@ -224,14 +224,14 @@ it('queues reminders only for guilds that have recipients', async () => {
   expect(deliveries.map((d) => d.guildId)).toEqual([guild.id]);
 });
 
-it('drops, without counting a failure, a queued reminder whose recipients all left', async () => {
+it('sends one reminder to the selected guild and removes departed members from its mentions', async () => {
   const { guild, post } = await party();
   const member = await makeCharacter({ guildId: guild.id });
   await addMember(post.id, member.id);
   const otherGuild = await makeGuild({ webhookUrl: 'https://discord.com/api/webhooks/2/test' });
   const leaver = await addMember(post.id, (await makeCharacter({ guildId: otherGuild.id })).id);
   await job.runOnce(at);
-  expect(await prisma.webhookDelivery.count()).toBe(2);
+  expect(await prisma.webhookDelivery.count()).toBe(1);
   await prisma.webhookDelivery.updateMany({ data: { createdAt: at } });
   await prisma.postMember.delete({ where: { id: leaver.id } });
   const sender = new FakeWebhookSender();
@@ -282,7 +282,7 @@ it('continues routing a member after their character is deleted', async () => {
   const discordId = (await prisma.user.findUniqueOrThrow({ where: { id: member.ownerId } })).discordId;
   const { deleteCharacter } = await import('../src/characters/service.js');
   await deleteCharacter(prisma, member.id);
-  expect(await prisma.postMember.findUniqueOrThrow({ where: { id: membership.id } })).toMatchObject({ characterId: null, reminderGuildId: guild.id });
+  expect(await prisma.postMember.findUniqueOrThrow({ where: { id: membership.id } })).toMatchObject({ characterId: null });
   await job.runOnce(at);
   const delivery = await prisma.webhookDelivery.findFirstOrThrow();
   expect((delivery.payload as { allowed_mentions: { users: string[] } }).allowed_mentions.users).toContain(discordId);
