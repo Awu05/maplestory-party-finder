@@ -11,6 +11,8 @@ const FRIENDLY: Record<string, string> = {
   TOO_SOON: 'Refreshed recently. Try again in a few minutes.',
   UNAUTHENTICATED: 'Your session expired — log in again.',
   BANNED: 'Your account has been banned. Contact the admin.',
+  DELETED: 'This account has been deleted.',
+  CANNOT_DELETE_ADMIN: "Admins can't be deleted.",
   FORBIDDEN: "You don't have permission to do that.",
   NOT_OWNER: "You don't own this character.",
   GUILD_INACTIVE: "That guild isn't accepting characters right now.",

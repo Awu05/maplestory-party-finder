@@ -1,0 +1,13 @@
+.confirm-dialog {
+  width: min(28rem, calc(100vw - 16px));
+  max-height: calc(100dvh - 16px);
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+}
+.confirm-dialog::backdrop { background: rgb(0 0 0 / 0.6); }
+.confirm-dialog__content { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); }
+.confirm-dialog__content h2 { margin: 0; font-size: 1.1rem; }
+.confirm-dialog__body { margin: 0; overflow-wrap: anywhere; }
