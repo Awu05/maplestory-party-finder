@@ -80,7 +80,8 @@ function changedFields(v: Values, orig: Values, editingZone: string): UpdatePost
   }
   if (v.note !== orig.note) out.note = v.note;
   if (v.notificationGuildId !== orig.notificationGuildId) out.notificationGuildId = v.notificationGuildId || null;
-  if (v.partyForumGuildId !== orig.partyForumGuildId) out.partyForumGuildId = v.partyForumGuildId || null;
+  // The server clears an LFP post's party chat guild itself.
+  if (v.type !== 'lfp' && v.partyForumGuildId !== orig.partyForumGuildId) out.partyForumGuildId = v.partyForumGuildId || null;
   if (!sameSet(v.freeTimes, orig.freeTimes)) {
     out.freeTimes = v.freeTimes;
     out.freeTimesZone = v.freeTimes.length > 0 ? editingZone : null;

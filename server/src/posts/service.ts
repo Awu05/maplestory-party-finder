@@ -83,10 +83,16 @@ async function getPostingCharacter(db: Db, characterId: string, userId: string) 
   return character;
 }
 
+/** LFP posts never get a party chat, so they never store a party chat guild. */
+function assertNoLfpPartyChat(type: PostType, partyForumGuildId: string | null | undefined): void {
+  if (type === 'lfp' && partyForumGuildId) throw new AppError(400, 'VALIDATION', 'Looking-for-party posts have no party chat; leave the party chat guild as None.');
+}
+
 export async function createPost(prisma: PrismaClient, userId: string, input: CreatePostInput): Promise<PostRow> {
   const character = await getPostingCharacter(prisma, input.characterId, userId);
   const notificationGuildId = input.notificationGuildId ?? null;
   const partyForumGuildId = input.partyForumGuildId ?? null;
+  assertNoLfpPartyChat(input.type, partyForumGuildId);
   await validateDestination(prisma, notificationGuildId, character.worldId, 'notifications');
   await validateDestination(prisma, partyForumGuildId, character.worldId, 'partyForum');
 
@@ -509,7 +515,10 @@ export async function editPost(prisma: PrismaClient, viewer: Viewer, id: string,
     const character = characterChanged ? await getPostingCharacter(tx, input.characterId!, viewer.user.id) : null;
     const worldChanged = character !== null && character.worldId !== row.worldId;
     const notificationGuildId = input.notificationGuildId !== undefined ? input.notificationGuildId : worldChanged ? null : row.notificationGuildId;
-    const partyForumGuildId = input.partyForumGuildId !== undefined ? input.partyForumGuildId : worldChanged ? null : row.partyForumGuildId;
+    assertNoLfpPartyChat(type, input.partyForumGuildId);
+    // An LFP post keeps no party chat guild, so none comes back when it changes type again.
+    const partyForumGuildId = type === 'lfp' ? null
+      : input.partyForumGuildId !== undefined ? input.partyForumGuildId : worldChanged || row.type === 'lfp' ? null : row.partyForumGuildId;
     if (isActiveFinalized(row, now) && row.forumThreadRequested && partyForumGuildId !== row.partyForumGuildId) throw new AppError(409, 'PARTY_CHAT_LOCKED', 'The party chat has already been requested and cannot be moved.');
     if (worldChanged || input.notificationGuildId !== undefined) await validateDestination(tx, notificationGuildId, character?.worldId ?? row.worldId, 'notifications');
     if (worldChanged || input.partyForumGuildId !== undefined) await validateDestination(tx, partyForumGuildId, character?.worldId ?? row.worldId, 'partyForum');

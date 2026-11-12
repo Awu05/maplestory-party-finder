@@ -292,6 +292,25 @@ describe('NewPostPage (edit)', () => {
     await screen.findByRole('heading', { name: 'Lineup' });
     expect(body(writes(fetch)[0])).toEqual({ characterId: 'c2', notificationGuildId: null, partyForumGuildId: null });
   });
+  it('does not send a party chat guild when the post becomes LFP', async () => {
+    const post = makePost({ partyForumGuild: { id: 'chat', name: 'Chat guild' } });
+    const fetch = mockApi({
+      ...base,
+      '/api/posts/p1': post,
+      'PATCH /api/posts/p1': post,
+      '/api/discord-destinations': [
+        { id: 'chat', name: 'Chat guild', worldIds: [5], notifications: false, partyForum: true },
+        { id: 'chat2', name: 'Other chat', worldIds: [5], notifications: false, partyForum: true },
+      ],
+    });
+    renderWithProviders(<App />, { route: '/posts/p1/edit' });
+    await waitFor(() => expect(screen.getByLabelText('Party chat guild')).toBeEnabled());
+    fireEvent.change(screen.getByLabelText('Party chat guild'), { target: { value: 'chat2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Looking for party' }));
+    save();
+    await screen.findByRole('heading', { name: 'Lineup' });
+    expect(body(writes(fetch)[0])).not.toHaveProperty('partyForumGuildId');
+  });
   it('prefills from the post and PATCHes only changed fields (note + partySize)', async () => {
     const m = mockApi({ ...base, '/api/posts/p1': makePost(), 'PATCH /api/posts/p1': makePost() });
     renderWithProviders(<App />, { route: '/posts/p1/edit' });

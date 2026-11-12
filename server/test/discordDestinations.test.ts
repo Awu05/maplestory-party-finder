@@ -165,3 +165,18 @@ it('requests the party chat when one is picked after finalizing with None, only 
   expect(sender.calls.filter((sent) => sent.url === forumUrl)).toHaveLength(1);
   expect(await prisma.webhookDelivery.findFirstOrThrow({ where: { postId: id, eventType: 'post.party_thread' } })).toMatchObject({ status: 'sent' });
 });
+
+it('never stores a party chat guild on an LFP post', async () => {
+  const rejected = await create({ type: 'lfp', partySize: undefined });
+  expect(rejected.statusCode).toBe(400);
+  expect(rejected.json().error).toMatchObject({ code: 'VALIDATION', message: expect.stringContaining('party chat') });
+  const id = (await create()).json().id;
+  const switched = await call('PATCH', `/${id}`, { type: 'lfp' });
+  expect(switched.statusCode).toBe(200);
+  expect(switched.json()).toMatchObject({ partyForumGuild: null });
+  expect((await prisma.post.findUniqueOrThrow({ where: { id } })).partyForumGuildId).toBeNull();
+  expect((await call('PATCH', `/${id}`, { partyForumGuildId: chatGuildId })).statusCode).toBe(400);
+  const back = await call('PATCH', `/${id}`, { type: 'recruiting', partySize: 4 });
+  expect(back.statusCode).toBe(200);
+  expect(back.json()).toMatchObject({ partyForumGuild: null });
+});
