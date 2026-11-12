@@ -211,3 +211,23 @@ describe('user delete', () => {
     expect(fetchMock.mock.calls.some(([u]) => String(u) === '/api/admin/users?status=deleted')).toBe(true);
   });
 });
+
+describe('admin user characters layout', () => {
+  it('renders each character as a column (card, actions, picker) inside the .admin__chars grid', async () => {
+    const c = {
+      id: 'c1', ign: 'Mapler', level: 250, jobName: 'Bishop', combatPower: 1_000_000, imageUrl: '',
+      world: { id: 1, name: 'Scania' }, guild: null, cpUpdatedAt: '2026-01-01T00:00:00Z', screenshotUrl: null,
+      owner: { discordUsername: 'bob', displayName: null, discordLinked: true },
+    };
+    mockApi({ '/api/admin/users': [user('u1', 'bob'), user('u2', 'amy')], '/api/rarity-tiers': [], '/api/admin/users/u1/characters': [c] });
+    renderWithProviders(<UsersAdmin />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Show characters bob' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Reassign Mapler' }));
+    const char = (await screen.findByRole('group', { name: 'Reassign Mapler' })).closest('.admin__char')!;
+    expect(char.parentElement).toHaveClass('admin__chars');
+    expect(char.querySelector(':scope > .card')).not.toBeNull();
+    expect(char.querySelector(':scope > .admin__row')).not.toBeNull();
+    expect(char.querySelector(':scope > .admin__picker')).not.toBeNull();
+  });
+});
+
