@@ -1,22 +1,27 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
+import { findDestination } from './destinations.js';
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
-/** Mention current members together in the selected notification guild. */
-export async function weeklyRecipients(db: Db, postId: string): Promise<Map<string, string[]>> {
+/** The Discord ids of the post's current, unbanned members, in join order, once each. */
+export async function weeklyRecipientIds(db: Db, postId: string): Promise<string[]> {
   const members = await db.postMember.findMany({
     where: { postId },
     include: { user: { select: { discordId: true, banned: true } } },
     orderBy: [{ joinedAt: 'asc' }, { id: 'asc' }],
   });
-  const post = await db.post.findUnique({ where: { id: postId }, select: { worldId: true, notificationGuildId: true } });
-  if (!post?.notificationGuildId) return new Map();
-  const guild = await db.guild.findFirst({ where: { id: post.notificationGuildId, active: true, webhookUrl: { not: null }, worlds: { some: { worldId: post.worldId } } }, select: { id: true } });
-  if (!guild) return new Map();
   const recipients = new Set<string>();
   for (const member of members) {
     const discordId = member.user.discordId;
     if (discordId && !member.user.banned) recipients.add(discordId);
   }
-  return recipients.size ? new Map([[guild.id, [...recipients]]]) : new Map();
+  return [...recipients];
+}
+
+/** Mention current members together in the selected notification guild. */
+export async function weeklyRecipients(db: Db, post: { id: string; worldId: number; notificationGuildId: string | null }): Promise<Map<string, string[]>> {
+  const guild = await findDestination(db, post.notificationGuildId, post.worldId, 'notifications');
+  if (!guild) return new Map();
+  const ids = await weeklyRecipientIds(db, post.id);
+  return ids.length ? new Map([[guild.id, ids]]) : new Map();
 }

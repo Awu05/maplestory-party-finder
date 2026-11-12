@@ -1,6 +1,6 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
 import {
-  canonicalTimeZone, DAY_MS, effectivePostStatus, FLEXIBLE_TTL_MS, MAX_SCHEDULE_AHEAD_MS, maxPartySizeFor, MIN_PARTY_SIZE, postExpiresAt, SCHEDULE_PAST_TOLERANCE_MS,
+  canonicalTimeZone, DAY_MS, effectivePostStatus, FLEXIBLE_TTL_MS, isActiveFinalized, MAX_SCHEDULE_AHEAD_MS, maxPartySizeFor, MIN_PARTY_SIZE, postExpiresAt, SCHEDULE_PAST_TOLERANCE_MS,
   type PostType,
 } from '@pf/shared';
 import type { Viewer } from '../auth/guards.js';
@@ -15,7 +15,7 @@ import { enqueuePostAnnouncement } from '../discord/postAnnouncement.js';
 import { enqueueDelivery } from '../discord/outbox.js';
 import { toPostSummaryDTO } from './serialize.js';
 import type { Storage } from '../storage/storage.js';
-import { validateDestination } from '../discord/destinations.js';
+import { findDestination, validateDestination } from '../discord/destinations.js';
 
 export interface CreatePostInput {
   type: PostType;
@@ -87,8 +87,8 @@ export async function createPost(prisma: PrismaClient, userId: string, input: Cr
   const character = await getPostingCharacter(prisma, input.characterId, userId);
   const notificationGuildId = input.notificationGuildId ?? null;
   const partyForumGuildId = input.partyForumGuildId ?? null;
-  await validateDestination(prisma, notificationGuildId, character.worldId, 'notification');
-  await validateDestination(prisma, partyForumGuildId, character.worldId, 'forum');
+  await validateDestination(prisma, notificationGuildId, character.worldId, 'notifications');
+  await validateDestination(prisma, partyForumGuildId, character.worldId, 'partyForum');
 
   const now = new Date();
   const free = normalizeFreeTimes(input.freeTimes, input.freeTimesZone);
@@ -211,11 +211,6 @@ export async function loadPostForUpdate(tx: Prisma.TransactionClient, id: string
 
 function assertPoster(post: PostRow, viewer: Viewer): void {
   if (post.posterUserId !== viewer.user.id) throw new AppError(403, 'NOT_OWNER', 'Only the poster can do that');
-}
-
-/** A finalized lineup is closed to recruitment but remains active until its scheduled run expires. */
-function isActiveFinalized(post: PostRow, now: Date): boolean {
-  return post.status === 'closed' && post.closedReason === 'finalized' && post.deletedAt === null && post.expiresAt > now;
 }
 
 export async function setMemberFreeTimes(
@@ -363,8 +358,8 @@ export async function finalizePostTime(prisma: PrismaClient, viewer: Viewer, id:
       include: postInclude,
     });
     if (forum) {
-      const guild = post.partyForumGuildId ? await tx.guild.findFirst({ where: { id: post.partyForumGuildId, active: true, partyForumWebhookUrl: { not: null }, worlds: { some: { worldId: post.worldId } } }, select: { id: true, active: true, partyForumWebhookUrl: true } }) : null;
-      if (guild?.active && guild.partyForumWebhookUrl) {
+      const guild = await findDestination(tx, post.partyForumGuildId, post.worldId, 'partyForum');
+      if (guild) {
         const users = await tx.user.findMany({ where: { id: { in: post.members.map((member) => member.userId) } }, select: { id: true, discordId: true, username: true } });
         const ids = new Map(users.map((user) => [user.id, user]));
         const roster = post.members.map((member) => ({ ign: parseSnapshot(member.snapshot).ign, discordId: ids.get(member.userId)?.discordId ?? null, discordUsername: ids.get(member.userId)?.username }));
@@ -503,8 +498,8 @@ export async function editPost(prisma: PrismaClient, viewer: Viewer, id: string,
     const notificationGuildId = input.notificationGuildId !== undefined ? input.notificationGuildId : worldChanged ? null : row.notificationGuildId;
     const partyForumGuildId = input.partyForumGuildId !== undefined ? input.partyForumGuildId : worldChanged ? null : row.partyForumGuildId;
     if (row.forumThreadRequested && partyForumGuildId !== row.partyForumGuildId) throw new AppError(409, 'PARTY_CHAT_LOCKED', 'The party chat has already been requested and cannot be moved.');
-    if (worldChanged || input.notificationGuildId !== undefined) await validateDestination(tx, notificationGuildId, character?.worldId ?? row.worldId, 'notification');
-    if (worldChanged || input.partyForumGuildId !== undefined) await validateDestination(tx, partyForumGuildId, character?.worldId ?? row.worldId, 'forum');
+    if (worldChanged || input.notificationGuildId !== undefined) await validateDestination(tx, notificationGuildId, character?.worldId ?? row.worldId, 'notifications');
+    if (worldChanged || input.partyForumGuildId !== undefined) await validateDestination(tx, partyForumGuildId, character?.worldId ?? row.worldId, 'partyForum');
 
     const freeChanged = input.freeTimes !== undefined || input.freeTimesZone !== undefined;
     const free = freeChanged

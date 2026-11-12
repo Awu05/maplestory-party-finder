@@ -1,9 +1,9 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
-import { effectivePostStatus } from '@pf/shared';
+import { effectivePostStatus, isActiveFinalized } from '@pf/shared';
 import { buildPartyThread, buildWeeklyReminder, type WebhookPayload } from './messages.js';
 import { SEND_TIMEOUT_MS, type SendResult, type WebhookSender } from './sender.js';
 import { errName, type Logger } from '../log.js';
-import { weeklyRecipients } from './weeklyRecipients.js';
+import { weeklyRecipientIds } from './weeklyRecipients.js';
 import { parseSnapshot } from '../posts/snapshot.js';
 import { toBossDTOs } from '../posts/serialize.js';
 
@@ -24,8 +24,6 @@ const deliveryPostSelect = {
   weeklyTimeZone: true, weeklyAnchorAt: true, scheduledAt: true,
 } satisfies Prisma.PostSelect;
 type ForumState = { status: string; closedReason: string | null; deletedAt: Date | null; expiresAt: Date; partyForumGuildId: string | null };
-const isActiveFinalized = (post: Omit<ForumState, 'partyForumGuildId'> | null | undefined, now: Date) =>
-  post?.status === 'closed' && post.closedReason === 'finalized' && post.deletedAt === null && post.expiresAt > now;
 
 export async function enqueueDelivery(db: Db, guildId: string, eventType: string, payload: WebhookPayload, postId?: string): Promise<void> {
   await db.webhookDelivery.create({
@@ -181,7 +179,8 @@ export class WebhookWorker {
         await fail(row.attempts + 1, 'Weekly reminder is no longer current');
         return;
       }
-      const ids = (await weeklyRecipients(this.prisma, row.postId)).get(row.guildId) ?? [];
+      // The destination, its world and its webhook were checked above.
+      const ids = await weeklyRecipientIds(this.prisma, row.postId);
       if (!ids.length) {
         // No remaining recipients is not a delivery failure.
         await this.prisma.webhookDelivery.deleteMany({ where: guard });

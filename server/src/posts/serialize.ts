@@ -1,6 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import {
-  DAY_MS, effectivePostStatus, type PartyMemberDTO, type PostBossDTO, type PostDetailDTO, type PostSummaryDTO, type RequestWithPostDTO,
+  DAY_MS, effectivePostStatus, isActiveFinalized, type PartyMemberDTO, type PostBossDTO, type PostDetailDTO, type PostSummaryDTO, type RequestWithPostDTO,
 } from '@pf/shared';
 import type { Viewer } from '../auth/guards.js';
 import { characterInclude, toCharacterDTO } from '../characters/serialize.js';
@@ -87,7 +87,7 @@ export function toPostSummaryDTO(row: PostSummaryRow, viewerUserId: string | nul
     minCp: row.minCp === null ? null : Number(row.minCp),
     note: row.note,
     status: effectivePostStatus(row, now),
-    recruitmentClosed: row.status === 'closed' && row.closedReason === 'finalized' && row.deletedAt === null && row.expiresAt > now,
+    recruitmentClosed: isActiveFinalized(row, now),
     deleted: row.deletedAt !== null,
     isPoster: viewerUserId !== null && row.posterUserId === viewerUserId,
   };

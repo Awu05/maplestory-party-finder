@@ -4,6 +4,7 @@ import type { DomainEvent, DomainEvents } from '../events.js';
 import { bossLabel, buildAcceptPing, buildRequestPing, type WebhookPayload } from '../discord/messages.js';
 import { enqueuePostAnnouncement, enqueuePostClosure } from '../discord/postAnnouncement.js';
 import { enqueueDelivery } from '../discord/outbox.js';
+import { findDestination } from '../discord/destinations.js';
 import { postSummaryInclude, toPostSummaryDTO } from '../posts/serialize.js';
 import type { Storage } from '../storage/storage.js';
 import { errName, type Logger } from '../log.js';
@@ -201,9 +202,8 @@ export class EventDispatcher implements DomainEvents {
     postId: string,
   ): Promise<void> {
     if (recipientUserId === actorUserId) return;
-    if (!guildId) return;
-    const guild = await this.prisma.guild.findFirst({ where: { id: guildId, active: true, webhookUrl: { not: null }, worlds: { some: { worldId } } }, select: { id: true, active: true, webhookUrl: true } });
-    if (!guild?.active || !guild.webhookUrl) return;
+    const guild = await findDestination(this.prisma, guildId, worldId, 'notifications');
+    if (!guild) return;
     const user = await this.prisma.user.findUnique({ where: { id: recipientUserId }, select: { discordId: true } });
     if (!user?.discordId) return;
     await enqueueDelivery(this.prisma, guild.id, eventType, build(user.discordId), postId);
