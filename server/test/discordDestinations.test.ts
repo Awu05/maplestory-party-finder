@@ -126,3 +126,42 @@ it('never falls back to a different forum if the selected forum becomes unavaila
   expect((await finalize(created.json().id)).statusCode).toBe(200);
   expect(await prisma.webhookDelivery.count({ where: { eventType: 'post.party_thread' } })).toBe(0);
 });
+
+it('lets a reopened party move to another world even though its previous run requested a party chat', async () => {
+  const id = (await create()).json().id;
+  expect((await finalize(id)).statusCode).toBe(200);
+  expect((await call('POST', `/${id}/reopen`, {})).statusCode).toBe(200);
+  const character = await makeCharacter({ ownerId, worldId: otherWorldId, guildId: null });
+  const response = await call('PATCH', `/${id}`, { characterId: character.id });
+  expect(response.statusCode).toBe(200);
+  expect(response.json()).toMatchObject({ notificationGuild: null, partyForumGuild: null, partyChatRequested: false });
+});
+
+it('lets a party reopened in another world pick a new party chat and creates it on the next finalize', async () => {
+  const id = (await create()).json().id;
+  expect((await finalize(id)).statusCode).toBe(200);
+  await prisma.character.update({ where: { id: characterId }, data: { worldId: otherWorldId } });
+  const reopened = await call('POST', `/${id}/reopen`, {});
+  expect(reopened.statusCode).toBe(200);
+  expect(reopened.json()).toMatchObject({ partyForumGuild: null, partyChatRequested: false });
+  expect((await call('PATCH', `/${id}`, { partyForumGuildId: wrongGuildId })).statusCode).toBe(200);
+  expect((await finalize(id)).statusCode).toBe(200);
+  expect(await prisma.webhookDelivery.count({ where: { postId: id, eventType: 'post.party_thread', guildId: wrongGuildId, status: 'pending' } })).toBe(1);
+});
+
+it('requests the party chat when one is picked after finalizing with None, only once', async () => {
+  const id = (await create({ partyForumGuildId: null })).json().id;
+  expect((await finalize(id)).statusCode).toBe(200);
+  expect(await prisma.webhookDelivery.count({ where: { postId: id, eventType: 'post.party_thread' } })).toBe(0);
+  const picked = await call('PATCH', `/${id}`, { partyForumGuildId: chatGuildId });
+  expect(picked.statusCode).toBe(200);
+  expect(picked.json()).toMatchObject({ partyForumGuild: { id: chatGuildId }, partyChatRequested: true });
+  expect(await prisma.webhookDelivery.count({ where: { postId: id, eventType: 'post.party_thread', guildId: chatGuildId } })).toBe(1);
+  expect((await call('PATCH', `/${id}`, { partyForumGuildId: chatGuildId })).statusCode).toBe(200);
+  expect(await prisma.webhookDelivery.count({ where: { postId: id, eventType: 'post.party_thread' } })).toBe(1);
+  await events.drain();
+  const sender = new FakeWebhookSender();
+  await new WebhookWorker({ prisma, sender }).runOnce();
+  expect(sender.calls.filter((sent) => sent.url === forumUrl)).toHaveLength(1);
+  expect(await prisma.webhookDelivery.findFirstOrThrow({ where: { postId: id, eventType: 'post.party_thread' } })).toMatchObject({ status: 'sent' });
+});

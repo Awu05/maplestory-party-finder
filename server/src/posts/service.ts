@@ -333,6 +333,8 @@ export async function reopenPost(prisma: PrismaClient, viewer: Viewer, id: strin
       scheduledAt: null, weeklyTimeZone: null, weeklyAnchorAt: null,
       expiresAt: new Date(now.getTime() + FLEXIBLE_TTL_MS), worldId: character.worldId, guildId: character.guildId,
       ...(row.worldId !== character.worldId ? { notificationGuildId: null, partyForumGuildId: null } : {}),
+      // A reopened party is a new run: its next finalize may request a new party chat.
+      forumThreadRequested: false,
     }, include: postInclude });
     // A party that is still full is not recruiting, so there is nothing to announce.
     const queued = full ? 0 : await enqueuePostAnnouncement(tx, post, storage, webOrigin, now, 'post.reopened');
@@ -341,8 +343,34 @@ export async function reopenPost(prisma: PrismaClient, viewer: Viewer, id: strin
   });
 }
 
+type ForumContext = { storage: Storage; webOrigin: string };
+
+/**
+ * Queues the party chat thread for a finalized post in its selected forum guild, once per run; while one is
+ * requested, later calls refresh the queued thread instead. A thread still queued from before a reopen is
+ * reused rather than doubled.
+ */
+async function requestPartyThread(tx: Prisma.TransactionClient, post: PostRow, forum: ForumContext, now: Date): Promise<boolean> {
+  const guild = await findDestination(tx, post.partyForumGuildId, post.worldId, 'partyForum');
+  if (!guild) return false;
+  const users = await tx.user.findMany({ where: { id: { in: post.members.map((member) => member.userId) } }, select: { id: true, discordId: true, username: true } });
+  const ids = new Map(users.map((user) => [user.id, user]));
+  const roster = post.members.map((member) => ({ ign: parseSnapshot(member.snapshot).ign, discordId: ids.get(member.userId)?.discordId ?? null, discordUsername: ids.get(member.userId)?.username }));
+  const thread = buildPartyThread(toPostSummaryDTO(post, null, forum.storage, now), forum.webOrigin, roster);
+  const payload = { ...thread.message, thread_name: thread.name, _forum: { webOrigin: forum.webOrigin } };
+  const pending = { postId: post.id, eventType: 'post.party_thread', status: 'pending' as const };
+  if (post.forumThreadRequested) {
+    await tx.webhookDelivery.updateMany({ where: pending, data: { payload } });
+    return false;
+  }
+  const { count } = await tx.webhookDelivery.updateMany({ where: { ...pending, guildId: guild.id }, data: { payload } });
+  if (!count) await enqueueDelivery(tx, guild.id, 'post.party_thread', payload, post.id);
+  await tx.post.update({ where: { id: post.id }, data: { forumThreadRequested: true } });
+  return true;
+}
+
 /** Finalizing closes recruitment; the poster may still change the time or end the party. */
-export async function finalizePostTime(prisma: PrismaClient, viewer: Viewer, id: string, scheduledAt: Date, now: Date, weeklyTimeZone: string | null = null, forum?: { storage: Storage; webOrigin: string }): Promise<LifecycleResult> {
+export async function finalizePostTime(prisma: PrismaClient, viewer: Viewer, id: string, scheduledAt: Date, now: Date, weeklyTimeZone: string | null = null, forum?: ForumContext): Promise<LifecycleResult> {
   const zone = weeklyTimeZone ? canonicalTimeZone(weeklyTimeZone) : null;
   if (zone) await assertPostgresZone(prisma, zone);
   return prisma.$transaction(async (tx) => {
@@ -357,22 +385,7 @@ export async function finalizePostTime(prisma: PrismaClient, viewer: Viewer, id:
       data: { status: 'closed', closedReason: 'finalized', scheduledAt, expiresAt: postExpiresAt(scheduledAt, now), weeklyTimeZone: zone, weeklyAnchorAt: zone ? scheduledAt : null },
       include: postInclude,
     });
-    if (forum) {
-      const guild = await findDestination(tx, post.partyForumGuildId, post.worldId, 'partyForum');
-      if (guild) {
-        const users = await tx.user.findMany({ where: { id: { in: post.members.map((member) => member.userId) } }, select: { id: true, discordId: true, username: true } });
-        const ids = new Map(users.map((user) => [user.id, user]));
-        const roster = post.members.map((member) => ({ ign: parseSnapshot(member.snapshot).ign, discordId: ids.get(member.userId)?.discordId ?? null, discordUsername: ids.get(member.userId)?.username }));
-        const thread = buildPartyThread(toPostSummaryDTO(post, null, forum.storage, now), forum.webOrigin, roster);
-        const payload = { ...thread.message, thread_name: thread.name, _forum: { webOrigin: forum.webOrigin } };
-        if (!row.forumThreadRequested) {
-          await enqueueDelivery(tx, guild.id, 'post.party_thread', payload, post.id);
-          await tx.post.update({ where: { id }, data: { forumThreadRequested: true } });
-        } else {
-          await tx.webhookDelivery.updateMany({ where: { postId: id, eventType: 'post.party_thread', status: 'pending' }, data: { payload } });
-        }
-      }
-    }
+    if (forum) await requestPartyThread(tx, post, forum, now);
     return { post, declinedRequestIds };
   });
 }
@@ -478,7 +491,7 @@ export interface EditResult {
 }
 
 /** Validate the complete edited post; switching to LFP clears legacy schedules. */
-export async function editPost(prisma: PrismaClient, viewer: Viewer, id: string, input: EditPostInput, now: Date): Promise<EditResult> {
+export async function editPost(prisma: PrismaClient, viewer: Viewer, id: string, input: EditPostInput, now: Date, forum?: ForumContext): Promise<EditResult> {
   return prisma.$transaction(async (tx) => {
     const row = await loadPostForUpdate(tx, id);
     assertPoster(row, viewer);
@@ -497,7 +510,7 @@ export async function editPost(prisma: PrismaClient, viewer: Viewer, id: string,
     const worldChanged = character !== null && character.worldId !== row.worldId;
     const notificationGuildId = input.notificationGuildId !== undefined ? input.notificationGuildId : worldChanged ? null : row.notificationGuildId;
     const partyForumGuildId = input.partyForumGuildId !== undefined ? input.partyForumGuildId : worldChanged ? null : row.partyForumGuildId;
-    if (row.forumThreadRequested && partyForumGuildId !== row.partyForumGuildId) throw new AppError(409, 'PARTY_CHAT_LOCKED', 'The party chat has already been requested and cannot be moved.');
+    if (isActiveFinalized(row, now) && row.forumThreadRequested && partyForumGuildId !== row.partyForumGuildId) throw new AppError(409, 'PARTY_CHAT_LOCKED', 'The party chat has already been requested and cannot be moved.');
     if (worldChanged || input.notificationGuildId !== undefined) await validateDestination(tx, notificationGuildId, character?.worldId ?? row.worldId, 'notifications');
     if (worldChanged || input.partyForumGuildId !== undefined) await validateDestination(tx, partyForumGuildId, character?.worldId ?? row.worldId, 'partyForum');
 
@@ -566,6 +579,11 @@ export async function editPost(prisma: PrismaClient, viewer: Viewer, id: string,
       },
       include: postInclude,
     });
+    // Picking a party chat for a party that is already finalized requests it as finalizing would have.
+    const requestThread = forum && input.partyForumGuildId && isActiveFinalized(row, now) && !row.forumThreadRequested;
+    if (requestThread && (await requestPartyThread(tx, post, forum, now))) {
+      return { post: await tx.post.findUniqueOrThrow({ where: { id }, include: postInclude }), declinedRequestIds, reopened, becameFull };
+    }
     return { post, declinedRequestIds, reopened, becameFull };
   });
 }
