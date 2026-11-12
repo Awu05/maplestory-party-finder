@@ -1,5 +1,6 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { GuildsAdmin } from '../src/pages/admin/GuildsAdmin';
+import { UsersAdmin } from '../src/pages/admin/UsersAdmin';
 import { WorldsAdmin } from '../src/pages/admin/WorldsAdmin';
 import { mockApi, renderWithProviders } from './setup';
 
@@ -140,5 +141,73 @@ describe('world delete', () => {
     expect(await within(dialog).findByText(/already exist on Kronos/)).toBeInTheDocument();
     const items = within(within(dialog).getByRole('list')).getAllByRole('listitem').map((li) => li.textContent);
     expect(items).toEqual(['Aa', 'Bb']);
+  });
+});
+
+const user = (id: string, name: string, over: Record<string, unknown> = {}) => ({
+  id, discordUsername: name, displayName: null, avatarUrl: null, banned: false, deletedAt: null as string | null, isAdmin: false,
+  createdAt: '2026-01-01T00:00:00Z', characterCount: 1, discordLinked: true, ...over,
+});
+
+describe('user delete', () => {
+  const list = [user('u1', 'bob'), user('u2', 'root', { isAdmin: true }), user('u3', 'gone', { deletedAt: '2026-02-01T00:00:00Z' })];
+
+  it('Delete only for non-deleted, non-admin users; deleted users get a pill and Reactivate', async () => {
+    mockApi({ '/api/admin/users': list, '/api/rarity-tiers': [] });
+    renderWithProviders(<UsersAdmin />);
+    expect(await screen.findByRole('button', { name: 'Delete account bob' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete account root' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete account gone' })).not.toBeInTheDocument();
+    expect(screen.getByText('Deleted', { selector: 'span' })).toHaveClass('pill', 'pill--red');
+    expect(screen.getByRole('button', { name: 'Reactivate gone' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reactivate bob' })).not.toBeInTheDocument();
+  });
+
+  it('confirms, DELETEs, and refreshes', async () => {
+    let users = list;
+    const del = vi.fn(() => { users = users.map((u) => (u.id === 'u1' ? { ...u, deletedAt: '2026-03-01T00:00:00Z' } : u)); return users[0]; });
+    mockApi({ '/api/admin/users': () => users, '/api/rarity-tiers': [], 'DELETE /api/admin/users/u1': del });
+    renderWithProviders(<UsersAdmin />);
+    const opener = await screen.findByRole('button', { name: 'Delete account bob' });
+    opener.focus();
+    fireEvent.click(opener);
+    const dialog = await screen.findByRole('dialog', { name: 'Delete bob?' });
+    expect(within(dialog).getByText("They won't be able to sign in and their open posts will close. You can reactivate the account later.")).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByText('Delete account'));
+    await waitFor(() => expect(del).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole('button', { name: 'Reactivate bob' })).toBeInTheDocument();
+    expect(document.querySelector('dialog')).toBeNull();
+  });
+
+  it('shows a delete error in the dialog', async () => {
+    const fetchMock = mockApi({ '/api/admin/users': list, '/api/rarity-tiers': [] });
+    failWhen(fetchMock, (m) => m === 'DELETE', 400, { code: 'CANNOT_DELETE_ADMIN', message: 'Admins cannot be deleted' });
+    renderWithProviders(<UsersAdmin />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete account bob' }));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByText('Delete account'));
+    expect(await screen.findByText("Admins can't be deleted.")).toBeInTheDocument();
+  });
+
+  it('Reactivate POSTs without a confirm', async () => {
+    const post = vi.fn(() => user('u3', 'gone'));
+    const confirm = vi.spyOn(window, 'confirm');
+    mockApi({ '/api/admin/users': list, '/api/rarity-tiers': [], 'POST /api/admin/users/u3/reactivate': post });
+    renderWithProviders(<UsersAdmin />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Reactivate gone' }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    expect(confirm).not.toHaveBeenCalled();
+    confirm.mockRestore();
+  });
+
+  it('status filter sends ?status=', async () => {
+    const fetchMock = mockApi({ '/api/admin/users': list, '/api/admin/users?status=deleted': [list[2]], '/api/admin/users?status=active': [list[0]], '/api/rarity-tiers': [] });
+    renderWithProviders(<UsersAdmin />);
+    await screen.findByText('bob');
+    const select = screen.getByRole('combobox', { name: 'Filter by status' });
+    expect(within(select).getAllByRole('option').map((o) => o.textContent)).toEqual(['All', 'Active', 'Deleted']);
+    fireEvent.change(select, { target: { value: 'deleted' } });
+    expect(await screen.findByText('gone')).toBeInTheDocument();
+    expect(screen.queryByText('bob')).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([u]) => String(u) === '/api/admin/users?status=deleted')).toBe(true);
   });
 });

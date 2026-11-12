@@ -4,6 +4,9 @@ import {
   useAdminDeleteCharacter,
   useAdminUserCharacters,
   useAdminUsers,
+  useDeleteUser,
+  useReactivateUser,
+  type UserStatusFilter,
   useDebouncedValue,
   useRarityTiers,
   useReassignCharacter,
@@ -11,13 +14,14 @@ import {
 } from '../../api/hooks';
 import { friendlyError } from '../../api/errors';
 import { accountName, discordHandle, DISCORD_NAME_NOT_SET } from '../../lib/discordName';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { CharacterCard } from '../../components/card/CharacterCard';
 
 function ReassignPanel({ character, ownerId, onDone }: { character: CharacterDTO; ownerId: string; onDone: () => void }) {
   const [q, setQ] = useState('');
   const users = useAdminUsers(useDebouncedValue(q));
   const reassign = useReassignCharacter();
-  const choices = users.data?.filter((u) => u.id !== ownerId && !u.banned) ?? [];
+  const choices = users.data?.filter((u) => u.id !== ownerId && !u.banned && !u.deletedAt) ?? [];
 
   const choose = (u: AdminUserDTO) => {
     const handle = u.discordLinked ? `@${u.discordUsername}` : `${u.discordUsername}, unverified`;
@@ -87,17 +91,42 @@ function UserCharacters({ user }: { user: AdminUserDTO }) {
   );
 }
 
+function DeleteUserDialog({ user, onClose }: { user: AdminUserDTO; onClose: () => void }) {
+  const del = useDeleteUser();
+  return (
+    <ConfirmDialog
+      title={`Delete ${accountName(user)}?`}
+      confirmLabel="Delete account"
+      busy={del.isPending}
+      error={del.isError ? friendlyError(del.error) : undefined}
+      onConfirm={() => del.mutate(user.id, { onSuccess: onClose })}
+      onCancel={onClose}
+    >
+      <p>They won't be able to sign in and their open posts will close. You can reactivate the account later.</p>
+    </ConfirmDialog>
+  );
+}
+
 export function UsersAdmin() {
   const [q, setQ] = useState('');
-  const users = useAdminUsers(useDebouncedValue(q));
+  const [status, setStatus] = useState<UserStatusFilter>('all');
+  const users = useAdminUsers(useDebouncedValue(q), status);
   const setBanned = useSetBanned();
+  const reactivate = useReactivateUser();
+  const [deleting, setDeleting] = useState<AdminUserDTO | null>(null);
   const [open, setOpen] = useState<string | null>(null);
 
   return (
     <div>
       <h2>Users</h2>
       <input type="search" aria-label="Search users" placeholder="Search display name or Discord username" value={q} onChange={(e) => setQ(e.target.value)} />
+      <select aria-label="Filter by status" value={status} onChange={(e) => setStatus(e.target.value as UserStatusFilter)}>
+        <option value="all">All</option>
+        <option value="active">Active</option>
+        <option value="deleted">Deleted</option>
+      </select>
       {users.isError && <p role="alert" className="admin__error">{friendlyError(users.error)}</p>}
+      {reactivate.isError && <p role="alert" className="admin__error">{friendlyError(reactivate.error)}</p>}
       {setBanned.isError && <p role="alert" className="admin__error">{friendlyError(setBanned.error)}</p>}
       {users.data?.map((u) => {
         const expanded = open === u.id;
@@ -110,7 +139,18 @@ export function UsersAdmin() {
               {!u.discordLinked && u.discordUsername && <small className="unverified-note" title="Typed at sign-up and not confirmed through Discord">unverified</small>}
               {u.isAdmin && <span className="pill">Admin</span>}
               {u.banned && <span className="pill pill--red">Banned</span>}
+              {u.deletedAt && <span className="pill pill--red">Deleted</span>}
               <span>{u.characterCount} {u.characterCount === 1 ? 'character' : 'characters'}</span>
+              {u.deletedAt && (
+                <button type="button" className="btn btn--secondary" aria-label={`Reactivate ${accountName(u)}`} disabled={reactivate.isPending} onClick={() => reactivate.mutate(u.id)}>
+                  Reactivate
+                </button>
+              )}
+              {!u.isAdmin && !u.deletedAt && (
+                <button type="button" className="btn btn--danger" aria-label={`Delete account ${accountName(u)}`} onClick={() => setDeleting(u)}>
+                  Delete
+                </button>
+              )}
               {!u.isAdmin && (
                 <button
                   type="button"
@@ -139,6 +179,7 @@ export function UsersAdmin() {
           </div>
         );
       })}
+      {deleting && <DeleteUserDialog user={deleting} onClose={() => setDeleting(null)} />}
     </div>
   );
 }
