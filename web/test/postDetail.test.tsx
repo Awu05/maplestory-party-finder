@@ -355,6 +355,29 @@ describe('PostDetailPage when section', () => {
 });
 
 describe('PostDetailPage Discord destinations', () => {
+  it('a background refresh does not overwrite an unsaved Discord destination choice', async () => {
+    let current = post({ isPoster: true, notificationGuild: null, partyForumGuild: null, partyChatRequested: false });
+    const client = testQueryClient();
+    mockApi({
+      ...tiers,
+      '/api/discord-destinations': [
+        { id: 'notify', name: 'Notification server', worldIds: [5], notifications: true, partyForum: false },
+        { id: 'chat', name: 'Chat server', worldIds: [5], notifications: true, partyForum: true },
+      ],
+      '/api/posts/p1': () => current,
+    });
+    renderWithProviders(<Routes><Route path="/posts/:id" element={<PostDetailPage />} /></Routes>, { route: '/posts/p1', client });
+    const select = await screen.findByLabelText('Notification guild');
+    await waitFor(() => expect(select).toBeEnabled());
+    fireEvent.change(select, { target: { value: 'notify' } });
+    // Meanwhile the stored party chat changes elsewhere (another tab), and the page refetches.
+    current = { ...current, partyForumGuild: { id: 'chat', name: 'Chat server' } };
+    await client.refetchQueries({ queryKey: ['posts', 'detail', 'p1'] });
+    await waitFor(() => expect(screen.getByLabelText('Party chat guild')).toHaveValue('chat'));
+    expect(screen.getByLabelText('Notification guild')).toHaveValue('notify');
+    expect(screen.getByRole('button', { name: 'Save Discord destinations' })).toBeEnabled();
+  });
+
   it('still shows the saved confirmation after the post is refetched with the new destination', async () => {
     let current = post({ isPoster: true, notificationGuild: null, partyForumGuild: null, partyChatRequested: false });
     const fetchMock = renderPage({

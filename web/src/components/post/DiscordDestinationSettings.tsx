@@ -12,10 +12,14 @@ export function DiscordDestinationSettings({ post }: { post: PostDetailDTO }) {
   const [value, setValue] = useState(stored);
   const [synced, setSynced] = useState(stored);
   const [saved, setSaved] = useState(false);
-  // When the saved destinations change (e.g. the refetch after saving), show them, keeping the confirmation.
+  // When the saved destinations change (the refetch after saving, or a background refresh), a field
+  // takes the new stored value only if the poster hasn't changed it yet: an unsaved choice is kept.
   if (synced.notificationGuildId !== stored.notificationGuildId || synced.partyForumGuildId !== stored.partyForumGuildId) {
+    setValue({
+      notificationGuildId: value.notificationGuildId === synced.notificationGuildId ? stored.notificationGuildId : value.notificationGuildId,
+      partyForumGuildId: value.partyForumGuildId === synced.partyForumGuildId ? stored.partyForumGuildId : value.partyForumGuildId,
+    });
     setSynced(stored);
-    setValue(stored);
   }
   const changed = value.notificationGuildId !== stored.notificationGuildId || value.partyForumGuildId !== stored.partyForumGuildId;
   async function save(e: FormEvent) {
