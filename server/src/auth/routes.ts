@@ -27,6 +27,9 @@ const profileBody = z
   .strict()
   .refine((body) => body.displayName !== undefined || body.discordUsername !== undefined, { message: 'Nothing to update' });
 
+/** The linking account stopped being linkable between the checks and the write. */
+class LinkNoLongerValid extends Error {}
+
 export async function authRoutes(api: FastifyInstance): Promise<void> {
   const { prisma, discord, config } = api.deps;
   await api.register(passkeyRoutes);
@@ -49,7 +52,15 @@ export async function authRoutes(api: FastifyInstance): Promise<void> {
 
   /** Starts linking the signed-in passkey/password account to a Discord identity. */
   api.get('/auth/discord/link', async (req, reply) => {
-    const viewer = await requireUser(req);
+    // Only this site may start a link. Browsers send Sec-Fetch-Site on navigations; a link or redirect
+    // from another site says "cross-site" (or "same-site"), and is refused before anything is stored.
+    const fetchSite = req.headers['sec-fetch-site'];
+    if (fetchSite !== undefined && fetchSite !== 'same-origin' && fetchSite !== 'none') {
+      return reply.redirect(`${config.webOrigin}/?link=failed`);
+    }
+    // This is a page navigation, so a logged-out or banned visitor gets a redirect, not a JSON error.
+    const viewer = await getViewer(req);
+    if (!viewer) return reply.redirect(`${config.webOrigin}/?link=failed`);
     if (viewer.user.discordId !== null) return reply.redirect(`${config.webOrigin}/?link=already`);
     const state = randomBytes(16).toString('hex');
     req.session.set('oauthState', state);
@@ -97,16 +108,19 @@ export async function authRoutes(api: FastifyInstance): Promise<void> {
             where: { id: linkUserId, discordId: null, banned: false, sessionVersion: viewer.user.sessionVersion },
             data: { discordId: profile.discordId, username: profile.username, usernameKey: claim ? usernameKey(profile.username) : null, avatar: profile.avatarUrl },
           });
-          return updated.count === 1 ? tx.user.findUniqueOrThrow({ where: { id: linkUserId } }) : null;
+          // Nothing matched: the account was banned, linked or signed out everywhere since the check
+          // above. Throw so the whole transaction rolls back, including a name released from someone else.
+          if (updated.count !== 1) throw new LinkNoLongerValid();
+          return tx.user.findUniqueOrThrow({ where: { id: linkUserId } });
         }));
       } catch (err) {
         // The Discord identity got its own account while this link was in flight.
         if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002' && !isUsernameConflict(err)) {
           return reply.redirect(`${config.webOrigin}/?link=taken`);
         }
+        if (err instanceof LinkNoLongerValid) return fail('link session no longer valid');
         return fail('link update failed', err);
       }
-      if (!linked) return fail('link session no longer valid');
       await startSession(req, linked);
       return reply.redirect(`${config.webOrigin}/?link=done`);
     }

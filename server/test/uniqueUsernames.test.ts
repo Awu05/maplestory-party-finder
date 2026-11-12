@@ -106,3 +106,32 @@ it('refuses a Discord username change on a Discord-linked account', async () => 
   expect((await prisma.user.findUniqueOrThrow({ where: { discordId: 'd-1' } })).username).toBe('maple_user');
   expect((await patchMe({ displayName: 'Still fine' }, cookie)).statusCode).toBe(200);
 });
+
+it('typed names are canonical: every leading @ and the spaces around them are dropped, so lookalikes collide', async () => {
+  await passkeyAccount({ ...account, discordUsername: 'maple_user' });
+  for (const lookalike of ['@ maple_user', '@@maple_user', ' @ @MAPLE_USER ']) {
+    const result = await post('/api/auth/passkeys/register/options', { ...account, discordUsername: lookalike });
+    expect(result.statusCode, lookalike).toBe(409);
+    expect(result.json()).toEqual(taken);
+  }
+});
+
+it.each([
+  ['a space inside', 'maple user'], ['a no-break space', 'maple\u00a0user'], ['a Cyrillic lookalike letter', 'm\u0430ple_user'],
+  ['a fullwidth letter', '\uff4daple_user'], ['a combining mark', 'maple_user\u0301'], ['an invisible-only name', '\u3164'],
+  ['one character', 'a'], ['33 characters', 'x'.repeat(33)], ['only an @', '@'],
+])('rejects a typed Discord username with %s', async (_label, discordUsername) => {
+  const signUp = await post('/api/auth/passkeys/register/options', { ...account, discordUsername });
+  expect(signUp.statusCode).toBe(400);
+  const { cookie } = await passkeyAccount();
+  const edit = await patchMe({ discordUsername }, cookie);
+  expect(edit.statusCode).toBe(400);
+  expect((await prisma.user.findMany()).every((u) => u.usernameKey === null || /^[a-z0-9_.]{2,32}$/.test(u.usernameKey))).toBe(true);
+});
+
+it('accepts Discord-style names of 2 to 32 letters, digits, dots and underscores', async () => {
+  for (const [i, discordUsername] of ['ab', 'Maple.User_99', 'x'.repeat(32)].entries()) {
+    const result = await post('/api/auth/passkeys/register/options', { displayName: `P${i}`, discordUsername });
+    expect(result.statusCode, discordUsername).toBe(200);
+  }
+});

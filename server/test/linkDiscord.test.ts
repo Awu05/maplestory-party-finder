@@ -85,7 +85,9 @@ it('never merges into, or logs in to, a Discord account that already has its own
 });
 
 it('requires a signed-in account and sends an already-linked account back', async () => {
-  expect((await app.inject({ url: '/api/auth/discord/link' })).statusCode).toBe(401);
+  const loggedOut = await app.inject({ url: '/api/auth/discord/link' });
+  expect(loggedOut.statusCode).toBe(302);
+  expect(loggedOut.headers.location).toBe(`${ORIGIN}/?link=failed`);
   const cookie = await loginAs(app, 'd-1', 'real_name');
   const result = await app.inject({ url: '/api/auth/discord/link', headers: { cookie } });
   expect(result.statusCode).toBe(302);
@@ -131,4 +133,34 @@ it('a plain Discord login after an abandoned link request is an ordinary login',
   expect(result.headers.location).toBe(`${ORIGIN}/me/characters`);
   expect((await prisma.user.findUniqueOrThrow({ where: { id: local.id } })).discordId).toBeNull();
   expect(await prisma.user.findUniqueOrThrow({ where: { discordId: 'd-2' } })).not.toMatchObject({ id: local.id });
+});
+
+it('starting a link from another site is refused, and a logged-out or banned start redirects instead of showing an error page', async () => {
+  const local = await passkeyAccount();
+  const crossSite = await app.inject({ url: '/api/auth/discord/link', headers: { cookie: local.cookie, 'sec-fetch-site': 'cross-site' } });
+  expect(crossSite.statusCode).toBe(302);
+  expect(crossSite.headers.location).toBe(`${ORIGIN}/?link=failed`);
+  expect(crossSite.headers['set-cookie']).toBeUndefined();
+  const sameOrigin = await app.inject({ url: '/api/auth/discord/link', headers: { cookie: local.cookie, 'sec-fetch-site': 'same-origin' } });
+  expect(String(sameOrigin.headers.location)).toContain('https://discord.test/authorize');
+
+  const loggedOut = await app.inject({ url: '/api/auth/discord/link' });
+  expect(loggedOut.statusCode).toBe(302);
+  expect(loggedOut.headers.location).toBe(`${ORIGIN}/?link=failed`);
+  await prisma.user.update({ where: { id: local.id }, data: { banned: true } });
+  const banned = await app.inject({ url: '/api/auth/discord/link', headers: { cookie: local.cookie } });
+  expect(banned.statusCode).toBe(302);
+  expect(banned.headers.location).toBe(`${ORIGIN}/?link=failed`);
+});
+
+it('a link callback while logged out, or after Discord reports an error, fails and clears the request', async () => {
+  const local = await passkeyAccount();
+  const pending = await startLink(local.cookie);
+  const denied = await app.inject({ url: `/api/auth/discord/callback?error=access_denied&state=${pending.state}`, headers: { cookie: pending.cookie } });
+  expect(denied.headers.location).toBe(`${ORIGIN}/?link=failed`);
+  expect(sessionOf(cookieOf(denied))).not.toHaveProperty('linkUserId');
+  const orphan = cookieWith({ oauthState: 'state-1', linkUserId: local.id });
+  const loggedOut = await callback('fake:d-9:someone', 'state-1', orphan);
+  expect(loggedOut.headers.location).toBe(`${ORIGIN}/?link=failed`);
+  expect(await prisma.user.findUniqueOrThrow({ where: { id: local.id } })).toMatchObject({ discordId: null });
 });

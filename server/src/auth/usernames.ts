@@ -3,8 +3,11 @@ import { AppError } from '../http/errors.js';
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
-/** The case-insensitive claim key for a Discord username (User.usernameKey). */
-export const usernameKey = (username: string): string => username.toLowerCase();
+/**
+ * The case-insensitive claim key for a Discord username (User.usernameKey). An empty name is never a
+ * claim: it maps to null, so two accounts without a name don't collide and '' can't be "taken".
+ */
+export const usernameKey = (username: string): string | null => username.toLowerCase() || null;
 
 export const usernameTaken = (): AppError => new AppError(409, 'USERNAME_TAKEN', 'That Discord username is already in use.');
 
@@ -16,7 +19,9 @@ export function isUsernameConflict(error: unknown): boolean {
 
 /** Throws USERNAME_TAKEN when an account other than `exceptUserId` holds `username`. */
 export async function ensureUsernameAvailable(db: Db, username: string, exceptUserId?: string): Promise<void> {
-  const holder = await db.user.findUnique({ where: { usernameKey: usernameKey(username) }, select: { id: true } });
+  const key = usernameKey(username);
+  if (key === null) return;
+  const holder = await db.user.findUnique({ where: { usernameKey: key }, select: { id: true } });
   if (holder && holder.id !== exceptUserId) throw usernameTaken();
 }
 
@@ -27,7 +32,9 @@ export async function ensureUsernameAvailable(db: Db, username: string, exceptUs
  * `isSelf` recognises the claiming account's own row, which keeps its claim.
  */
 export async function releaseUsernameClaim(tx: Prisma.TransactionClient, username: string, isSelf: (holder: { id: string; discordId: string | null }) => boolean): Promise<void> {
-  const holder = await tx.user.findUnique({ where: { usernameKey: usernameKey(username) }, select: { id: true, discordId: true } });
+  const key = usernameKey(username);
+  if (key === null) return;
+  const holder = await tx.user.findUnique({ where: { usernameKey: key }, select: { id: true, discordId: true } });
   if (!holder || isSelf(holder)) return;
   await tx.user.update({
     where: { id: holder.id },
@@ -46,7 +53,10 @@ export async function withUsernameClaim<T>(write: (claim: boolean) => Promise<T>
     try {
       return await write(true);
     } catch (error) {
-      if (!isUsernameConflict(error)) throw error;
+      // P2034: Postgres aborted this transaction for a write conflict or deadlock (two accounts
+      // swapping names at the same moment); it is safe to run again.
+      const retryable = isUsernameConflict(error) || (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034');
+      if (!retryable) throw error;
     }
   }
   return write(false);

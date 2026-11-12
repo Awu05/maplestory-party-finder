@@ -10,14 +10,16 @@ import { VirtualPasskey } from './passkeyFixtures.js';
 // per attempt. 'row' inserts a rival row holding the key, committed outside the transaction like a
 // concurrent request. 'conflict' fails the write with the same unique-index error Postgres would raise;
 // a real second rival would block on the row the retry just released, so it can't be staged with a row.
-type Step = 'row' | 'conflict';
+// 'ban' bans the linking account just before its link update, so that update matches no row.
+type Step = 'row' | 'conflict' | 'ban';
 const race = { plan: [] as Step[], made: 0 };
 type Tx = Prisma.TransactionClient;
 function racingPrisma(): PrismaClient {
-  const beforeWrite = async (username: unknown) => {
+  const beforeWrite = async (username: unknown, userId?: unknown) => {
     const step = race.plan.shift();
     if (!step || typeof username !== 'string') return;
     race.made++;
+    if (step === 'ban') { await prisma.user.update({ where: { id: String(userId) }, data: { banned: true } }); return; }
     if (step === 'row') await prisma.user.create({ data: { username, usernameKey: username.toLowerCase() } });
     else throw new Prisma.PrismaClientKnownRequestError('Unique constraint failed on the fields: (`usernameKey`)', { code: 'P2002', clientVersion: Prisma.prismaVersion.client, meta: { modelName: 'User', target: ['usernameKey'] } });
   };
@@ -28,7 +30,7 @@ function racingPrisma(): PrismaClient {
       return new Proxy(users, {
         get(u, k, r) {
           if (k === 'upsert') return async (args: Prisma.UserUpsertArgs) => { await beforeWrite(args.create.username); return u.upsert(args); };
-          if (k === 'updateMany') return async (args: Prisma.UserUpdateManyArgs) => { await beforeWrite(args.data.username); return u.updateMany(args); };
+          if (k === 'updateMany') return async (args: Prisma.UserUpdateManyArgs) => { await beforeWrite(args.data.username, (args.where as { id?: unknown } | undefined)?.id); return u.updateMany(args); };
           return Reflect.get(u, k, r);
         },
       });
@@ -81,4 +83,25 @@ it('still links when the name keeps being taken mid-link, without a name claim',
   const done = await app.inject({ url: `/api/auth/discord/callback?code=fake:d-1:maple_user&state=${state}`, headers: { cookie: cookieOf(start) } });
   expect(done.headers.location).toBe(`${ORIGIN}/?link=done`);
   expect(await prisma.user.findUniqueOrThrow({ where: { id: created.json().id } })).toMatchObject({ discordId: 'd-1', username: 'maple_user', usernameKey: null });
+});
+
+it('a link that turns invalid at the last moment leaves the other holder of the name untouched', async () => {
+  const register = async (discordUsername: string, displayName: string) => {
+    const options = await app.inject({ method: 'POST', url: '/api/auth/passkeys/register/options', headers: { origin: ORIGIN }, payload: { discordUsername, displayName } });
+    const done = await app.inject({ method: 'POST', url: '/api/auth/passkeys/register/verify', headers: { origin: ORIGIN, cookie: String(options.headers['set-cookie']).split(';')[0]! }, payload: new VirtualPasskey().register(options.json<PublicKeyCredentialCreationOptionsJSON>()) });
+    return { id: done.json().id as string, cookie: String(done.headers['set-cookie']).split(';')[0]! };
+  };
+  // Bob typed the name Alice's Discord account really has.
+  const bob = await register('alice_real', 'Bob');
+  // Alice links her real Discord from a passkey account, but is banned just before the link is written.
+  const alice = await register('alice_typed', 'Alice');
+  const start = await app.inject({ url: '/api/auth/discord/link', headers: { cookie: alice.cookie } });
+  const state = new URL(String(start.headers.location)).searchParams.get('state')!;
+  race.plan = ['ban'];
+  const done = await app.inject({ url: `/api/auth/discord/callback?code=${encodeURIComponent('fake:d-alice:alice_real')}&state=${state}`, headers: { cookie: String(start.headers['set-cookie']).split(';')[0]! } });
+  expect(done.headers.location).toBe(`${ORIGIN}/?link=failed`);
+  expect(race.made).toBe(1);
+  // Nothing was linked, and Bob still has his name and claim.
+  expect(await prisma.user.findUniqueOrThrow({ where: { id: alice.id } })).toMatchObject({ discordId: null, username: 'alice_typed' });
+  expect(await prisma.user.findUniqueOrThrow({ where: { id: bob.id } })).toMatchObject({ username: 'alice_real', usernameKey: 'alice_real' });
 });

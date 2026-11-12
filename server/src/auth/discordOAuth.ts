@@ -56,11 +56,15 @@ export class HttpDiscordOAuth implements DiscordOAuth {
       headers: { authorization: `Bearer ${access_token}` },
     });
     if (!meRes.ok) throw new Error(`Discord profile fetch failed: ${meRes.status}`);
-    const me = (await meRes.json()) as { id: string; username: string; avatar: string | null };
+    const me = (await meRes.json()) as { id?: unknown; username?: unknown; avatar?: unknown };
+    // Never trust the shape: an account must have a real ID and name before it can log in or claim one.
+    if (typeof me.id !== 'string' || me.id === '' || typeof me.username !== 'string' || me.username === '') {
+      throw new Error('Discord profile is missing an id or username');
+    }
     return {
       discordId: me.id,
       username: me.username,
-      avatarUrl: me.avatar ? `https://cdn.discordapp.com/avatars/${me.id}/${me.avatar}.png` : null,
+      avatarUrl: typeof me.avatar === 'string' && me.avatar ? `https://cdn.discordapp.com/avatars/${me.id}/${me.avatar}.png` : null,
     };
   }
 }
