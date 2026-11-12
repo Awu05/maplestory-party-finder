@@ -1,5 +1,6 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { GuildsAdmin } from '../src/pages/admin/GuildsAdmin';
+import { WorldsAdmin } from '../src/pages/admin/WorldsAdmin';
 import { mockApi, renderWithProviders } from './setup';
 
 /** Makes requests matching `when` fail with an API error body; everything else goes to the existing mock. */
@@ -87,5 +88,57 @@ describe('guild delete', () => {
     fireEvent.click(await screen.findByText('Cancel'));
     await waitFor(() => expect(document.querySelector('dialog')).toBeNull());
     expect(opener).toHaveFocus();
+  });
+});
+
+const world = (id: number, name: string) => ({ id, nexonWorldId: id, name, worldType: 'heroic', active: true });
+
+describe('world delete', () => {
+  const routes = (extra: Record<string, unknown> = {}) => ({
+    '/api/worlds?all=1': [world(1, 'Kronos'), world(2, 'Scania')],
+    '/api/admin/worlds/2/usage': { characters: 4, posts: 2 },
+    ...extra,
+  });
+
+  it('has no Delete on the Kronos row (case-insensitive) but on others', async () => {
+    mockApi({ '/api/worlds?all=1': [world(1, 'KRONOS'), world(2, 'Scania')] });
+    renderWithProviders(<WorldsAdmin />);
+    expect(await screen.findByRole('button', { name: 'Delete Scania' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete KRONOS' })).not.toBeInTheDocument();
+  });
+
+  it('confirms with counts, DELETEs, and refreshes', async () => {
+    let worlds = [world(1, 'Kronos'), world(2, 'Scania')];
+    const del = vi.fn(() => { worlds = worlds.filter((w) => w.id !== 2); return undefined; });
+    mockApi(routes({ '/api/worlds?all=1': () => worlds, 'DELETE /api/admin/worlds/2': del }));
+    renderWithProviders(<WorldsAdmin />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete Scania' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Delete Scania?' });
+    expect(await within(dialog).findByText('4 characters and 2 posts will move to Kronos.')).toBeInTheDocument();
+    await waitFor(() => expect(within(dialog).getByText('Delete world')).toBeEnabled());
+    fireEvent.click(within(dialog).getByText('Delete world'));
+    await waitFor(() => expect(del).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Delete Scania' })).not.toBeInTheDocument());
+    expect(document.querySelector('dialog')).toBeNull();
+  });
+
+  it('singular counts', async () => {
+    mockApi(routes({ '/api/admin/worlds/2/usage': { characters: 1, posts: 1 } }));
+    renderWithProviders(<WorldsAdmin />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete Scania' }));
+    expect(await screen.findByText('1 character and 1 post will move to Kronos.')).toBeInTheDocument();
+  });
+
+  it('WORLD_NAME_CLASH shows its message and the clashing IGNs as a list', async () => {
+    const fetchMock = mockApi(routes());
+    failWhen(fetchMock, (m) => m === 'DELETE', 409, { code: 'WORLD_NAME_CLASH', message: 'These characters already exist on Kronos: Aa, Bb. Rename or remove them first.', igns: ['Aa', 'Bb'] });
+    renderWithProviders(<WorldsAdmin />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete Scania' }));
+    const dialog = await screen.findByRole('dialog');
+    await waitFor(() => expect(within(dialog).getByText('Delete world')).toBeEnabled());
+    fireEvent.click(within(dialog).getByText('Delete world'));
+    expect(await within(dialog).findByText(/already exist on Kronos/)).toBeInTheDocument();
+    const items = within(within(dialog).getByRole('list')).getAllByRole('listitem').map((li) => li.textContent);
+    expect(items).toEqual(['Aa', 'Bb']);
   });
 });
