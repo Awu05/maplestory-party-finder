@@ -3,6 +3,7 @@ import { POST_TYPE_LABELS } from '@pf/shared';
 import { Link } from 'react-router-dom';
 import { useAdminDeletePost, useAdminPosts, useDebouncedValue } from '../../api/hooks';
 import { friendlyError } from '../../api/errors';
+import { DISCORD_NAME_NOT_SET } from '../../lib/discordName';
 import { ChipGroup } from '../../components/ui/Chips';
 import { StatusPill } from '../../components/post/StatusPill';
 import { bossLabel } from '../../components/post/labels';
@@ -42,7 +43,7 @@ export function PostsAdmin() {
               <tr key={p.id}>
                 <td data-label="Type">{POST_TYPE_LABELS[p.type]}</td>
                 <td data-label="Bosses">{p.bosses.map(bossLabel).join(', ')}</td>
-                <td data-label="Poster">{ign} ({p.posterDiscordUsername}{p.posterDiscordLinked ? '' : ', unverified'})</td>
+                <td data-label="Poster">{ign} ({p.posterDiscordUsername ? `${p.posterDiscordUsername}${p.posterDiscordLinked ? '' : ', unverified'}` : DISCORD_NAME_NOT_SET})</td>
                 <td data-label="World">{p.world.name}</td>
                 <td data-label="Status"><StatusPill status={p.status} deleted={p.deleted} /></td>
                 <td data-label="Closed reason">{p.closedReason ?? '—'}</td>

@@ -7,6 +7,14 @@ import { NotificationBell } from './NotificationBell';
 import { ProfileDialog } from './ProfileDialog';
 import { LoginButton } from './LoginDialog';
 
+/** Banners for the `?link=` result the server redirects to after linking Discord. */
+const LINK_BANNERS: Record<string, { role: 'status' | 'alert'; text: string } | undefined> = {
+  done: { role: 'status', text: 'Discord account linked.' },
+  already: { role: 'status', text: 'Your account is already linked to Discord.' },
+  taken: { role: 'alert', text: "That Discord account already has its own Party Finder account, so it can't be linked. Log in with Discord to use it." },
+  failed: { role: 'alert', text: 'Linking Discord failed — try again.' },
+};
+
 export function Layout() {
   // A failed /me (server error, network down) counts as logged out once it settles.
   const { data: me, isPending: mePending } = useMe();
@@ -27,20 +35,24 @@ export function Layout() {
     setProfileOpen(false);
   };
   const close = () => setOpen(false);
+  // An unlinked account whose typed name was claimed by its owner may have neither name.
+  const headerName = me ? me.displayName || me.discordUsername : '';
   const [searchParams, setSearchParams] = useSearchParams();
   const loginFailed = searchParams.get('login') === 'failed';
   const loginBanned = searchParams.get('login') === 'banned';
+  const linkBanner = LINK_BANNERS[searchParams.get('link') ?? ''];
 
-  function dismissLoginFailed() {
+  function dismissParam(param: 'login' | 'link') {
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev);
-        next.delete('login');
+        next.delete(param);
         return next;
       },
       { replace: true },
     );
   }
+  const dismissLoginFailed = () => dismissParam('login');
 
   async function logout() {
     try {
@@ -106,17 +118,17 @@ export function Layout() {
                 type="button"
                 className="user"
                 aria-haspopup="dialog"
-                aria-label={`Profile: ${me.displayName ?? me.discordUsername}`}
+                aria-label={headerName ? `Profile: ${headerName}` : 'Profile'}
                 onClick={() => {
                   close();
                   setProfileOpen(true);
                 }}
               >
                 {me.avatarUrl ? <img className="avatar" src={me.avatarUrl} alt="" /> : (
-                  <span className="avatar avatar--placeholder" aria-hidden="true">{(me.displayName ?? me.discordUsername).slice(0, 1).toUpperCase()}</span>
+                  <span className="avatar avatar--placeholder" aria-hidden="true">{(headerName || '?').slice(0, 1).toUpperCase()}</span>
                 )}
                 {/* Visually hidden on phones by the @media rule in global.css. */}
-                <span className="user-name">{me.displayName ?? me.discordUsername}</span>
+                {headerName && <span className="user-name">{headerName}</span>}
               </button>
               {profileOpen && (
                 <ProfileDialog
@@ -149,6 +161,14 @@ export function Layout() {
         <div className="banner" role="alert">
           <span>Your account has been banned.</span>
           <button type="button" className="btn btn--secondary btn--compact" aria-label="Dismiss" onClick={dismissLoginFailed}>
+            ×
+          </button>
+        </div>
+      )}
+      {linkBanner && (
+        <div className="banner" role={linkBanner.role}>
+          <span>{linkBanner.text}</span>
+          <button type="button" className="btn btn--secondary btn--compact" aria-label="Dismiss" onClick={() => dismissParam('link')}>
             ×
           </button>
         </div>

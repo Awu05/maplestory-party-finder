@@ -57,6 +57,18 @@ describe('admin users', () => {
     expect(screen.getAllByText('unverified')).toHaveLength(1);
   });
 
+  it('shows "Discord name not set" for an unlinked account whose typed name was cleared', async () => {
+    mockApi({ ...usersRoutes(), '/api/admin/users': [user('u1', '', { displayName: null, discordLinked: false }), user('u2', '', { displayName: 'Typed', discordLinked: false })] });
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    renderWithProviders(<UsersAdmin />);
+    expect(await screen.findByText('Discord name not set', { selector: 'strong' })).toBeInTheDocument();
+    expect(screen.getByText('Typed')).toBeInTheDocument();
+    expect(screen.getByText('Discord name not set', { selector: 'small' })).toBeInTheDocument();
+    expect(screen.queryByText('unverified')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Ban Typed' }));
+    expect(confirm).toHaveBeenCalledWith('Ban Typed? Their open posts will close.');
+  });
+
   it('no ban button for admin users; banned user shows pill and Unban', async () => {
     mockApi(usersRoutes());
     renderWithProviders(<UsersAdmin />);
@@ -146,6 +158,12 @@ describe('admin posts', () => {
     renderWithProviders(<PostsAdmin />);
     expect(await screen.findByText('Mapler (typed_name, unverified)')).toBeInTheDocument();
     expect(screen.getByText('Mapler (bob)')).toBeInTheDocument();
+  });
+
+  it("shows a poster's cleared Discord name as not set", async () => {
+    mockApi({ '/api/admin/posts?status=all': [post('p1', { posterDiscordUsername: '', posterDiscordLinked: false })] });
+    renderWithProviders(<PostsAdmin />);
+    expect(await screen.findByText('Mapler (Discord name not set)')).toBeInTheDocument();
   });
 
   it('Delete permanently confirms then DELETEs /api/admin/posts/:id', async () => {

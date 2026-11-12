@@ -5,7 +5,17 @@ import { SlidingWindowLimiter } from '../http/slidingWindowLimiter.js';
 import { getViewer } from './guards.js';
 
 const name = z.string().transform((value) => value.replace(/[\p{Cc}\p{Cf}]/gu, '').trim()).pipe(z.string().min(1).max(50));
-export const signupBody = z.object({ discordUsername: name.transform((value) => value.replace(/^@/, '')).pipe(z.string().min(1)), displayName: name }).strict();
+/**
+ * A typed Discord username. Any leading @ signs and the spaces around them are dropped, then it must
+ * follow Discord's own rule: 2 to 32 letters, digits, dots or underscores. Nothing else is accepted, so
+ * a lookalike ("@ name", a Cyrillic letter, an invisible character) can't sit next to the real name.
+ */
+export const discordUsernameField = z
+  .string()
+  // Invisible characters picked up when pasting (zero-width spaces and the like) are removed, not kept.
+  .transform((value) => value.replace(/[\p{Cc}\p{Cf}]/gu, '').trim().replace(/^(?:@\s*)+/, '').trim())
+  .pipe(z.string().regex(/^[A-Za-z0-9_.]{2,32}$/, 'Enter a Discord username: 2 to 32 letters, numbers, dots or underscores.'));
+export const signupBody = z.object({ discordUsername: discordUsernameField, displayName: name }).strict();
 
 export interface AttemptLimiterOptions {
   windowMs?: number;

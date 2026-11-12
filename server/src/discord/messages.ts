@@ -73,9 +73,11 @@ export function buildNewPostMessage(post: PostSummaryDTO, webOrigin: string, bos
   // Only a Discord login proves the handle; a name typed at password/passkey signup is marked unverified.
   // Only an explicit `false` means a typed, unverified name. Messages queued by a version from before
   // password and passkey accounts carry no flag, and every account was a Discord account then.
+  // An empty name (a typed name claimed by its real Discord owner) is left out rather than printed blank.
   const linked = owner?.discordLinked !== false;
-  const handle = owner && (linked ? `@${owner.discordUsername}` : unverifiedDiscordName(owner.discordUsername));
-  const discord = owner && (owner.displayName ? `${owner.displayName} (${handle})` : linked ? owner.discordUsername : handle);
+  const name = owner?.discordUsername;
+  const handle = name ? (linked ? `@${name}` : unverifiedDiscordName(name)) : null;
+  const discord = owner && (owner.displayName ? (handle ? `${owner.displayName} (${handle})` : owner.displayName) : linked ? name : handle);
   if (discord) fields.push(field('Discord', discord));
   const note = clip(neutralize(post.note.trim()), NOTE_MAX);
   if (note) fields.push({ name: 'Note', value: note, inline: false });

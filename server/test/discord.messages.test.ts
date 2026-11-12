@@ -86,6 +86,16 @@ describe('buildNewPostMessage', () => {
     post.poster.character!.owner = { discordUsername: 'alice', displayName: 'Maple', discordLinked: false };
     expect(fields(buildNewPostMessage(post, ORIGIN)).Discord).toBe('Maple (Discord name, unverified: alice)');
   });
+  it('prints no empty unverified Discord name (a name claimed by its real owner)', () => {
+    const post = makePost();
+    post.poster.character!.owner = { discordUsername: '', displayName: null, discordLinked: false };
+    expect(fields(buildNewPostMessage(post, ORIGIN))).not.toHaveProperty('Discord');
+    post.poster.character!.owner = { discordUsername: '', displayName: 'Maple', discordLinked: false };
+    expect(fields(buildNewPostMessage(post, ORIGIN)).Discord).toBe('Maple');
+    const thread = buildPartyThread(makePost(), ORIGIN, [{ ign: 'Local', discordId: null, discordUsername: '' }]);
+    expect(thread.message.content).toContain('• Local\n');
+    expect(thread.message.content).not.toContain('unverified');
+  });
   it('omits the thumbnail when the snapshot image url is empty or relative', () => {
     for (const imageUrl of ['', '/uploads/a.png']) {
       const post = makePost();

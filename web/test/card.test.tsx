@@ -67,6 +67,15 @@ describe('CharacterCard', () => {
     expect(screen.queryByText('unverified')).toBeNull();
   });
 
+  it('never shows an empty Discord name (a typed name claimed by its owner)', () => {
+    const { rerender, container } = render(<CharacterCard character={makeCharacter({ owner: { discordUsername: '', displayName: null, discordLinked: false } })} tiers={tiers} />);
+    expect(screen.getByText('Discord name not set')).toBeVisible();
+    expect(screen.queryByText('unverified')).toBeNull();
+    rerender(<CharacterCard character={makeCharacter({ owner: { discordUsername: '', displayName: 'Maple Friend', discordLinked: false } })} tiers={tiers} />);
+    expect(container.querySelector('.card__discord')).toHaveTextContent(/^Maple Friend$/);
+    expect(screen.queryByText('unverified')).toBeNull();
+  });
+
   it('labels manual characters and shows No guild for guildless ones', () => {
     const { rerender } = render(<CharacterCard character={makeCharacter()} tiers={tiers} />);
     expect(screen.queryByText('Added manually')).toBeNull();
@@ -171,6 +180,16 @@ describe('CardDetailModal', () => {
     expect(within(discord).queryByText('@typed_name')).toBeNull();
     expect(within(discord).getByText('typed_name')).toBeVisible();
     expect(within(discord).getByText('unverified')).toBeVisible();
+  });
+
+  it('modal shows "Discord name not set" for an empty typed name, with no handle, tag or copy button', () => {
+    render(<CardDetailModal character={makeCharacter({ owner: { discordUsername: '', displayName: 'Maple Friend', discordLinked: false } })} tiers={tiers} onClose={() => {}} />);
+    const discord = screen.getByRole('dialog').querySelector<HTMLElement>('.card-modal__discord')!;
+    expect(within(discord).getByText('Maple Friend')).toBeVisible();
+    expect(within(discord).getByText('Discord name not set')).toBeVisible();
+    expect(within(discord).queryByText('unverified')).toBeNull();
+    expect(within(discord).queryByText('@')).toBeNull();
+    expect(within(discord).queryByRole('button', { name: 'Copy Discord username' })).toBeNull();
   });
 
   it('modal shows discord username, screenshot img, and no boss, play time or note sections; Edit only for owner', () => {

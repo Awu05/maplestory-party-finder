@@ -45,7 +45,7 @@ it('never links a contact username to an existing Discord administrator', async 
 });
 
 it('rejects duplicate email addresses atomically without replacing the first account', async () => {
-  const results = await Promise.all([post('register', account), post('register', { ...account, email: 'MAPLE@EXAMPLE.COM', password: 'a different long password' })]);
+  const results = await Promise.all([post('register', account), post('register', { ...account, discordUsername: 'second_user', email: 'MAPLE@EXAMPLE.COM', password: 'a different long password' })]);
   expect(results.map((result) => result.statusCode).sort()).toEqual([200, 400]);
   expect(await prisma.user.count()).toBe(1);
   expect(await prisma.passwordCredential.count()).toBe(1);

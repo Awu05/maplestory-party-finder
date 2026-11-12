@@ -173,7 +173,7 @@ function LoginDialog({ onClose }: { onClose: () => void }) {
         <label className="profile-dialog__field">Display name
           <input required autoComplete="nickname" maxLength={50} value={displayName} disabled={busy} onChange={(e) => setDisplayName(e.target.value)} />
         </label>
-        <p className="profile-dialog__muted">Your Discord username is contact information only; this does not connect to Discord.</p>
+        <p className="profile-dialog__muted">Your Discord username (2 to 32 letters, numbers, dots or underscores) is contact information only; this does not connect to Discord.</p>
         {passwordAuth && <fieldset className="login-method" disabled={busy}>
           <legend>Sign-in method</legend>
           <label><input type="radio" name="sign-in-method" checked={method === 'passkey'} disabled={!supported} onChange={() => { setMethod('passkey'); setPassword(''); setConfirmation(''); setError(''); }} /> Passkey</label>

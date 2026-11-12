@@ -196,3 +196,19 @@ it('with password login off and no passkey support, account creation points to D
   expect(within(create).getByText(/You can log in with Discord instead\./)).toBeInTheDocument();
   expect(within(create).queryByText(/email and password/i)).toBeNull();
 });
+
+it('shows the server message when the typed Discord username is already in use', async () => {
+  const fetch = mockApi(base);
+  const fallback = fetch.getMockImplementation()!;
+  fetch.mockImplementation((url, init) => String(url).endsWith('/passkeys/register/options')
+    ? Promise.resolve(new Response(JSON.stringify({ error: { code: 'USERNAME_TAKEN', message: 'That Discord username is already in use.' } }), { status: 409 })) : fallback(url, init));
+  renderWithProviders(<App />);
+  const dialog = await open();
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Create account' }));
+  fireEvent.change(screen.getByLabelText('Discord username'), { target: { value: 'maple_user' } });
+  fireEvent.change(screen.getByLabelText('Display name'), { target: { value: 'Maple Player' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Create account' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('That Discord username is already in use.');
+  expect(startRegistration).not.toHaveBeenCalled();
+  expect(screen.getByRole('dialog', { name: 'Create account' })).toBeInTheDocument();
+});

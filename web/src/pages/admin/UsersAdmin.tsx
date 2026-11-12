@@ -10,6 +10,7 @@ import {
   useSetBanned,
 } from '../../api/hooks';
 import { friendlyError } from '../../api/errors';
+import { accountName, discordHandle, DISCORD_NAME_NOT_SET } from '../../lib/discordName';
 import { CharacterCard } from '../../components/card/CharacterCard';
 
 function ReassignPanel({ character, ownerId, onDone }: { character: CharacterDTO; ownerId: string; onDone: () => void }) {
@@ -20,7 +21,8 @@ function ReassignPanel({ character, ownerId, onDone }: { character: CharacterDTO
 
   const choose = (u: AdminUserDTO) => {
     const handle = u.discordLinked ? `@${u.discordUsername}` : `${u.discordUsername}, unverified`;
-    if (!window.confirm(`Reassign ${character.ign} to ${u.displayName ? `${u.displayName} (${handle})` : u.discordLinked ? u.discordUsername : `${u.discordUsername} (unverified)`}?`)) return;
+    const name = !u.discordUsername ? accountName(u) : u.displayName ? `${u.displayName} (${handle})` : u.discordLinked ? u.discordUsername : `${u.discordUsername} (unverified)`;
+    if (!window.confirm(`Reassign ${character.ign} to ${name}?`)) return;
     reassign.mutate({ id: character.id, userId: u.id }, { onSuccess: onDone });
   };
 
@@ -34,8 +36,8 @@ function ReassignPanel({ character, ownerId, onDone }: { character: CharacterDTO
         onChange={(e) => setQ(e.target.value)}
       />
       {choices.map((u) => (
-        <button key={u.id} type="button" className="btn btn--secondary" aria-label={`Choose ${u.displayName ?? u.discordUsername}`} disabled={reassign.isPending} onClick={() => choose(u)}>
-          {u.displayName ?? u.discordUsername}
+        <button key={u.id} type="button" className="btn btn--secondary" aria-label={`Choose ${accountName(u)}`} disabled={reassign.isPending} onClick={() => choose(u)}>
+          {accountName(u)}
         </button>
       ))}
       {reassign.isError && <p role="alert" className="admin__error">{friendlyError(reassign.error)}</p>}
@@ -103,9 +105,9 @@ export function UsersAdmin() {
           <div key={u.id} className="admin__user">
             <div className="admin__user-head">
               {u.avatarUrl ? <img className="admin__avatar" src={u.avatarUrl} alt="" /> : <span className="admin__avatar" aria-hidden="true" />}
-              <strong>{u.displayName ?? u.discordUsername}</strong>
-              {u.displayName && <small>{u.discordLinked ? `@${u.discordUsername}` : u.discordUsername}</small>}
-              {!u.discordLinked && <small className="unverified-note" title="Typed at sign-up and not confirmed through Discord">unverified</small>}
+              <strong>{accountName(u)}</strong>
+              {u.displayName && <small>{discordHandle(u) ?? DISCORD_NAME_NOT_SET}</small>}
+              {!u.discordLinked && u.discordUsername && <small className="unverified-note" title="Typed at sign-up and not confirmed through Discord">unverified</small>}
               {u.isAdmin && <span className="pill">Admin</span>}
               {u.banned && <span className="pill pill--red">Banned</span>}
               <span>{u.characterCount} {u.characterCount === 1 ? 'character' : 'characters'}</span>
@@ -113,10 +115,10 @@ export function UsersAdmin() {
                 <button
                   type="button"
                   className={u.banned ? 'btn btn--secondary' : 'btn btn--danger'}
-                  aria-label={`${u.banned ? 'Unban' : 'Ban'} ${u.discordUsername}`}
+                  aria-label={`${u.banned ? 'Unban' : 'Ban'} ${u.discordUsername || accountName(u)}`}
                   disabled={setBanned.isPending}
                   onClick={() => {
-                    if (!u.banned && !window.confirm(`Ban ${u.discordUsername}? Their open posts will close.`)) return;
+                    if (!u.banned && !window.confirm(`Ban ${u.discordUsername || accountName(u)}? Their open posts will close.`)) return;
                     setBanned.mutate({ id: u.id, banned: !u.banned });
                   }}
                 >
@@ -127,7 +129,7 @@ export function UsersAdmin() {
                 type="button"
                 className="btn btn--secondary"
                 aria-expanded={expanded}
-                aria-label={`${expanded ? 'Hide' : 'Show'} characters ${u.discordUsername}`}
+                aria-label={`${expanded ? 'Hide' : 'Show'} characters ${u.discordUsername || accountName(u)}`}
                 onClick={() => setOpen(expanded ? null : u.id)}
               >
                 {expanded ? 'Hide characters' : 'Characters'}

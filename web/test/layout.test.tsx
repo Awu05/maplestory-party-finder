@@ -76,6 +76,20 @@ describe('Layout', () => {
     expect(screen.queryByText(/Login with Discord failed/)).not.toBeInTheDocument();
   });
 
+  it.each([
+    ['done', 'status', 'Discord account linked.'],
+    ['already', 'status', 'Your account is already linked to Discord.'],
+    ['taken', 'alert', "That Discord account already has its own Party Finder account, so it can't be linked. Log in with Discord to use it."],
+    ['failed', 'alert', 'Linking Discord failed — try again.'],
+  ] as const)('?link=%s shows a dismissible %s banner', async (value, role, text) => {
+    mockApi({ '/api/auth/me': user, '/api/notifications?limit=30': { items: [], unreadCount: 0 } });
+    renderWithProviders(<App />, { route: `/?link=${value}` });
+    const banner = (await screen.findByText(text)).closest('.banner') as HTMLElement;
+    expect(banner).toHaveAttribute('role', role);
+    fireEvent.click(within(banner).getByRole('button', { name: 'Dismiss' }));
+    expect(screen.queryByText(text)).not.toBeInTheDocument();
+  });
+
   it('no banner without ?login=failed', async () => {
     mockApi({ '/api/auth/me': null });
     renderWithProviders(<App />);

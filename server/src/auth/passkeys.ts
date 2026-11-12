@@ -11,6 +11,7 @@ import { AppError } from '../http/errors.js';
 import { toMeDTO } from './serialize.js';
 import { createAuthRequestGuard, signupBody } from './localAuth.js';
 import { isAdminUser, startSession } from './guards.js';
+import { ensureUsernameAvailable, isUsernameConflict, usernameKey, usernameTaken } from './usernames.js';
 
 const encoded = z.string().min(1).max(65_536).regex(/^[A-Za-z0-9_-]+$/);
 const credential = z.object({ id: encoded.max(2048), rawId: encoded.max(2048), type: z.literal('public-key'), clientExtensionResults: z.record(z.string(), z.unknown()).default({}), authenticatorAttachment: z.enum(['platform', 'cross-platform']).optional() });
@@ -49,6 +50,8 @@ export async function passkeyRoutes(api: FastifyInstance): Promise<void> {
   api.post('/auth/passkeys/register/options', { bodyLimit: 100_000 }, async (req) => {
     await checkRequest(req);
     const input = signupBody.parse(req.body);
+    // Checked early so nobody is asked for a passkey for a name they can't have; creation re-checks via the unique index.
+    await ensureUsernameAvailable(prisma, input.discordUsername);
     const userId = randomUUID();
     const options = await generateRegistrationOptions({
       rpName: 'Maple Party Finder', rpID,
@@ -73,10 +76,11 @@ export async function passkeyRoutes(api: FastifyInstance): Promise<void> {
     let user;
     try {
       user = await prisma.user.create({ data: {
-        id: challenge.userId, username: challenge.username, displayName: challenge.displayName,
+        id: challenge.userId, username: challenge.username, usernameKey: usernameKey(challenge.username), displayName: challenge.displayName,
         passkeys: { create: { id: key.id, publicKey: Buffer.from(key.publicKey), counter: BigInt(key.counter), deviceType: credentialDeviceType, backedUp: credentialBackedUp, transports: response.response.transports ?? [] } },
       } });
     } catch (error) {
+      if (isUsernameConflict(error)) throw usernameTaken();
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') throw invalid();
       throw error;
     }

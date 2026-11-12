@@ -51,3 +51,23 @@ describe('HttpDiscordOAuth timeouts', () => {
     }
   }, 2000);
 });
+
+describe('HttpDiscordOAuth profile', () => {
+  const withProfile = (profile: unknown) => new HttpDiscordOAuth(oauthConfig, {
+    fetch: (input) => Promise.resolve(Response.json(String(input).endsWith('/oauth2/token') ? { access_token: 't' } : profile)),
+  });
+
+  it('returns the id, username and avatar url', async () => {
+    await expect(withProfile({ id: '123', username: 'maple_user', avatar: 'abc' }).exchangeCode('code')).resolves.toEqual({
+      discordId: '123', username: 'maple_user', avatarUrl: 'https://cdn.discordapp.com/avatars/123/abc.png',
+    });
+    await expect(withProfile({ id: '123', username: 'maple_user', avatar: null }).exchangeCode('code')).resolves.toMatchObject({ avatarUrl: null });
+  });
+
+  it.each([
+    ['an empty username', { id: '123', username: '' }], ['no username', { id: '123' }],
+    ['an empty id', { id: '', username: 'maple_user' }], ['a non-string id', { id: 123, username: 'maple_user' }],
+  ])('rejects a profile with %s, so it can never log in or claim a name', async (_label, profile) => {
+    await expect(withProfile(profile).exchangeCode('code')).rejects.toThrow('missing an id or username');
+  });
+});
