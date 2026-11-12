@@ -133,9 +133,12 @@ function PostForm({ characters, bosses, post }: FormProps) {
     const character = characters.find((candidate) => candidate.id === characterId);
     const worldChanged = character?.world.id !== worldId;
     const eligible = (destinations.data ?? []).filter((guild) => guild.worldIds.includes(character?.world.id ?? -1));
+    // Until the destinations have loaded, a same-world selection is kept: not loaded is not ineligible.
+    const keep = (id: string, capability: 'notifications' | 'partyForum') =>
+      !worldChanged && (!destinations.isSuccess || eligible.some((guild) => guild.id === id && guild[capability]));
     setV((current) => ({ ...current, characterId,
-      notificationGuildId: !worldChanged && eligible.some((guild) => guild.id === current.notificationGuildId && guild.notifications) ? current.notificationGuildId : '',
-      partyForumGuildId: !worldChanged && eligible.some((guild) => guild.id === current.partyForumGuildId && guild.partyForum) ? current.partyForumGuildId : '',
+      notificationGuildId: keep(current.notificationGuildId, 'notifications') ? current.notificationGuildId : '',
+      partyForumGuildId: keep(current.partyForumGuildId, 'partyForum') ? current.partyForumGuildId : '',
     }));
   }
 

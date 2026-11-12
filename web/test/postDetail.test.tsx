@@ -353,3 +353,22 @@ describe('PostDetailPage when section', () => {
     expect(screen.queryByRole('grid')).toBeNull();
   });
 });
+
+describe('PostDetailPage Discord destinations', () => {
+  it('still shows the saved confirmation after the post is refetched with the new destination', async () => {
+    let current = post({ isPoster: true, notificationGuild: null, partyForumGuild: null, partyChatRequested: false });
+    const fetchMock = renderPage({
+      '/api/discord-destinations': [{ id: 'notify', name: 'Notification server', worldIds: [5], notifications: true, partyForum: false }],
+      '/api/posts/p1': () => current,
+      'PATCH /api/posts/p1': () => { current = { ...current, notificationGuild: { id: 'notify', name: 'Notification server' } }; return current; },
+    });
+    const select = await screen.findByLabelText('Notification guild');
+    await waitFor(() => expect(select).toBeEnabled());
+    fireEvent.change(select, { target: { value: 'notify' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Discord destinations' }));
+    await waitFor(() => expect(fetchMock.mock.calls.filter(([u, i]) => String(u) === '/api/posts/p1' && (i?.method ?? 'GET') === 'GET').length).toBeGreaterThanOrEqual(2));
+    await waitFor(() => expect(screen.getByLabelText('Notification guild')).toHaveValue('notify'));
+    expect(screen.getByText('Discord destinations saved.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save Discord destinations' })).toBeDisabled();
+  });
+});

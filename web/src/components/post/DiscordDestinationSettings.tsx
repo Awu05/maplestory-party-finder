@@ -8,9 +8,16 @@ import { DiscordDestinationFields } from './DiscordDestinationFields';
 export function DiscordDestinationSettings({ post }: { post: PostDetailDTO }) {
   const destinations = useDiscordDestinations();
   const update = useUpdatePost(post.id);
-  const [value, setValue] = useState({ notificationGuildId: post.notificationGuild?.id ?? '', partyForumGuildId: post.partyForumGuild?.id ?? '' });
+  const stored = { notificationGuildId: post.notificationGuild?.id ?? '', partyForumGuildId: post.partyForumGuild?.id ?? '' };
+  const [value, setValue] = useState(stored);
+  const [synced, setSynced] = useState(stored);
   const [saved, setSaved] = useState(false);
-  const changed = value.notificationGuildId !== (post.notificationGuild?.id ?? '') || value.partyForumGuildId !== (post.partyForumGuild?.id ?? '');
+  // When the saved destinations change (e.g. the refetch after saving), show them, keeping the confirmation.
+  if (synced.notificationGuildId !== stored.notificationGuildId || synced.partyForumGuildId !== stored.partyForumGuildId) {
+    setSynced(stored);
+    setValue(stored);
+  }
+  const changed = value.notificationGuildId !== stored.notificationGuildId || value.partyForumGuildId !== stored.partyForumGuildId;
   async function save(e: FormEvent) {
     e.preventDefault();
     if (!changed || update.isPending) return;

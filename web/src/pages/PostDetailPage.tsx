@@ -146,7 +146,7 @@ export function PostDetailPage() {
         </div>
       )}
       {p.note && <p>{p.note}</p>}
-      {posterActive ? <DiscordDestinationSettings key={`${p.id}:${p.notificationGuild?.id ?? ''}:${p.partyForumGuild?.id ?? ''}`} post={p} /> : <section className="post-discord" aria-label="Discord destinations">
+      {posterActive ? <DiscordDestinationSettings key={p.id} post={p} /> : <section className="post-discord" aria-label="Discord destinations">
         <h3>Discord</h3>
         <p>Notifications: {p.notificationGuild?.name ?? 'None'}</p>
         {p.type !== 'lfp' && <p>Party chat: {p.partyForumGuild ? `${p.partyForumGuild.name} — party forum` : 'None'}</p>}

@@ -311,6 +311,44 @@ describe('NewPostPage (edit)', () => {
     await screen.findByRole('heading', { name: 'Lineup' });
     expect(body(writes(fetch)[0])).not.toHaveProperty('partyForumGuildId');
   });
+  it.each(['loading', 'failed'] as const)('keeps both Discord destinations when switching to a same-world character while destinations are %s', async (state) => {
+    const guild = { id: 'shared', name: 'Shared guild' };
+    const post = makePost({ notificationGuild: guild, partyForumGuild: guild });
+    const routes: Record<string, unknown> = { ...base, '/api/posts/p1': post, 'PATCH /api/posts/p1': post, '/api/characters?mine=1': [lily, { ...lily, id: 'c3', ign: 'Rose' }] };
+    delete routes['/api/discord-destinations'];
+    const inner = mockApi(routes);
+    if (state === 'loading') {
+      const never = new Promise<Response>(() => {});
+      vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => (String(input) === '/api/discord-destinations' ? never : inner(input, init))));
+    }
+    renderWithProviders(<App />, { route: '/posts/p1/edit' });
+    await waitFor(() => expect(screen.getByLabelText('Note')).toHaveValue('Chill run'));
+    if (state === 'loading') {
+      expect(screen.getByLabelText('Notification guild')).toHaveDisplayValue('Loading Discord destinations…');
+      expect(screen.getByLabelText('Party chat guild')).toHaveDisplayValue('Loading Discord destinations…');
+    } else {
+      await screen.findByText(/Couldn’t load Discord destinations/);
+    }
+    fireEvent.change(screen.getByLabelText('Character'), { target: { value: 'c3' } });
+    expect(screen.getByLabelText('Notification guild')).toHaveValue('shared');
+    expect(screen.getByLabelText('Party chat guild')).toHaveValue('shared');
+    save();
+    await screen.findByRole('heading', { name: 'Lineup' });
+    expect(body(writes(inner)[0])).toEqual({ characterId: 'c3' });
+  });
+  it('clears Discord destinations on a world change even while destinations are loading', async () => {
+    const guild = { id: 'shared', name: 'Shared guild' };
+    const post = makePost({ notificationGuild: guild, partyForumGuild: guild });
+    const routes: Record<string, unknown> = { ...base, '/api/posts/p1': post, '/api/characters?mine=1': [lily, { ...lily, id: 'c2', world: { id: 6, name: 'Hyperion' } }] };
+    const inner = mockApi(routes);
+    const never = new Promise<Response>(() => {});
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => (String(input) === '/api/discord-destinations' ? never : inner(input, init))));
+    renderWithProviders(<App />, { route: '/posts/p1/edit' });
+    await waitFor(() => expect(screen.getByLabelText('Note')).toHaveValue('Chill run'));
+    fireEvent.change(screen.getByLabelText('Character'), { target: { value: 'c2' } });
+    expect(screen.getByLabelText('Notification guild')).toHaveValue('');
+    expect(screen.getByLabelText('Party chat guild')).toHaveValue('');
+  });
   it('prefills from the post and PATCHes only changed fields (note + partySize)', async () => {
     const m = mockApi({ ...base, '/api/posts/p1': makePost(), 'PATCH /api/posts/p1': makePost() });
     renderWithProviders(<App />, { route: '/posts/p1/edit' });
