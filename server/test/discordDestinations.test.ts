@@ -180,3 +180,56 @@ it('never stores a party chat guild on an LFP post', async () => {
   expect(back.statusCode).toBe(200);
   expect(back.json()).toMatchObject({ partyForumGuild: null });
 });
+
+it('drops deliveries queued for a notification guild the poster moved away from, without counting a failure', async () => {
+  const id = (await create()).json().id;
+  await events.drain();
+  expect((await call('PATCH', `/${id}`, { notificationGuildId: chatGuildId })).statusCode).toBe(200);
+  expect(await new WebhookWorker({ prisma, sender: new FakeWebhookSender() }).runOnce()).toEqual({ sent: 0, retried: 0, failed: 0 });
+  expect(await prisma.webhookDelivery.count({ where: { postId: id, guildId } })).toBe(0);
+});
+
+it('sends closure notices to the guilds that saw the announcement, once per run', async () => {
+  const id = (await create()).json().id;
+  await events.drain();
+  const sender = new FakeWebhookSender();
+  const worker = new WebhookWorker({ prisma, sender });
+  expect((await worker.runOnce()).sent).toBe(1);
+  expect((await call('PATCH', `/${id}`, { notificationGuildId: chatGuildId })).statusCode).toBe(200);
+  expect((await call('POST', `/${id}/close`, {})).statusCode).toBe(200);
+  await events.drain();
+  expect(await prisma.webhookDelivery.findMany({ where: { postId: id, eventType: 'post.closed' }, select: { guildId: true } })).toEqual([{ guildId }]);
+  expect((await worker.runOnce()).sent).toBe(1);
+  await prisma.webhookDelivery.deleteMany();
+  expect((await call('POST', `/${id}/reopen`, {})).statusCode).toBe(200);
+  expect((await worker.runOnce()).sent).toBe(1);
+  expect((await call('POST', `/${id}/close`, {})).statusCode).toBe(200);
+  await events.drain();
+  expect(await prisma.webhookDelivery.findMany({ where: { postId: id, eventType: 'post.closed' }, select: { guildId: true } })).toEqual([{ guildId: chatGuildId }]);
+});
+
+it('sends no closure notice when the post was never announced', async () => {
+  const id = (await create({ notificationGuildId: null })).json().id;
+  await events.drain();
+  expect((await call('PATCH', `/${id}`, { notificationGuildId: guildId })).statusCode).toBe(200);
+  expect((await call('POST', `/${id}/close`, {})).statusCode).toBe(200);
+  await events.drain();
+  expect(await prisma.webhookDelivery.count({ where: { postId: id, eventType: 'post.closed' } })).toBe(0);
+});
+
+it('validates a post delivery with one post read and no separate guild-world lookup', async () => {
+  await create();
+  await events.drain();
+  const reads = { post: 0, guildWorld: 0 };
+  const db = new Proxy(prisma, { get(target, key) {
+    if (key !== 'post' && key !== 'guildWorld') return Reflect.get(target, key);
+    const model = Reflect.get(target, key) as unknown as Record<string, (...args: unknown[]) => unknown>;
+    return new Proxy(model, { get(m, operation) {
+      const fn = Reflect.get(m, operation);
+      if (typeof operation !== 'string' || !operation.startsWith('find') || typeof fn !== 'function') return fn;
+      return (...args: unknown[]) => { reads[key as 'post' | 'guildWorld']++; return fn.apply(m, args); };
+    } });
+  } });
+  expect((await new WebhookWorker({ prisma: db, sender: new FakeWebhookSender() }).runOnce()).sent).toBe(1);
+  expect(reads).toEqual({ post: 1, guildWorld: 0 });
+});

@@ -239,6 +239,8 @@ model Post {
   weeklyAnchorAt    DateTime?
   /// One forum thread is requested for this party, even if its time changes.
   forumThreadRequested Boolean @default(false)
+  /// Guilds whose channel received this run's announcement and has not had its closure notice yet.
+  announcedGuildIds String[]     @default([])
   /// Last manually requested Discord announcement; creation starts the first cooldown.
   lastDiscordAnnouncementAt DateTime?
   /// Half-hour slots (day * 48 + slot, 0 = Sunday) in freeTimesZone.

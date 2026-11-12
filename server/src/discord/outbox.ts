@@ -18,6 +18,7 @@ const MIN_RETRY_AFTER_MS = 1_000;
 const MAX_RETRY_AFTER_MS = 3_600_000;
 const MAX_WEEKLY_REMINDER_AGE_MS = 15 * 60_000;
 const POST_DELIVERIES = new Set(['post.created', 'post.reopened', 'post.announcement', 'post.closed', 'post.weekly_reminder', 'post.party_thread', 'request.created', 'request.accepted']);
+const ANNOUNCEMENTS = new Set(['post.created', 'post.reopened', 'post.announcement']);
 const deliveryPostSelect = {
   id: true, notificationGuildId: true, partyForumGuildId: true, worldId: true,
   status: true, closedReason: true, expiresAt: true, deletedAt: true,
@@ -114,20 +115,21 @@ export class WebhookWorker {
       await fail(row.attempts + 1, 'Webhook not configured');
       return;
     }
-    const forumPost = row.postId && isForum ? await this.prisma.post.findUnique({
-      where: { id: row.postId }, select: {
-        ...deliveryPostSelect,
-        world: { select: { name: true } },
-        bosses: { include: { bossDifficulty: { include: { boss: true } } } },
-        members: { include: { user: { select: { discordId: true, username: true } } }, orderBy: { joinedAt: 'asc' } },
-      },
+    const postId = row.postId && POST_DELIVERIES.has(row.eventType) ? row.postId : null;
+    // One read: the post's state, and whether this delivery's guild still serves the post's world.
+    const post = postId ? await this.prisma.post.findUnique({
+      where: { id: postId },
+      select: { ...deliveryPostSelect, world: { select: { name: true, guilds: { where: { guildId: row.guildId }, select: { guildId: true } } } } },
     }) : null;
-    const post = isForum ? forumPost : row.postId && POST_DELIVERIES.has(row.eventType)
-      ? await this.prisma.post.findUnique({ where: { id: row.postId }, select: deliveryPostSelect }) : null;
-    if (row.postId && POST_DELIVERIES.has(row.eventType)) {
-      const selected = row.eventType === 'post.party_thread' ? post?.partyForumGuildId : post?.notificationGuildId;
-      const world = post && await this.prisma.guildWorld.findUnique({ where: { guildId_worldId: { guildId: row.guildId, worldId: post.worldId } } });
-      if (selected !== row.guildId || !world) {
+    // A closure notice goes to the guilds that saw the announcement, whatever the destination is now.
+    if (postId && row.eventType !== 'post.closed') {
+      const selected = isForum ? post?.partyForumGuildId : post?.notificationGuildId;
+      if (post && selected !== row.guildId) {
+        // The poster moved the post's Discord destination: not a delivery failure.
+        await this.prisma.webhookDelivery.deleteMany({ where: guard });
+        return;
+      }
+      if (!post?.world.guilds.length) {
         await fail(row.attempts + 1, 'Discord destination changed or is unavailable');
         return;
       }
@@ -142,20 +144,24 @@ export class WebhookWorker {
       await fail(row.attempts + 1, 'Weekly reminder is no longer current');
       return;
     }
-    if ((row.eventType === 'post.created' || row.eventType === 'post.reopened' || row.eventType === 'post.announcement' || row.eventType === 'post.weekly_reminder' || row.eventType === 'post.party_thread') && row.postId) {
+    if ((ANNOUNCEMENTS.has(row.eventType) || row.eventType === 'post.weekly_reminder' || isForum) && row.postId) {
       // Forum threads and weekly reminders also support active finalized parties.
       const weekly = row.payload._weekly;
       const activeFinalized = (row.eventType === 'post.weekly_reminder' || isForum) && isActiveFinalized(post, this.now());
-      if (!post || (effectivePostStatus(post, this.now()) === 'closed' && !activeFinalized) || ((row.eventType === 'post.created' || row.eventType === 'post.announcement' || row.eventType === 'post.reopened') && effectivePostStatus(post, this.now()) !== 'open') || (row.eventType === 'post.party_thread' && !activeFinalized) || (row.eventType === 'post.weekly_reminder' &&
+      if (!post || (effectivePostStatus(post, this.now()) === 'closed' && !activeFinalized) || (ANNOUNCEMENTS.has(row.eventType) && effectivePostStatus(post, this.now()) !== 'open') || (isForum && !activeFinalized) || (row.eventType === 'post.weekly_reminder' &&
         (!weekly || post.weeklyTimeZone !== weekly.timeZone || post.weeklyAnchorAt?.toISOString() !== weekly.anchorAt || post.scheduledAt?.toISOString() !== weekly.nextAt))) {
         await fail(row.attempts + 1, 'Post no longer available', isForum);
         return;
       }
     }
     let payload = row.payload;
-    if (row.eventType === 'post.party_thread' && row.postId) {
-      const post = forumPost;
-      const poster = post?.members.find((member) => member.role === 'poster');
+    if (isForum && row.postId) {
+      // Loaded only once the thread is known to be current.
+      const [bosses, members] = post ? await Promise.all([
+        this.prisma.postBoss.findMany({ where: { postId: row.postId }, include: { bossDifficulty: { include: { boss: true } } } }),
+        this.prisma.postMember.findMany({ where: { postId: row.postId }, include: { user: { select: { discordId: true, username: true } } }, orderBy: { joinedAt: 'asc' } }),
+      ]) : [[], []];
+      const poster = members.find((member) => member.role === 'poster');
       if (!post || !poster) {
         await fail(row.attempts + 1, 'Post no longer available');
         return;
@@ -167,10 +173,10 @@ export class WebhookWorker {
         return;
       }
       const thread = buildPartyThread({
-        id: post.id, scheduledAt: post.scheduledAt?.toISOString() ?? null, world: post.world,
+        id: post.id, scheduledAt: post.scheduledAt?.toISOString() ?? null, world: { name: post.world.name },
         poster: { snapshot: parseSnapshot(poster.snapshot) },
-        bosses: toBossDTOs(post),
-      }, webOrigin, post.members.map((member) => ({ ign: parseSnapshot(member.snapshot).ign, discordId: member.user.discordId, discordUsername: member.user.username })));
+        bosses: toBossDTOs({ bosses }),
+      }, webOrigin, members.map((member) => ({ ign: parseSnapshot(member.snapshot).ign, discordId: member.user.discordId, discordUsername: member.user.username })));
       payload = { ...thread.message, thread_name: thread.name };
     }
     if (row.eventType === 'post.weekly_reminder' && row.postId) {
@@ -197,6 +203,12 @@ export class WebhookWorker {
     }
     if (res.ok) {
       await upd({ status: 'sent', sentAt: this.now(), lastError: null });
+      if (row.postId && ANNOUNCEMENTS.has(row.eventType)) {
+        // This guild's channel now shows the post, so it gets the closure notice.
+        await this.prisma.$executeRaw`
+          UPDATE "Post" SET "announcedGuildIds" = array_append("announcedGuildIds", ${row.guildId})
+          WHERE id = ${row.postId} AND NOT (${row.guildId} = ANY("announcedGuildIds"))`;
+      }
       counts.sent++;
     } else if (res.status === 404 || res.status === 401) {
       await fail(row.attempts + 1, res.error);

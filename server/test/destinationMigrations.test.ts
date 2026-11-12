@@ -23,3 +23,26 @@ it('clears the party chat guild of LFP posts only', async () => {
     ]);
   });
 });
+
+it('remembers which guilds saw a live post announced since its last closure notice', async () => {
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe('CREATE TEMP TABLE "Post" (id TEXT, status TEXT, "deletedAt" TIMESTAMP) ON COMMIT DROP');
+    await tx.$executeRawUnsafe('CREATE TEMP TABLE "WebhookDelivery" ("postId" TEXT, "guildId" TEXT, "eventType" TEXT, status TEXT, "createdAt" TIMESTAMP) ON COMMIT DROP');
+    await tx.$executeRawUnsafe(`INSERT INTO "Post" VALUES ('open', 'open', NULL), ('reopened', 'full', NULL), ('closed', 'closed', NULL), ('deleted', 'open', NOW())`);
+    await tx.$executeRawUnsafe(`INSERT INTO "WebhookDelivery" VALUES
+      ('open', 'b', 'post.created', 'sent', '2026-11-01'), ('open', 'a', 'post.announcement', 'sent', '2026-11-02'),
+      ('open', 'a', 'post.created', 'sent', '2026-11-01'), ('open', 'c', 'post.created', 'failed', '2026-11-01'),
+      ('open', 'd', 'request.created', 'sent', '2026-11-01'),
+      ('reopened', 'a', 'post.created', 'sent', '2026-11-01'), ('reopened', 'a', 'post.closed', 'sent', '2026-11-02'),
+      ('reopened', 'b', 'post.reopened', 'sent', '2026-11-03'),
+      ('closed', 'a', 'post.created', 'sent', '2026-11-01'), ('deleted', 'a', 'post.created', 'sent', '2026-11-01')`);
+    await run(tx, migration('20261112144937_post_announced_guilds'));
+    const posts = await tx.$queryRawUnsafe<{ id: string; announcedGuildIds: string[] }[]>('SELECT id, "announcedGuildIds" FROM "Post" ORDER BY id');
+    expect(posts).toEqual([
+      { id: 'closed', announcedGuildIds: [] },
+      { id: 'deleted', announcedGuildIds: [] },
+      { id: 'open', announcedGuildIds: ['a', 'b'] },
+      { id: 'reopened', announcedGuildIds: ['b'] },
+    ]);
+  });
+});
