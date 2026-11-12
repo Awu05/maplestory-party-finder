@@ -100,7 +100,7 @@ export async function passkeyRoutes(api: FastifyInstance): Promise<void> {
     const challenge = await consumeChallenge(req, 'login');
     const response = authenticationBody.parse(req.body);
     const key = await prisma.passkey.findUnique({ where: { id: response.id }, include: { user: true } });
-    if (!key || key.user.banned || response.response.userHandle !== Buffer.from(key.userId).toString('base64url')) throw invalid();
+    if (!key || key.user.banned || key.user.deletedAt || response.response.userHandle !== Buffer.from(key.userId).toString('base64url')) throw invalid();
     let verification;
     try {
       verification = await verifyAuthenticationResponse({
@@ -109,7 +109,7 @@ export async function passkeyRoutes(api: FastifyInstance): Promise<void> {
       });
     } catch { throw invalid(); }
     if (!verification.verified) throw invalid();
-    const updated = await prisma.passkey.updateMany({ where: { id: key.id, counter: key.counter, user: { banned: false } }, data: { counter: BigInt(verification.authenticationInfo.newCounter), backedUp: verification.authenticationInfo.credentialBackedUp } });
+    const updated = await prisma.passkey.updateMany({ where: { id: key.id, counter: key.counter, user: { banned: false, deletedAt: null } }, data: { counter: BigInt(verification.authenticationInfo.newCounter), backedUp: verification.authenticationInfo.credentialBackedUp } });
     if (updated.count !== 1) throw invalid();
     await startSession(req, key.user);
     return toMeDTO({ user: key.user, isAdmin: isAdminUser(key.user, config) });

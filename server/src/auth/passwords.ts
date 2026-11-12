@@ -57,7 +57,7 @@ ${address}`;
     failedLogins.ensureAllowed(key);
     const credential = await prisma.passwordCredential.findUnique({ where: { email: input.email }, include: { user: true } });
     const verified = await verifyPassword(input.password, credential?.passwordHash);
-    if (!verified || !credential || credential.user.banned) {
+    if (!verified || !credential || credential.user.banned || credential.user.deletedAt) {
       // Only failures count: signing in successfully never uses up the owner's attempts.
       failedLogins.record(key);
       throw new AppError(401, 'INVALID_CREDENTIALS', 'Email or password is incorrect.');

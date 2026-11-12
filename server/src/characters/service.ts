@@ -159,7 +159,7 @@ export async function listCharacters(prisma: PrismaClient, filter: ListCharacter
     where: {
       ...(filter.ownerId
         ? { ownerId: filter.ownerId }
-        : { OR: [{ guildId: null }, { guild: { active: true } }], owner: { banned: false } }),
+        : { OR: [{ guildId: null }, { guild: { active: true } }], owner: { banned: false, deletedAt: null } }),
       ...(filter.worldId !== undefined ? { worldId: filter.worldId } : {}),
       ...(filter.archetype ? { archetype: filter.archetype } : {}),
       ...(filter.q ? { ignLower: { startsWith: filter.q.toLowerCase() } } : {}),

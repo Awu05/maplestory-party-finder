@@ -32,7 +32,7 @@ export class WeeklyReminderJob {
             WHERE p."weeklyTimeZone" IS NOT NULL AND p."weeklyAnchorAt" IS NOT NULL
               AND p."scheduledAt" <= ${now} AND p.type IN ('recruiting', 'carrying')
               AND (p.status IN ('open', 'full') OR (p.status = 'closed' AND p."closedReason" = 'finalized')) AND p."deletedAt" IS NULL
-              AND EXISTS (SELECT 1 FROM "User" u WHERE u.id = p."posterUserId" AND NOT u.banned)
+              AND EXISTS (SELECT 1 FROM "User" u WHERE u.id = p."posterUserId" AND NOT u.banned AND u."deletedAt" IS NULL)
             ORDER BY p."scheduledAt", p.id LIMIT 1 FOR UPDATE OF p SKIP LOCKED`;
           if (!due) return false;
           claim.occurrence = due;

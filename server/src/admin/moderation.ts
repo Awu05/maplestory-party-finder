@@ -10,7 +10,7 @@ import { postSummaryInclude, toPostSummaryDTO } from '../posts/serialize.js';
 import { closeLivePosts } from '../posts/lifecycle.js';
 
 const idParam = z.object({ id: z.string().min(1) });
-const usersQuery = z.object({ q: z.string().trim().optional() });
+const usersQuery = z.object({ q: z.string().trim().optional(), status: z.enum(['all', 'active', 'deleted']).default('all') });
 const banBody = z.object({ banned: z.boolean() });
 const reassignBody = z.object({ userId: z.string().min(1) });
 const postsQuery = z.object({
@@ -18,10 +18,15 @@ const postsQuery = z.object({
   q: z.string().trim().optional(),
 });
 
-/** Bans the user, closes their live posts and auto-declines everything pending on them plus their own requests. */
-async function banUser(prisma: PrismaClient, userId: string): Promise<{ closedPostIds: string[]; declinedRequestIds: string[] }> {
+/**
+ * Applies `data` (a ban, or a soft delete), closes the user's live posts and auto-declines everything pending
+ * on them plus their own requests.
+ */
+async function deactivateUser(
+  prisma: PrismaClient, userId: string, data: Prisma.UserUpdateInput,
+): Promise<{ closedPostIds: string[]; declinedRequestIds: string[] }> {
   return prisma.$transaction(async (tx) => {
-    await tx.user.update({ where: { id: userId }, data: { banned: true } });
+    await tx.user.update({ where: { id: userId }, data });
     const { closedPostIds, declinedIds: declinedRequestIds } = await closeLivePosts(tx, { posterUserId: userId }, 'banned', {
       character: { ownerId: userId },
     });
@@ -60,6 +65,7 @@ export async function adminModerationRoutes(app: FastifyInstance): Promise<void>
     displayName: u.displayName,
     avatarUrl: u.avatar,
     banned: u.banned,
+    deletedAt: u.deletedAt?.toISOString() ?? null,
     isAdmin: isAdminUser(u, config),
     createdAt: u.createdAt.toISOString(),
     characterCount: u._count.characters,
@@ -68,12 +74,15 @@ export async function adminModerationRoutes(app: FastifyInstance): Promise<void>
 
   app.get('/admin/users', async (req) => {
     await requireAdmin(req);
-    const { q } = usersQuery.parse(req.query);
+    const { q, status } = usersQuery.parse(req.query);
     const users = await prisma.user.findMany({
-      where: q ? { OR: [
-        { username: { startsWith: q, mode: 'insensitive' } },
-        { displayName: { startsWith: q, mode: 'insensitive' } },
-      ] } : {},
+      where: {
+        ...(status === 'deleted' ? { deletedAt: { not: null } } : status === 'active' ? { deletedAt: null } : {}),
+        ...(q ? { OR: [
+          { username: { startsWith: q, mode: 'insensitive' } },
+          { displayName: { startsWith: q, mode: 'insensitive' } },
+        ] } : {}),
+      },
       include: userInclude,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: 50,
@@ -91,7 +100,7 @@ export async function adminModerationRoutes(app: FastifyInstance): Promise<void>
       throw new AppError(400, 'CANNOT_BAN_ADMIN', 'Admins cannot be banned');
     }
     if (banned && !user.banned) {
-      const { closedPostIds, declinedRequestIds } = await banUser(prisma, id);
+      const { closedPostIds, declinedRequestIds } = await deactivateUser(prisma, id, { banned: true });
       closedPostIds.forEach((postId) => events.emit({ type: 'post.closed', postId, reason: 'banned' }));
       declinedRequestIds.forEach((requestId) =>
         events.emit({ type: 'request.declined', requestId, auto: true, actorUserId: admin.user.id }),
@@ -99,6 +108,35 @@ export async function adminModerationRoutes(app: FastifyInstance): Promise<void>
     } else if (!banned) {
       await prisma.user.update({ where: { id }, data: { banned: false } });
     }
+    return toUserDTO(await prisma.user.findUniqueOrThrow({ where: { id }, include: userInclude }));
+  });
+
+  // Soft delete: the account can't sign in and its open posts close (as for a ban); nothing is destroyed.
+  app.delete('/admin/users/:id', async (req) => {
+    const admin = await requireAdmin(req);
+    const { id } = idParam.parse(req.params);
+    const user = await prisma.user.findUnique({ where: { id } });
+    if (!user) throw new AppError(404, 'NOT_FOUND');
+    if (user.id === admin.user.id || isAdminUser(user, config)) {
+      throw new AppError(400, 'CANNOT_DELETE_ADMIN', 'Admins cannot be deleted');
+    }
+    if (!user.deletedAt) {
+      // Bumping the session version signs them out everywhere.
+      const { closedPostIds, declinedRequestIds } = await deactivateUser(prisma, id, { deletedAt: new Date(), sessionVersion: { increment: 1 } });
+      closedPostIds.forEach((postId) => events.emit({ type: 'post.closed', postId, reason: 'banned' }));
+      declinedRequestIds.forEach((requestId) =>
+        events.emit({ type: 'request.declined', requestId, auto: true, actorUserId: admin.user.id }),
+      );
+    }
+    return toUserDTO(await prisma.user.findUniqueOrThrow({ where: { id }, include: userInclude }));
+  });
+
+  // Does not unban a separately banned user, and closed posts stay closed.
+  app.post('/admin/users/:id/reactivate', async (req) => {
+    await requireAdmin(req);
+    const { id } = idParam.parse(req.params);
+    if (!(await prisma.user.findUnique({ where: { id }, select: { id: true } }))) throw new AppError(404, 'NOT_FOUND');
+    await prisma.user.update({ where: { id }, data: { deletedAt: null } });
     return toUserDTO(await prisma.user.findUniqueOrThrow({ where: { id }, include: userInclude }));
   });
 

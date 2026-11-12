@@ -36,6 +36,8 @@ model User {
   displayName   String?
   avatar        String?
   banned        Boolean        @default(false)
+  /// Soft delete: the account can't sign in and is hidden, but nothing is destroyed. Cleared by reactivation.
+  deletedAt     DateTime?
   createdAt     DateTime       @default(now())
   sessionVersion Int          @default(0)
   characters    Character[]

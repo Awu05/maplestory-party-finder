@@ -41,12 +41,12 @@ export async function startSession(req: FastifyRequest, user: Pick<User, 'id' | 
   req.session.set('sessionVersion', user.sessionVersion);
 }
 
-/** Current viewer, or null when logged out, unknown, or banned. */
+/** Current viewer, or null when logged out, unknown, banned or deleted. */
 export async function getViewer(req: FastifyRequest): Promise<Viewer | null> {
   const userId = req.session.get('userId');
   if (!userId) return null;
   const user = await req.server.deps.prisma.user.findUnique({ where: { id: userId } });
-  if (!user || user.banned || (req.session.get('sessionVersion') ?? 0) !== user.sessionVersion) return null;
+  if (!user || user.banned || user.deletedAt || (req.session.get('sessionVersion') ?? 0) !== user.sessionVersion) return null;
   return toViewer(req, user);
 }
 
@@ -57,6 +57,7 @@ export async function requireUser(req: FastifyRequest): Promise<Viewer> {
   if (!user) throw new AppError(401, 'UNAUTHENTICATED');
   if ((req.session.get('sessionVersion') ?? 0) !== user.sessionVersion) throw new AppError(401, 'UNAUTHENTICATED');
   if (user.banned) throw new AppError(403, 'BANNED');
+  if (user.deletedAt) throw new AppError(403, 'DELETED', 'This account has been deleted.');
   return toViewer(req, user);
 }
 

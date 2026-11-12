@@ -156,7 +156,7 @@ export async function listBoard(prisma: PrismaClient, f: BoardFilter, now: Date)
       deletedAt: null,
       status: 'open',
       expiresAt: { gt: now },
-      posterUser: { banned: false },
+      posterUser: { banned: false, deletedAt: null },
       ...(f.type ? { type: f.type } : {}),
       ...(f.worldIds ? { worldId: { in: f.worldIds } } : {}),
       // A range comparison never matches NULL, so from/to exclude flexible posts.
