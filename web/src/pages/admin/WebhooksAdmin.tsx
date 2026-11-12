@@ -1,7 +1,8 @@
 import { Fragment, useState } from 'react';
 import type { WebhookHealthDTO } from '@pf/shared';
-import { useWebhookHealth } from '../../api/hooks';
+import { useClearFailedDeliveries, useDeleteDelivery, useWebhookHealth } from '../../api/hooks';
 import { friendlyError } from '../../api/errors';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { relativeTime } from '../../components/post/time';
 
 function pill(h: WebhookHealthDTO): { cls: string; text: string } {
@@ -13,12 +14,17 @@ function pill(h: WebhookHealthDTO): { cls: string; text: string } {
 export function WebhooksAdmin() {
   const health = useWebhookHealth();
   const [open, setOpen] = useState<string | null>(null);
+  const [clearing, setClearing] = useState(false);
+  const remove = useDeleteDelivery();
+  const clear = useClearFailedDeliveries();
 
   return (
     <div>
       <h2>Webhooks</h2>
       {health.isError && <p role="alert" className="admin__error">{friendlyError(health.error)}</p>}
       <button type="button" className="btn btn--secondary" disabled={health.isFetching} onClick={() => void health.refetch()}>Refresh</button>
+      <button type="button" className="btn btn--danger" onClick={() => { clear.reset(); setClearing(true); }}>Clear failed</button>
+      {remove.isError && <p role="alert" className="admin__error">{friendlyError(remove.error)}</p>}
       <table className="admin__table">
         <thead>
           <tr><th>Guild</th><th>Status</th><th>Webhook</th><th>Active</th><th>Last sent</th><th>Pending</th><th>Failed 24h</th><th /></tr>
@@ -59,7 +65,8 @@ export function WebhooksAdmin() {
                           {h.recentFailures.map((f) => (
                             <li key={f.id}>
                               <span>{f.eventType}</span> · {f.attempts} attempts · <span>{f.lastError ?? 'unknown error'}</span> ·{' '}
-                              <span>{relativeTime(f.createdAt)}</span>
+                              <span>{relativeTime(f.createdAt)}</span>{' '}
+                              <button type="button" className="btn btn--secondary" aria-label={`Remove failed delivery ${f.eventType}`} disabled={remove.isPending} onClick={() => remove.mutate(f.id)}>Remove</button>
                             </li>
                           ))}
                         </ul>
@@ -72,6 +79,18 @@ export function WebhooksAdmin() {
           })}
         </tbody>
       </table>
+      {clearing && (
+        <ConfirmDialog
+          title="Clear all failed deliveries?"
+          confirmLabel="Clear failed"
+          busy={clear.isPending}
+          error={clear.isError ? friendlyError(clear.error) : undefined}
+          onConfirm={() => clear.mutate(undefined, { onSuccess: () => setClearing(false) })}
+          onCancel={() => setClearing(false)}
+        >
+          <p>This removes every failed delivery record for all guilds. It does not resend anything.</p>
+        </ConfirmDialog>
+      )}
     </div>
   );
 }

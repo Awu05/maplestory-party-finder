@@ -76,4 +76,42 @@ describe('admin webhooks', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
     await waitFor(() => expect(get).toHaveBeenCalledTimes(2));
   });
+
+  it('Remove deletes one delivery without a confirm and the list refreshes', async () => {
+    let failures = health[0].recentFailures;
+    const del = vi.fn(() => { failures = []; return undefined; });
+    const confirm = vi.spyOn(window, 'confirm');
+    mockApi({
+      '/api/admin/webhooks/health': () => [{ ...health[0], recentFailures: failures }],
+      'DELETE /api/admin/webhooks/deliveries/f1': del,
+    });
+    renderWithProviders(<WebhooksAdmin />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Show failures Alpha' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove failed delivery post.created' }));
+    await waitFor(() => expect(del).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText('No recent failures.')).toBeInTheDocument();
+    expect(confirm).not.toHaveBeenCalled();
+    confirm.mockRestore();
+  });
+
+  it('Clear failed asks first, then DELETEs ?status=failed', async () => {
+    const del = vi.fn(() => undefined);
+    const fetchMock = mockApi({ '/api/admin/webhooks/health': health, 'DELETE /api/admin/webhooks/deliveries?status=failed': del });
+    renderWithProviders(<WebhooksAdmin />);
+    const opener = await screen.findByRole('button', { name: 'Clear failed' });
+    opener.focus();
+    fireEvent.click(opener);
+    const dialog = await screen.findByRole('dialog', { name: 'Clear all failed deliveries?' });
+    expect(del).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(document.querySelector('dialog')).toBeNull());
+    expect(opener).toHaveFocus();
+    expect(del).not.toHaveBeenCalled();
+
+    fireEvent.click(opener);
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Clear failed' }));
+    await waitFor(() => expect(del).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(document.querySelector('dialog')).toBeNull());
+    expect(fetchMock.mock.calls.filter(([u]) => String(u) === '/api/admin/webhooks/health').length).toBeGreaterThan(1);
+  });
 });
