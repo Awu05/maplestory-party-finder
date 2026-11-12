@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import { DAY_MS, type WebhookHealthDTO } from '@pf/shared';
 import { requireAdmin } from '../auth/guards.js';
 import { AppError } from '../http/errors.js';
@@ -29,6 +30,21 @@ export async function adminWebhookRoutes(app: FastifyInstance): Promise<void> {
       },
     });
     return result.ok ? { ok: true } : { ok: false, error: result.error };
+  });
+
+  app.delete<{ Params: { id: string } }>('/admin/webhooks/deliveries/:id', async (req, reply) => {
+    await requireAdmin(req);
+    const { count } = await prisma.webhookDelivery.deleteMany({ where: { id: req.params.id } });
+    if (count === 0) throw new AppError(404, 'NOT_FOUND');
+    return reply.status(204).send();
+  });
+
+  app.delete('/admin/webhooks/deliveries', async (req, reply) => {
+    await requireAdmin(req);
+    // Only failed records can be cleared in bulk.
+    z.object({ status: z.literal('failed') }).parse(req.query);
+    await prisma.webhookDelivery.deleteMany({ where: { status: 'failed' } });
+    return reply.status(204).send();
   });
 
   app.get('/admin/webhooks/health', async (req): Promise<WebhookHealthDTO[]> => {

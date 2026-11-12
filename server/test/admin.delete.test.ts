@@ -126,3 +126,38 @@ describe('DELETE /admin/worlds/:id', () => {
     expect((await prisma.character.findUniqueOrThrow({ where: { id: moving.id } })).worldId).toBe(bera.id);
   });
 });
+
+describe('webhook delivery records', () => {
+  const mk = async (guildId: string, status: 'pending' | 'sent' | 'failed') =>
+    prisma.webhookDelivery.create({ data: { guildId, eventType: 'test', payload: {}, status } });
+
+  it('requires an admin', async () => {
+    const g = await makeGuild();
+    const d = await mk(g.id, 'failed');
+    for (const url of [`/api/admin/webhooks/deliveries/${d.id}`, '/api/admin/webhooks/deliveries?status=failed']) {
+      expect((await call('DELETE', url, null)).statusCode).toBe(401);
+      expect((await call('DELETE', url, plain)).statusCode).toBe(403);
+    }
+    expect(await prisma.webhookDelivery.count()).toBe(1);
+  });
+
+  it('removes one record of any status; 404 when missing', async () => {
+    const g = await makeGuild();
+    const sent = await mk(g.id, 'sent');
+    const pending = await mk(g.id, 'pending');
+    expect((await call('DELETE', `/api/admin/webhooks/deliveries/${sent.id}`)).statusCode).toBe(204);
+    expect((await call('DELETE', `/api/admin/webhooks/deliveries/${sent.id}`)).statusCode).toBe(404);
+    expect((await prisma.webhookDelivery.findMany()).map((d) => d.id)).toEqual([pending.id]);
+  });
+
+  it('clears all failed records only', async () => {
+    const g = await makeGuild();
+    await mk(g.id, 'failed');
+    await mk(g.id, 'failed');
+    const keep = await mk(g.id, 'sent');
+    expect((await call('DELETE', '/api/admin/webhooks/deliveries?status=failed')).statusCode).toBe(204);
+    expect((await prisma.webhookDelivery.findMany()).map((d) => d.id)).toEqual([keep.id]);
+    expect((await call('DELETE', '/api/admin/webhooks/deliveries?status=sent')).statusCode).toBe(400);
+    expect((await call('DELETE', '/api/admin/webhooks/deliveries')).statusCode).toBe(400);
+  });
+});
