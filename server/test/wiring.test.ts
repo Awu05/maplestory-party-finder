@@ -28,7 +28,7 @@ describe('notifications wiring (dispatcher + worker, end to end)', () => {
     // 1. post -> one delivery enqueued
     const created = await app.inject({
       method: 'POST', url: '/api/posts', headers: { cookie: u1 },
-      payload: { type: 'recruiting', characterId: alice.id, bossDifficultyIds: [lucid], partySize: 4, note: '' },
+      payload: { type: 'recruiting', characterId: alice.id, bossDifficultyIds: [lucid], partySize: 4, note: '', notificationGuildId: g1.id },
     });
     expect(created.statusCode).toBe(201);
     await events.drain();

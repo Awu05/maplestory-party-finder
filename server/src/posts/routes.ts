@@ -44,6 +44,8 @@ const postFields = z.object({
   partySize: partySizeSchema.optional(),
   minCp: minCpSchema.optional(),
   note: noteSchema,
+  notificationGuildId: z.string().min(1).nullable().optional(),
+  partyForumGuildId: z.string().min(1).nullable().optional(),
 });
 
 export const createPostBody = postFields.superRefine(checkFreeTimes(false));
@@ -94,7 +96,7 @@ export async function postRoutes(app: FastifyInstance): Promise<void> {
     const { id } = req.params as { id: string };
     const input = editPostBody.parse(req.body);
     const now = new Date();
-    const r = await editPost(prisma, viewer, id, input, now);
+    const r = await editPost(prisma, viewer, id, input, now, { storage, webOrigin: app.deps.config.webOrigin });
     emitDeclined(r.declinedRequestIds, viewer.user.id);
     events.emit({ type: 'post.updated', postId: id });
     if (r.reopened) events.emit({ type: 'post.reopened', postId: id });

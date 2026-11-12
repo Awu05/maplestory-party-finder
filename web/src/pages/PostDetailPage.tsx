@@ -25,6 +25,7 @@ import { WhenSection } from '../components/post/WhenSection';
 import { FinalizeTimeDialog } from '../components/post/FinalizeTimeDialog';
 import { formatWhen } from '../components/post/time';
 import { useLastActionError } from '../components/post/useLastActionError';
+import { DiscordDestinationSettings } from '../components/post/DiscordDestinationSettings';
 import '../components/post/post.css';
 
 function DiscordAnnouncementButton({ availableAt, pending, onClick }: { availableAt: string; pending: boolean; onClick: () => void }) {
@@ -145,6 +146,11 @@ export function PostDetailPage() {
         </div>
       )}
       {p.note && <p>{p.note}</p>}
+      {posterActive ? <DiscordDestinationSettings key={p.id} post={p} /> : <section className="post-discord" aria-label="Discord destinations">
+        <h3>Discord</h3>
+        <p>Notifications: {p.notificationGuild?.name ?? 'None'}</p>
+        {p.type !== 'lfp' && <p>Party chat: {p.partyForumGuild ? `${p.partyForumGuild.name} — party forum` : 'None'}</p>}
+      </section>}
       {closed && <div className="post-banner">{finalized ? 'Recruitment is closed. Your party is scheduled.' : 'This party has ended'}</div>}
 
       {mutationError && <p role="alert">{friendlyError(mutationError)}</p>}

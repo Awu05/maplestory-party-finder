@@ -582,3 +582,11 @@ a.post-card:hover {
 .discord-announcement small {
   color: var(--muted);
 }
+.post-discord { display: grid; gap: var(--space-2); margin-block: var(--space-4); }
+.post-discord h3, .post-discord p { margin: 0; }
+.post-discord small { color: var(--muted); }
+.post-discord-settings { display: grid; gap: var(--space-2); margin-block: var(--space-4); }
+.post-discord-settings .post-discord { margin: 0; }
+.post-discord-settings label { display: grid; gap: var(--space-1); }
+.post-discord-settings > button { justify-self: start; }
+.post-discord-settings > small { color: var(--muted); }

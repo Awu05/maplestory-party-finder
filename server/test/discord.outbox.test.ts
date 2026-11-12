@@ -32,6 +32,8 @@ describe('WebhookWorker', () => {
   it.each(['closed', 'full', 'open'] as const)('sends closure notices only while recruitment is closed (%s)', async (status) => {
     const guild = await makeGuild({ webhookUrl: URL_ });
     const post = await makePost({ status, closedReason: status === 'closed' ? 'finalized' : status === 'full' ? 'full' : null });
+    await prisma.post.update({ where: { id: post.id }, data: { notificationGuildId: guild.id } });
+    await prisma.guildWorld.create({ data: { guildId: guild.id, worldId: post.worldId } });
     await enqueueDelivery(prisma, guild.id, 'post.closed', payload, post.id);
     await prisma.webhookDelivery.updateMany({ data: { nextAttemptAt: T0 } });
     const result = await worker().runOnce();
@@ -210,6 +212,8 @@ describe('WebhookWorker robustness', () => {
     const finalized = await makePost({ status: 'closed', closedReason: 'finalized' });
     const ids: string[] = [];
     for (const post of [banned, deleted, manual, charDeleted, expired, full, finalized, live]) {
+      await prisma.post.update({ where: { id: post.id }, data: { notificationGuildId: guild.id } });
+      await prisma.guildWorld.upsert({ where: { guildId_worldId: { guildId: guild.id, worldId: post.worldId } }, create: { guildId: guild.id, worldId: post.worldId }, update: {} });
       await enqueueDelivery(prisma, guild.id, 'post.created', payload, post.id);
       const row = await prisma.webhookDelivery.findFirstOrThrow({ where: { postId: post.id } });
       await prisma.webhookDelivery.update({ where: { id: row.id }, data: { nextAttemptAt: T0 } });

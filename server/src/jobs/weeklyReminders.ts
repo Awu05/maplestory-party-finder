@@ -51,7 +51,7 @@ export class WeeklyReminderJob {
           if (!next || next.nextAt <= now) throw new Error('Invalid next weekly occurrence');
 
           if (now.getTime() - row.scheduledAt!.getTime() <= MAX_LATENESS_MS) {
-            const recipients = await weeklyRecipients(tx, row.id);
+            const recipients = await weeklyRecipients(tx, row);
             const post = weeklyReminderPost(toPostSummaryDTO(row, null, storage, now));
             // Recipients are checked again at delivery.
             for (const [guildId, ids] of recipients) {

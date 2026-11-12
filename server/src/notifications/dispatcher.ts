@@ -4,6 +4,7 @@ import type { DomainEvent, DomainEvents } from '../events.js';
 import { bossLabel, buildAcceptPing, buildRequestPing, type WebhookPayload } from '../discord/messages.js';
 import { enqueuePostAnnouncement, enqueuePostClosure } from '../discord/postAnnouncement.js';
 import { enqueueDelivery } from '../discord/outbox.js';
+import { findDestination } from '../discord/destinations.js';
 import { postSummaryInclude, toPostSummaryDTO } from '../posts/serialize.js';
 import type { Storage } from '../storage/storage.js';
 import { errName, type Logger } from '../log.js';
@@ -111,15 +112,11 @@ export class EventDispatcher implements DomainEvents {
     if (row.kind === 'join_request') {
       const recipient = row.post.posterUserId;
       await this.notify(recipient, actor, 'join_request', `${ch.ign} wants to join your ${bossesLabel(post)} run`, row.postId);
-      // The poster's character may have moved guilds since posting; fall back to the post's guild if it is gone.
-      const poster = row.post.posterCharacterId
-        ? await this.prisma.character.findUnique({ where: { id: row.post.posterCharacterId }, select: { guildId: true } })
-        : null;
-      await this.ping(poster?.guildId ?? row.post.guildId, recipient, actor, 'request.created', build('join_request'), row.post.worldId);
+      await this.ping(row.post.notificationGuildId, recipient, actor, 'request.created', build('join_request'), row.post.worldId, row.postId);
     } else {
       const recipient = ch.ownerId;
       await this.notify(recipient, actor, 'invite', `${post.poster.snapshot.ign} invited ${ch.ign} to ${bossesLabel(post)}`, row.postId);
-      await this.ping(ch.guildId, recipient, actor, 'request.created', build('invite'), row.post.worldId);
+      await this.ping(row.post.notificationGuildId, recipient, actor, 'request.created', build('invite'), row.post.worldId, row.postId);
     }
   }
 
@@ -130,8 +127,8 @@ export class EventDispatcher implements DomainEvents {
       const actor = row.post.posterUserId;
       const text = `${ch.ign} was accepted into ${post.poster.snapshot.ign}'s ${bossesLabel(post)} run`;
       await this.notify(ch.ownerId, actor, 'accepted', text, row.postId);
-      await this.ping(ch.guildId, ch.ownerId, actor, 'request.accepted', (recipientDiscordId) =>
-        buildAcceptPing({ recipientDiscordId, ign: ch.ign, post, webOrigin: this.webOrigin }), row.post.worldId,
+      await this.ping(row.post.notificationGuildId, ch.ownerId, actor, 'request.accepted', (recipientDiscordId) =>
+        buildAcceptPing({ recipientDiscordId, ign: ch.ign, post, webOrigin: this.webOrigin }), row.post.worldId, row.postId,
       );
     } else {
       // The invitee accepted it themselves: the poster gets an in-app notification only.
@@ -194,7 +191,7 @@ export class EventDispatcher implements DomainEvents {
     await this.prisma.notification.create({ data: { userId, kind, text, link } });
   }
 
-  /** Use a world channel when the recipient has no guild. */
+  /** Direct mentions follow the post's notification destination too. */
   private async ping(
     guildId: string | null,
     recipientUserId: string,
@@ -202,14 +199,13 @@ export class EventDispatcher implements DomainEvents {
     eventType: string,
     build: (recipientDiscordId: string) => WebhookPayload,
     worldId: number,
+    postId: string,
   ): Promise<void> {
     if (recipientUserId === actorUserId) return;
-    const guild = guildId
-      ? await this.prisma.guild.findUnique({ where: { id: guildId }, select: { id: true, active: true, webhookUrl: true } })
-      : await this.prisma.guild.findFirst({ where: { active: true, webhookUrl: { not: null }, worlds: { some: { worldId } } }, select: { id: true, active: true, webhookUrl: true }, orderBy: { id: 'asc' } });
-    if (!guild?.active || !guild.webhookUrl) return;
+    const guild = await findDestination(this.prisma, guildId, worldId, 'notifications');
+    if (!guild) return;
     const user = await this.prisma.user.findUnique({ where: { id: recipientUserId }, select: { discordId: true } });
     if (!user?.discordId) return;
-    await enqueueDelivery(this.prisma, guild.id, eventType, build(user.discordId));
+    await enqueueDelivery(this.prisma, guild.id, eventType, build(user.discordId), postId);
   }
 }

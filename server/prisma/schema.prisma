@@ -113,7 +113,9 @@ model Guild {
   active            Boolean           @default(true)
   worlds            GuildWorld[]
   characters        Character[]
-  posts             Post[]
+  posts             Post[] @relation("PostGuild")
+  notificationPosts Post[] @relation("PostNotificationGuild")
+  partyForumPosts   Post[] @relation("PostPartyForumGuild")
   webhookDeliveries WebhookDelivery[]
 }
 
@@ -226,13 +228,21 @@ model Post {
   worldId           Int
   world             World        @relation(fields: [worldId], references: [id])
   guildId           String?
-  guild             Guild?       @relation(fields: [guildId], references: [id], onDelete: SetNull)
+  guild             Guild?       @relation("PostGuild", fields: [guildId], references: [id], onDelete: SetNull)
+  notificationGuildId String?
+  notificationGuild Guild?       @relation("PostNotificationGuild", fields: [notificationGuildId], references: [id], onDelete: SetNull)
+  partyForumGuildId String?
+  partyForumGuild  Guild?        @relation("PostPartyForumGuild", fields: [partyForumGuildId], references: [id], onDelete: SetNull)
   /// The final time; null until the poster finalizes it.
   scheduledAt       DateTime?
   weeklyTimeZone    String?
   weeklyAnchorAt    DateTime?
   /// One forum thread is requested for this party, even if its time changes.
   forumThreadRequested Boolean @default(false)
+  /// Guilds whose channel received this run's announcement and has not had its closure notice yet.
+  announcedGuildIds String[]     @default([])
+  /// The "finalized" closure notice has gone out for this run (reset when the post is reopened).
+  finalizedNoticeSent Boolean   @default(false)
   /// Last manually requested Discord announcement; creation starts the first cooldown.
   lastDiscordAnnouncementAt DateTime?
   /// Half-hour slots (day * 48 + slot, 0 = Sunday) in freeTimesZone.
@@ -281,8 +291,6 @@ model PostMember {
   joinedAt    DateTime   @default(now())
   freeTimes   Int[]      @default([])
   freeTimesZone String?
-  /// Last known guild for routing reminders if this member's character is deleted.
-  reminderGuildId String?
 
   @@unique([postId, characterId])
   @@index([userId])

@@ -24,6 +24,14 @@ export function effectivePostStatus(
   return p.status;
 }
 
+/** A finalized lineup is closed to recruitment but remains active until its scheduled run expires. */
+export function isActiveFinalized(
+  p: { status: string; closedReason: string | null; expiresAt: Date | string; deletedAt: Date | string | null } | null | undefined,
+  now: Date,
+): boolean {
+  return !!p && p.status === 'closed' && p.closedReason === 'finalized' && p.deletedAt === null && new Date(p.expiresAt).getTime() > now.getTime();
+}
+
 export function maxPartySizeFor(partyCaps: number[]): number {
   return Math.min(MAX_PARTY_SIZE, ...partyCaps);
 }

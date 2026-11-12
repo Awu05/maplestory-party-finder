@@ -149,6 +149,8 @@ export async function makePost(
       posterCharacterId: poster.id,
       worldId: rest.worldId ?? poster.worldId,
       guildId: rest.guildId !== undefined ? rest.guildId : poster.guildId,
+      notificationGuildId: rest.notificationGuildId !== undefined ? rest.notificationGuildId : poster.guildId,
+      partyForumGuildId: rest.partyForumGuildId !== undefined ? rest.partyForumGuildId : poster.guildId,
       bosses: { create: bossDifficultyIds.map((bossDifficultyId) => ({ bossDifficultyId })) },
     },
   });

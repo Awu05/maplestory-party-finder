@@ -37,7 +37,7 @@ it('stores validated admin-only boss role mappings and can clear them', async ()
   expect((await update(guild.id, {})).json().bossRoleIds).toEqual({});
 });
 
-it('broadcasts only the posted bosses with each receiving guild’s own role IDs, deduplicated', async () => {
+it('mentions only posted bosses using the selected guild’s own role IDs, deduplicated', async () => {
   const world = await makeWorld();
   const hook = 'https://discord.com/api/webhooks/1/test';
   const first = await makeGuild({ worldIds: [world.id], webhookUrl: hook });
@@ -51,19 +51,22 @@ it('broadcasts only the posted bosses with each receiving guild’s own role IDs
   await update(second.id, { [boss.bossId]: '444444444444444444', [other.bossId]: '444444444444444444' });
   const character = await makeCharacter({ worldId: world.id, guildId: first.id });
   for (const type of ['recruiting', 'lfp'] as const) {
-    const post = await makePost({ type, posterCharacterId: character.id, bossDifficultyIds: [boss.id, normal.id, other.id] });
+    for (const selected of [first, second, unmapped]) {
+    const post = await makePost({ type, posterCharacterId: character.id, bossDifficultyIds: [boss.id, normal.id, other.id], notificationGuildId: selected.id });
     events.emit({ type: 'post.created', postId: post.id });
     await events.drain();
     const deliveries = await prisma.webhookDelivery.findMany({ where: { postId: post.id } });
-    expect(deliveries).toHaveLength(3);
-    expect(deliveries.find((d) => d.guildId === first.id)!.payload).toMatchObject({
+    expect(deliveries).toHaveLength(1);
+    expect(deliveries[0]!.guildId).toBe(selected.id);
+    if (selected.id === first.id) expect(deliveries[0]!.payload).toMatchObject({
       content: '<@&111111111111111111> <@&222222222222222222>',
       allowed_mentions: { parse: [], roles: ['111111111111111111', '222222222222222222'] },
     });
-    expect(deliveries.find((d) => d.guildId === second.id)!.payload).toMatchObject({
+    else if (selected.id === second.id) expect(deliveries[0]!.payload).toMatchObject({
       content: '<@&444444444444444444>', allowed_mentions: { parse: [], roles: ['444444444444444444'] },
     });
-    expect(deliveries.find((d) => d.guildId === unmapped.id)!.payload).not.toHaveProperty('content');
+    else expect(deliveries[0]!.payload).not.toHaveProperty('content');
+    }
   }
 });
 

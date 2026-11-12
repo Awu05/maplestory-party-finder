@@ -1,31 +1,27 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
+import { findDestination } from './destinations.js';
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
-/** Route each person through one usable guild webhook, including deleted-character snapshots. */
-export async function weeklyRecipients(db: Db, postId: string): Promise<Map<string, string[]>> {
+/** The Discord ids of the post's current, unbanned members, in join order, once each. */
+export async function weeklyRecipientIds(db: Db, postId: string): Promise<string[]> {
   const members = await db.postMember.findMany({
     where: { postId },
-    include: { character: { select: { guildId: true } }, user: { select: { discordId: true, banned: true } } },
+    include: { user: { select: { discordId: true, banned: true } } },
     orderBy: [{ joinedAt: 'asc' }, { id: 'asc' }],
   });
-  const post = await db.post.findUnique({ where: { id: postId }, select: { worldId: true, guildId: true } });
-  const guilds = await db.guild.findMany({ where: { active: true, webhookUrl: { not: null } }, select: { id: true, name: true, worlds: { select: { worldId: true } } }, orderBy: { id: 'asc' } });
-  const ids = new Set(guilds.map((g) => g.id));
-  const byName = new Map(guilds.map((g) => [g.name, g.id]));
-  const fallbackGuildId = guilds.find((guild) => guild.id === post?.guildId)?.id
-    ?? guilds.find((guild) => guild.worlds.some((world) => world.worldId === post?.worldId))?.id;
-  const result = new Map<string, string[]>();
-  const seen = new Set<string>();
+  const recipients = new Set<string>();
   for (const member of members) {
-    const snapshot = member.snapshot as { guildName?: unknown } | null;
-    const guildId = (member.character ? member.character.guildId : member.reminderGuildId ?? (typeof snapshot?.guildName === 'string' ? byName.get(snapshot.guildName) : undefined)) ?? fallbackGuildId;
     const discordId = member.user.discordId;
-    if (!guildId || !ids.has(guildId) || !discordId || member.user.banned || seen.has(discordId)) continue;
-    seen.add(discordId);
-    const group = result.get(guildId) ?? [];
-    group.push(discordId);
-    result.set(guildId, group);
+    if (discordId && !member.user.banned) recipients.add(discordId);
   }
-  return result;
+  return [...recipients];
+}
+
+/** Mention current members together in the selected notification guild. */
+export async function weeklyRecipients(db: Db, post: { id: string; worldId: number; notificationGuildId: string | null }): Promise<Map<string, string[]>> {
+  const guild = await findDestination(db, post.notificationGuildId, post.worldId, 'notifications');
+  if (!guild) return new Map();
+  const ids = await weeklyRecipientIds(db, post.id);
+  return ids.length ? new Map([[guild.id, ids]]) : new Map();
 }
