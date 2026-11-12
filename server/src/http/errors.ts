@@ -6,6 +6,8 @@ export class AppError extends Error {
     public readonly status: number,
     public readonly code: string,
     message?: string,
+    /** Extra fields sent beside code and message (e.g. the clashing IGNs). */
+    public readonly details?: Record<string, unknown>,
   ) {
     super(message ?? code);
     this.name = 'AppError';
@@ -15,7 +17,7 @@ export class AppError extends Error {
 export function registerErrorHandler(app: FastifyInstance): void {
   app.setErrorHandler((err: any, req, reply) => {
     if (err instanceof AppError) {
-      return reply.status(err.status).send({ error: { code: err.code, message: err.message } });
+      return reply.status(err.status).send({ error: { code: err.code, message: err.message, ...err.details } });
     }
     if (err instanceof ZodError) {
       return reply

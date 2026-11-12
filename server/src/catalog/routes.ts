@@ -5,6 +5,7 @@ import type { AdminGuildDTO, BossDTO, GuildDTO, JobClassDTO, RarityTierDTO, Worl
 import { getViewer, requireAdmin, requireUser } from '../auth/guards.js';
 import { AppError } from '../http/errors.js';
 import { CLASS_CATEGORIES } from '@pf/shared';
+import { findDestination } from '../discord/destinations.js';
 
 const WEBHOOK_RE = /^https:\/\/(discord|discordapp)\.com\/api\/webhooks\/\d+\/[\w-]+$/;
 
@@ -87,6 +88,9 @@ const classPatch = z.object({ archetype: archetypeEnum.optional(), category: z.e
 
 const idParam = z.object({ id: z.coerce.number().int() });
 const guildIdParam = z.object({ id: z.string().min(1) });
+
+/** Posts that still matter to the people using them: not deleted, not closed. */
+const LIVE_POST = { deletedAt: null, status: { in: ['open', 'full'] } } satisfies Prisma.PostWhereInput;
 
 type GuildRow = Prisma.GuildGetPayload<{ include: { worlds: true } }>;
 
@@ -261,6 +265,30 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     return toAdminGuildDTO(guild);
   });
 
+  app.get('/admin/guilds/:id/usage', async (req) => {
+    await requireAdmin(req);
+    const { id } = guildIdParam.parse(req.params);
+    if (!(await prisma.guild.findUnique({ where: { id }, select: { id: true } }))) throw new AppError(404, 'NOT_FOUND');
+    const [characters, posts] = await Promise.all([
+      prisma.character.count({ where: { guildId: id } }),
+      prisma.post.count({ where: { ...LIVE_POST, OR: [{ guildId: id }, { notificationGuildId: id }, { partyForumGuildId: id }] } }),
+    ]);
+    return { characters, posts };
+  });
+
+  app.delete('/admin/guilds/:id', async (req, reply) => {
+    await requireAdmin(req);
+    const { id } = guildIdParam.parse(req.params);
+    await prisma.$transaction(async (tx) => {
+      if (!(await tx.guild.findUnique({ where: { id } }))) throw new AppError(404, 'NOT_FOUND');
+      // No closure notice may target a guild that no longer exists.
+      await tx.$executeRaw`UPDATE "Post" SET "announcedGuildIds" = array_remove("announcedGuildIds", ${id}) WHERE ${id} = ANY("announcedGuildIds")`;
+      // Characters, posts, world links and deliveries are handled by the foreign keys (set null / cascade).
+      await tx.guild.delete({ where: { id } });
+    });
+    return reply.status(204).send();
+  });
+
   // ---- Admin: worlds ----
   app.post('/admin/worlds', async (req, reply) => {
     await requireAdmin(req);
@@ -279,6 +307,60 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       if (isCode(err, 'P2025')) throw new AppError(404, 'NOT_FOUND');
       throw err;
     }
+  });
+
+  app.get('/admin/worlds/:id/usage', async (req) => {
+    await requireAdmin(req);
+    const { id } = idParam.parse(req.params);
+    if (!(await prisma.world.findUnique({ where: { id }, select: { id: true } }))) throw new AppError(404, 'NOT_FOUND');
+    const [characters, posts] = await Promise.all([
+      prisma.character.count({ where: { worldId: id } }),
+      prisma.post.count({ where: { ...LIVE_POST, worldId: id } }),
+    ]);
+    return { characters, posts };
+  });
+
+  app.delete('/admin/worlds/:id', async (req, reply) => {
+    await requireAdmin(req);
+    const { id } = idParam.parse(req.params);
+    await prisma.$transaction(async (tx) => {
+      const world = await tx.world.findUnique({ where: { id } });
+      if (!world) throw new AppError(404, 'NOT_FOUND');
+      const kronos = await tx.world.findFirst({ where: { name: { equals: 'Kronos', mode: 'insensitive' } }, orderBy: { id: 'asc' } });
+      if (!kronos) throw new AppError(409, 'NO_KRONOS', 'Add a Kronos world before deleting other worlds.');
+      if (kronos.id === id) throw new AppError(409, 'CANNOT_DELETE_KRONOS', "Kronos is the default world and can't be deleted.");
+
+      const moving = await tx.character.findMany({ where: { worldId: id }, select: { ign: true, ignLower: true } });
+      const taken = new Set((await tx.character.findMany({ where: { worldId: kronos.id, ignLower: { in: moving.map((c) => c.ignLower) } }, select: { ignLower: true } })).map((c) => c.ignLower));
+      const clashes = moving.filter((c) => taken.has(c.ignLower)).map((c) => c.ign);
+      if (clashes.length > 0) {
+        throw new AppError(409, 'WORLD_NAME_CLASH', `These characters already exist on ${kronos.name}: ${clashes.join(', ')}. Rename or remove them first.`, { igns: clashes });
+      }
+
+      // A Nexon-synced character's world no longer matches Nexon, so the next sync should treat it as stale.
+      await tx.character.updateMany({ where: { worldId: id, source: 'nexon' }, data: { worldId: kronos.id, syncStatus: 'stale' } });
+      await tx.character.updateMany({ where: { worldId: id }, data: { worldId: kronos.id } });
+
+      // No post may keep a Discord destination that doesn't serve its (new) world.
+      const posts = await tx.post.findMany({ where: { worldId: id }, select: { id: true, notificationGuildId: true, partyForumGuildId: true } });
+      await tx.post.updateMany({ where: { worldId: id }, data: { worldId: kronos.id } });
+      const serves = new Map<string, boolean>();
+      const servesKronos = async (guildId: string, kind: 'notifications' | 'partyForum') => {
+        const key = `${kind}:${guildId}`;
+        if (!serves.has(key)) serves.set(key, !!(await findDestination(tx, guildId, kronos.id, kind)));
+        return serves.get(key)!;
+      };
+      for (const post of posts) {
+        const data: { notificationGuildId?: null; partyForumGuildId?: null } = {};
+        if (post.notificationGuildId && !(await servesKronos(post.notificationGuildId, 'notifications'))) data.notificationGuildId = null;
+        if (post.partyForumGuildId && !(await servesKronos(post.partyForumGuildId, 'partyForum'))) data.partyForumGuildId = null;
+        if (Object.keys(data).length > 0) await tx.post.update({ where: { id: post.id }, data });
+      }
+
+      await tx.guildWorld.deleteMany({ where: { worldId: id } });
+      await tx.world.delete({ where: { id } });
+    });
+    return reply.status(204).send();
   });
 
   // ---- Admin: bosses ----
