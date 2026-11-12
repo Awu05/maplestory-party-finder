@@ -46,3 +46,36 @@ it('remembers which guilds saw a live post announced since its last closure noti
     ]);
   });
 });
+
+it("keeps live weekly parties' reminders in the guild the removed world fallback used", async () => {
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe('CREATE TEMP TABLE "Guild" (id TEXT, active BOOLEAN, "webhookUrl" TEXT) ON COMMIT DROP');
+    await tx.$executeRawUnsafe('CREATE TEMP TABLE "GuildWorld" ("guildId" TEXT, "worldId" INT) ON COMMIT DROP');
+    await tx.$executeRawUnsafe(`CREATE TEMP TABLE "Post" (id TEXT, "worldId" INT, "notificationGuildId" TEXT, status TEXT, "closedReason" TEXT,
+      "deletedAt" TIMESTAMPTZ, "expiresAt" TIMESTAMPTZ, "weeklyTimeZone" TEXT, "weeklyAnchorAt" TIMESTAMPTZ) ON COMMIT DROP`);
+    await tx.$executeRawUnsafe(`INSERT INTO "Guild" VALUES ('a-inactive', false, 'h'), ('b-no-hook', true, NULL), ('c-other-world', true, 'h'), ('d-fallback', true, 'h'), ('e-later', true, 'h')`);
+    await tx.$executeRawUnsafe(`INSERT INTO "GuildWorld" VALUES ('a-inactive', 1), ('b-no-hook', 1), ('c-other-world', 2), ('d-fallback', 1), ('e-later', 1)`);
+    const live = `NOW() + INTERVAL '1 day'`;
+    await tx.$executeRawUnsafe(`INSERT INTO "Post" VALUES
+      ('weekly', 1, NULL, 'closed', 'finalized', NULL, ${live}, 'America/New_York', NOW()),
+      ('weekly-chosen', 1, 'e-later', 'closed', 'finalized', NULL, ${live}, 'America/New_York', NOW()),
+      ('weekly-no-guild', 3, NULL, 'closed', 'finalized', NULL, ${live}, 'America/New_York', NOW()),
+      ('one-off', 1, NULL, 'closed', 'finalized', NULL, ${live}, NULL, NULL),
+      ('open', 1, NULL, 'open', NULL, NULL, ${live}, NULL, NULL),
+      ('expired', 1, NULL, 'closed', 'finalized', NULL, NOW() - INTERVAL '1 hour', 'America/New_York', NOW()),
+      ('deleted', 1, NULL, 'closed', 'finalized', NOW(), ${live}, 'America/New_York', NOW()),
+      ('ended', 1, NULL, 'closed', 'manual', NULL, ${live}, 'America/New_York', NOW())`);
+    await run(tx, migration('20261112145651_weekly_reminder_fallback_guild'));
+    const posts = await tx.$queryRawUnsafe<{ id: string; notificationGuildId: string | null }[]>('SELECT id, "notificationGuildId" FROM "Post" ORDER BY id');
+    expect(posts).toEqual([
+      { id: 'deleted', notificationGuildId: null },
+      { id: 'ended', notificationGuildId: null },
+      { id: 'expired', notificationGuildId: null },
+      { id: 'one-off', notificationGuildId: null },
+      { id: 'open', notificationGuildId: null },
+      { id: 'weekly', notificationGuildId: 'd-fallback' },
+      { id: 'weekly-chosen', notificationGuildId: 'e-later' },
+      { id: 'weekly-no-guild', notificationGuildId: null },
+    ]);
+  });
+});
