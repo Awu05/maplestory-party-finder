@@ -22,11 +22,17 @@ export async function enqueuePostAnnouncement(db: PrismaClient | Prisma.Transact
  * notification guild, which may never have seen it). Each guild hears of a closure once.
  */
 export async function enqueuePostClosure(db: PrismaClient, row: PostSummaryRow, storage: Storage, webOrigin: string, reason: string): Promise<void> {
-  // Read and cleared in one statement, so a concurrent closure cannot notify the same guild twice.
-  const [announced] = await db.$queryRaw<{ ids: string[] }[]>`
-    UPDATE "Post" p SET "announcedGuildIds" = '{}'
-    FROM (SELECT id, "announcedGuildIds" FROM "Post" WHERE id = ${row.id} FOR UPDATE) old
-    WHERE p.id = old.id RETURNING old."announcedGuildIds" AS ids`;
+  // A finalized party still counts as announced: the guilds are kept so ending it later notifies them
+  // too, and a flag makes sure a time change doesn't repeat the "finalized" notice. Any other closure
+  // reads and clears the guilds in one statement, so a concurrent closure can't notify a guild twice.
+  const [announced] = reason === 'finalized'
+    ? await db.$queryRaw<{ ids: string[] }[]>`
+        UPDATE "Post" SET "finalizedNoticeSent" = true
+        WHERE id = ${row.id} AND NOT "finalizedNoticeSent" RETURNING "announcedGuildIds" AS ids`
+    : await db.$queryRaw<{ ids: string[] }[]>`
+        UPDATE "Post" p SET "announcedGuildIds" = '{}'
+        FROM (SELECT id, "announcedGuildIds" FROM "Post" WHERE id = ${row.id} FOR UPDATE) old
+        WHERE p.id = old.id RETURNING old."announcedGuildIds" AS ids`;
   if (!announced?.ids.length) return;
   const guilds = await db.guild.findMany({ where: { id: { in: announced.ids }, active: true, webhookUrl: { not: null } }, select: { id: true }, orderBy: { id: 'asc' } });
   if (!guilds.length) return;

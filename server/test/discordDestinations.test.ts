@@ -208,6 +208,39 @@ it('sends closure notices to the guilds that saw the announcement, once per run'
   expect(await prisma.webhookDelivery.findMany({ where: { postId: id, eventType: 'post.closed' }, select: { guildId: true } })).toEqual([{ guildId: chatGuildId }]);
 });
 
+it('a finalized party gets one "finalized" notice, even if its time changes, and a second notice when it is ended', async () => {
+  const id = (await create()).json().id;
+  await events.drain();
+  const worker = new WebhookWorker({ prisma, sender: new FakeWebhookSender() });
+  await worker.runOnce();
+  expect((await finalize(id)).statusCode).toBe(200);
+  await events.drain();
+  expect((await finalize(id)).statusCode).toBe(200); // Change time
+  await events.drain();
+  const closures = () => prisma.webhookDelivery.findMany({ where: { postId: id, eventType: 'post.closed' }, select: { guildId: true, payload: true }, orderBy: { createdAt: 'asc' } });
+  expect((await closures()).map((d) => [d.guildId, (d.payload as { content: string }).content.match(/Post closed \((\w+)\)/)?.[1]])).toEqual([[guildId, 'finalized']]);
+  expect((await call('POST', `/${id}/close`, {})).statusCode).toBe(200);
+  await events.drain();
+  expect((await closures()).map((d) => [d.guildId, (d.payload as { content: string }).content.match(/Post closed \((\w+)\)/)?.[1]])).toEqual([[guildId, 'finalized'], [guildId, 'manual']]);
+  // Ending it twice does not notify again.
+  expect((await call('POST', `/${id}/close`, {})).statusCode).toBe(409);
+});
+
+it('a post that expired and is reopened only notifies the new run\'s guilds when it closes', async () => {
+  const id = (await create()).json().id;
+  await events.drain();
+  const worker = new WebhookWorker({ prisma, sender: new FakeWebhookSender() });
+  expect((await worker.runOnce()).sent).toBe(1); // announced in guildId
+  // It expires quietly: no closure event, so the old run's guild is still remembered.
+  // An expired post can't be edited, so its destination is moved directly, as an earlier edit would have.
+  await prisma.post.update({ where: { id }, data: { expiresAt: new Date(Date.now() - 1000), notificationGuildId: chatGuildId } });
+  expect((await call('POST', `/${id}/reopen`, {})).statusCode).toBe(200);
+  await worker.runOnce(); // the reopen announcement goes to chatGuildId
+  expect((await call('POST', `/${id}/close`, {})).statusCode).toBe(200);
+  await events.drain();
+  expect(await prisma.webhookDelivery.findMany({ where: { postId: id, eventType: 'post.closed' }, select: { guildId: true } })).toEqual([{ guildId: chatGuildId }]);
+});
+
 it('sends no closure notice when the post was never announced', async () => {
   const id = (await create({ notificationGuildId: null })).json().id;
   await events.drain();

@@ -339,8 +339,9 @@ export async function reopenPost(prisma: PrismaClient, viewer: Viewer, id: strin
       scheduledAt: null, weeklyTimeZone: null, weeklyAnchorAt: null,
       expiresAt: new Date(now.getTime() + FLEXIBLE_TTL_MS), worldId: character.worldId, guildId: character.guildId,
       ...(row.worldId !== character.worldId ? { notificationGuildId: null, partyForumGuildId: null } : {}),
-      // A reopened party is a new run: its next finalize may request a new party chat.
-      forumThreadRequested: false,
+      // A reopened party is a new run: its next finalize may request a new party chat, and only the
+      // guilds that see this run's announcement get its closure notices.
+      forumThreadRequested: false, announcedGuildIds: [], finalizedNoticeSent: false,
     }, include: postInclude });
     // A party that is still full is not recruiting, so there is nothing to announce.
     const queued = full ? 0 : await enqueuePostAnnouncement(tx, post, storage, webOrigin, now, 'post.reopened');

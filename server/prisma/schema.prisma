@@ -241,6 +241,8 @@ model Post {
   forumThreadRequested Boolean @default(false)
   /// Guilds whose channel received this run's announcement and has not had its closure notice yet.
   announcedGuildIds String[]     @default([])
+  /// The "finalized" closure notice has gone out for this run (reset when the post is reopened).
+  finalizedNoticeSent Boolean   @default(false)
   /// Last manually requested Discord announcement; creation starts the first cooldown.
   lastDiscordAnnouncementAt DateTime?
   /// Half-hour slots (day * 48 + slot, 0 = Sunday) in freeTimesZone.
