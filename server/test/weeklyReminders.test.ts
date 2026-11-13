@@ -147,6 +147,27 @@ it('excludes removed and banned members while including members from other guild
   expect((deliveries[0]!.payload as { allowed_mentions: { users: string[] } }).allowed_mentions.users).toHaveLength(2);
 });
 
+it('excludes deleted members, and sends nothing for a deleted poster\'s party', async () => {
+  const { guild, post } = await party();
+  const gone = await makeCharacter({ guildId: guild.id });
+  await addMember(post.id, gone.id);
+  await prisma.user.update({ where: { id: gone.ownerId }, data: { deletedAt: new Date() } });
+  await job.runOnce(at);
+  const deliveries = await prisma.webhookDelivery.findMany();
+  expect(deliveries).toHaveLength(1);
+  const mentioned = (deliveries[0]!.payload as { allowed_mentions: { users: string[] } }).allowed_mentions.users;
+  const goneOwner = await prisma.user.findUniqueOrThrow({ where: { id: gone.ownerId } });
+  expect(goneOwner.discordId).toEqual(expect.any(String));
+  expect(mentioned).toHaveLength(1); // only the poster
+  expect(mentioned).not.toContain(goneOwner.discordId);
+
+  await resetDb();
+  const second = await party();
+  await prisma.user.update({ where: { id: second.post.posterUserId }, data: { deletedAt: new Date() } });
+  await job.runOnce(at);
+  expect(await prisma.webhookDelivery.count()).toBe(0);
+});
+
 it('returns to the original wall time after the spring-forward gap', async () => {
   const anchor = new Date('2027-03-07T07:30:00Z'); // Sunday 02:30 EST.
   const { post } = await party({ scheduledAt: anchor, weeklyAnchorAt: anchor });

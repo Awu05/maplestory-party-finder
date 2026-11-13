@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import type { RefObject } from 'react';
 import type { AdminGuildDTO } from '@pf/shared';
 import { useAdminGuilds, useAdminWorlds, useBosses, useCreateGuild, useDeleteGuild, useGuildUsage, useTestWebhook, useUpdateGuild } from '../../api/hooks';
 import { friendlyError } from '../../api/errors';
@@ -30,7 +31,7 @@ function TestWebhookButton({ guild }: { guild: AdminGuildDTO }) {
   );
 }
 
-function DeleteGuildDialog({ guild, onClose }: { guild: AdminGuildDTO; onClose: () => void }) {
+function DeleteGuildDialog({ guild, onClose, heading }: { guild: AdminGuildDTO; onClose: () => void; heading: RefObject<HTMLHeadingElement | null> }) {
   const usage = useGuildUsage(guild.id);
   const del = useDeleteGuild();
   const u = usage.data;
@@ -43,6 +44,7 @@ function DeleteGuildDialog({ guild, onClose }: { guild: AdminGuildDTO; onClose: 
       error={usage.isError ? friendlyError(usage.error) : del.isError ? friendlyError(del.error) : undefined}
       onConfirm={() => del.mutate(guild.id, { onSuccess: onClose })}
       onCancel={onClose}
+      focusAfterConfirm={heading}
     >
       {u ? (
         <p>{plural(u.characters, 'character')} will have no guild and {u.posts} {u.posts === 1 ? 'post will lose it as its' : 'posts will lose it as their'} Discord destination.</p>
@@ -67,6 +69,7 @@ export function GuildsAdmin() {
   const [showHook, setShowHook] = useState(false);
   const [showForumHook, setShowForumHook] = useState(false);
   const [formError, setFormError] = useState('');
+  const headingRef = useRef<HTMLHeadingElement>(null);
   const [deleting, setDeleting] = useState<AdminGuildDTO | null>(null);
   const mutation = draft?.id ? update : create;
 
@@ -111,7 +114,7 @@ export function GuildsAdmin() {
 
   return (
     <div>
-      <h2>Guilds</h2>
+      <h2 ref={headingRef} tabIndex={-1}>Guilds</h2>
       {guilds.isError && <p role="alert" className="admin__error">{friendlyError(guilds.error)}</p>}
       <button type="button" className="btn btn--secondary" onClick={() => open(blank)}>Add guild</button>
       <table className="admin__table">
@@ -142,7 +145,7 @@ export function GuildsAdmin() {
       </table>
       {update.isError && !draft && <p role="alert" className="admin__error">{friendlyError(update.error)}</p>}
 
-      {deleting && <DeleteGuildDialog guild={deleting} onClose={() => setDeleting(null)} />}
+      {deleting && <DeleteGuildDialog guild={deleting} heading={headingRef} onClose={() => setDeleting(null)} />}
 
       {draft && (
         <form className="admin__form" onSubmit={submit}>

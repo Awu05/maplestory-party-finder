@@ -212,12 +212,14 @@ export const useUpdateGuild = () =>
   );
 
 export interface DeleteUsage { characters: number; posts: number }
+/** For a world: also how many moved characters and posts leave a guild that doesn't play on Kronos. */
+export interface WorldUsage extends DeleteUsage { leavingGuild: { characters: number; posts: number } }
 export const useGuildUsage = (id: string) =>
   useQuery({ queryKey: ['admin', 'guild-usage', id], queryFn: () => api<DeleteUsage>(`/api/admin/guilds/${id}/usage`), gcTime: 0 });
 export const useDeleteGuild = () =>
   useAdminMutation((id: string) => api<void>(`/api/admin/guilds/${id}`, { method: 'DELETE' }));
 export const useWorldUsage = (id: number) =>
-  useQuery({ queryKey: ['admin', 'world-usage', id], queryFn: () => api<DeleteUsage>(`/api/admin/worlds/${id}/usage`), gcTime: 0 });
+  useQuery({ queryKey: ['admin', 'world-usage', id], queryFn: () => api<WorldUsage>(`/api/admin/worlds/${id}/usage`), gcTime: 0 });
 export const useDeleteWorld = () =>
   useAdminMutation((id: number) => api<void>(`/api/admin/worlds/${id}`, { method: 'DELETE' }));
 

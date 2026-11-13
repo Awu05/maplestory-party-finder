@@ -65,6 +65,16 @@ describe('DailySyncJob', () => {
     expect(nexon.calls.map((c) => c.ign)).toEqual(['Fine']);
   });
 
+  it("does not sync a deleted user's character", async () => {
+    await makeWorld();
+    const gone = await makeUser({ deletedAt: new Date() });
+    await makeCharacter({ ign: 'Gone', ownerId: gone.id });
+    await makeCharacter({ ign: 'Fine' });
+    nexon.set([nx('Gone', 1), nx('Fine', 2)]);
+    expect(await job().runIfDue()).toEqual({ synced: 1, stale: 0 });
+    expect(nexon.calls.map((c) => c.ign)).toEqual(['Fine']);
+  });
+
   it('one Nexon failure marks that character stale; others ok; run completes', async () => {
     await makeWorld();
     const a = await makeCharacter({ ign: 'Aaa', lastSyncedAt: new Date('2026-05-01T00:00:00Z') });

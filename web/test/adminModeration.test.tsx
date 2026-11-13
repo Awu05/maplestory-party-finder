@@ -14,8 +14,11 @@ const char = {
   screenshotUrl: null, owner: { discordUsername: 'bob', displayName: null, discordLinked: true },
 };
 
+const usersList = [user('u1', 'bob'), user('u2', 'root', { isAdmin: true }), user('u3', 'bobby', { banned: true })];
 const usersRoutes = (extra: Record<string, unknown> = {}) => ({
-  '/api/admin/users': [user('u1', 'bob'), user('u2', 'root', { isAdmin: true }), user('u3', 'bobby', { banned: true })],
+  '/api/admin/users': usersList,
+  // The reassign picker asks for active accounts only.
+  '/api/admin/users?status=active': usersList,
   '/api/rarity-tiers': [],
   ...extra,
 });
@@ -84,6 +87,7 @@ describe('admin users', () => {
     mockApi({
       ...usersRoutes({ '/api/admin/users/u1/characters': [char], 'POST /api/admin/characters/c1/reassign': post }),
       '/api/admin/users': [user('u1', 'bob'), user('u2', 'root', { displayName: 'Maple Friend' })],
+      '/api/admin/users?status=active': [user('u1', 'bob'), user('u2', 'root', { displayName: 'Maple Friend' })],
     });
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
     renderWithProviders(<UsersAdmin />);

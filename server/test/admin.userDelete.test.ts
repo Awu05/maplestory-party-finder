@@ -104,6 +104,22 @@ describe('soft-deleting users', () => {
     expect((await prisma.post.findUniqueOrThrow({ where: { id: post.id } })).status).toBe('closed');
   });
 
+  it('a banned user can be deleted, then unbanning alone does not let them back in', async () => {
+    const victim = await makeUser({ discordId: 'u-2', username: 'Victim' });
+    const victimCookie = await loginAs(app, 'u-2', 'Victim');
+    expect((await call('PATCH', `/api/admin/users/${victim.id}`, admin, { banned: true })).statusCode).toBe(200);
+    const del = await call('DELETE', `/api/admin/users/${victim.id}`);
+    expect(del.statusCode).toBe(200);
+    expect(del.json()).toMatchObject({ banned: true, deletedAt: expect.any(String) });
+    expect((await call('PATCH', `/api/admin/users/${victim.id}`, admin, { banned: false })).json()).toMatchObject({ banned: false, deletedAt: expect.any(String) });
+    expect((await call('GET', '/api/auth/me', victimCookie)).json()).toBeNull();
+    expect((await call('GET', '/api/auth/me', await loginAs(app, 'u-2', 'Victim'))).json()).toBeNull();
+    // Reactivating as well restores access with a fresh sign-in; the old session stays ended.
+    expect((await call('POST', `/api/admin/users/${victim.id}/reactivate`)).statusCode).toBe(200);
+    expect((await call('GET', '/api/auth/me', victimCookie)).json()).toBeNull();
+    expect((await call('GET', '/api/auth/me', await loginAs(app, 'u-2', 'Victim'))).json()).toMatchObject({ id: victim.id });
+  });
+
   it('deleting twice keeps the first timestamp', async () => {
     const u = await makeUser();
     await call('DELETE', `/api/admin/users/${u.id}`);

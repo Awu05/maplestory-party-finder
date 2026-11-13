@@ -16,7 +16,7 @@ function failWhen(fetchMock: ReturnType<typeof mockApi>, when: (method: string, 
 const guild = (id: string, name: string) => ({ id, name, iconUrl: null, worldIds: [1], active: true, webhookUrl: null });
 
 describe('guild delete', () => {
-  it('opens a confirm with usage counts, deletes, refreshes, and focus returns to the opener', async () => {
+  it('opens a confirm with usage counts, deletes, refreshes, and focus moves to the page heading', async () => {
     let guilds = [guild('g1', 'Alpha'), guild('g2', 'Beta')];
     const del = vi.fn(() => { guilds = guilds.filter((g) => g.id !== 'g1'); return undefined; });
     mockApi({
@@ -37,6 +37,7 @@ describe('guild delete', () => {
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Delete Alpha' })).not.toBeInTheDocument());
     expect(screen.getByRole('button', { name: 'Delete Beta' })).toBeInTheDocument();
     expect(document.querySelector('dialog')).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Guilds' })).toHaveFocus();
   });
 
   it('pluralizes counts and disables Delete guild while counts load', async () => {
@@ -97,7 +98,7 @@ const world = (id: number, name: string) => ({ id, nexonWorldId: id, name, world
 describe('world delete', () => {
   const routes = (extra: Record<string, unknown> = {}) => ({
     '/api/worlds?all=1': [world(1, 'Kronos'), world(2, 'Scania')],
-    '/api/admin/worlds/2/usage': { characters: 4, posts: 2 },
+    '/api/admin/worlds/2/usage': { characters: 4, posts: 2, leavingGuild: { characters: 0, posts: 0 } },
     ...extra,
   });
 
@@ -121,10 +122,64 @@ describe('world delete', () => {
     await waitFor(() => expect(del).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Delete Scania' })).not.toBeInTheDocument());
     expect(document.querySelector('dialog')).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Worlds' })).toHaveFocus();
+    expect(within(dialog).queryByText(/leave a guild/)).toBeNull();
+  });
+
+  it('says how many characters and posts will leave a guild that does not play on Kronos', async () => {
+    mockApi(routes({ '/api/admin/worlds/2/usage': { characters: 4, posts: 2, leavingGuild: { characters: 3, posts: 1 } } }));
+    renderWithProviders(<WorldsAdmin />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete Scania' }));
+    expect(await screen.findByText("3 characters and 1 post will leave a guild that doesn't play on Kronos.")).toBeInTheDocument();
+  });
+
+  it('only characters leaving: no post count in the guild line', async () => {
+    mockApi(routes({ '/api/admin/worlds/2/usage': { characters: 4, posts: 2, leavingGuild: { characters: 1, posts: 0 } } }));
+    renderWithProviders(<WorldsAdmin />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete Scania' }));
+    expect(await screen.findByText("1 character will leave a guild that doesn't play on Kronos.")).toBeInTheDocument();
+  });
+
+  it('Cancel returns focus to the Delete button', async () => {
+    mockApi(routes());
+    renderWithProviders(<WorldsAdmin />);
+    const opener = await screen.findByRole('button', { name: 'Delete Scania' });
+    opener.focus();
+    fireEvent.click(opener);
+    fireEvent.click(await screen.findByText('Cancel'));
+    await waitFor(() => expect(document.querySelector('dialog')).toBeNull());
+    expect(opener).toHaveFocus();
+  });
+
+  it('a failed delete then Cancel returns focus to the Delete button, not the heading', async () => {
+    const fetchMock = mockApi(routes());
+    failWhen(fetchMock, (m) => m === 'DELETE', 409, { code: 'WORLD_CHANGED', message: 'x' });
+    renderWithProviders(<WorldsAdmin />);
+    const opener = await screen.findByRole('button', { name: 'Delete Scania' });
+    opener.focus();
+    fireEvent.click(opener);
+    const dialog = await screen.findByRole('dialog');
+    await waitFor(() => expect(within(dialog).getByText('Delete world')).toBeEnabled());
+    fireEvent.click(within(dialog).getByText('Delete world'));
+    expect(await within(dialog).findByText('This world changed while it was being deleted. Try again.')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByText('Cancel'));
+    await waitFor(() => expect(document.querySelector('dialog')).toBeNull());
+    expect(opener).toHaveFocus();
+  });
+
+  it('KRONOS_INACTIVE explains what to do', async () => {
+    const fetchMock = mockApi(routes());
+    failWhen(fetchMock, (m) => m === 'DELETE', 409, { code: 'KRONOS_INACTIVE', message: 'x' });
+    renderWithProviders(<WorldsAdmin />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete Scania' }));
+    const dialog = await screen.findByRole('dialog');
+    await waitFor(() => expect(within(dialog).getByText('Delete world')).toBeEnabled());
+    fireEvent.click(within(dialog).getByText('Delete world'));
+    expect(await within(dialog).findByText('Turn Kronos back on first: characters from a deleted world move there.')).toBeInTheDocument();
   });
 
   it('singular counts', async () => {
-    mockApi(routes({ '/api/admin/worlds/2/usage': { characters: 1, posts: 1 } }));
+    mockApi(routes({ '/api/admin/worlds/2/usage': { characters: 1, posts: 1, leavingGuild: { characters: 0, posts: 0 } } }));
     renderWithProviders(<WorldsAdmin />);
     fireEvent.click(await screen.findByRole('button', { name: 'Delete Scania' }));
     expect(await screen.findByText('1 character and 1 post will move to Kronos.')).toBeInTheDocument();
@@ -138,9 +193,11 @@ describe('world delete', () => {
     const dialog = await screen.findByRole('dialog');
     await waitFor(() => expect(within(dialog).getByText('Delete world')).toBeEnabled());
     fireEvent.click(within(dialog).getByText('Delete world'));
-    expect(await within(dialog).findByText(/already exist on Kronos/)).toBeInTheDocument();
+    expect(await within(dialog).findByText('These characters already exist on Kronos. Rename or remove them first:')).toBeInTheDocument();
     const items = within(within(dialog).getByRole('list')).getAllByRole('listitem').map((li) => li.textContent);
     expect(items).toEqual(['Aa', 'Bb']);
+    // The names are listed once, not also inside the message.
+    expect(within(dialog).queryByText(/Aa, Bb/)).toBeNull();
   });
 });
 
@@ -177,6 +234,7 @@ describe('user delete', () => {
     await waitFor(() => expect(del).toHaveBeenCalledTimes(1));
     expect(await screen.findByRole('button', { name: 'Reactivate bob' })).toBeInTheDocument();
     expect(document.querySelector('dialog')).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Users' })).toHaveFocus();
   });
 
   it('shows a delete error in the dialog', async () => {
@@ -219,7 +277,7 @@ describe('admin user characters layout', () => {
       world: { id: 1, name: 'Scania' }, guild: null, cpUpdatedAt: '2026-01-01T00:00:00Z', screenshotUrl: null,
       owner: { discordUsername: 'bob', displayName: null, discordLinked: true },
     };
-    mockApi({ '/api/admin/users': [user('u1', 'bob'), user('u2', 'amy')], '/api/rarity-tiers': [], '/api/admin/users/u1/characters': [c] });
+    const fetchMock = mockApi({ '/api/admin/users': [user('u1', 'bob'), user('u2', 'amy')], '/api/admin/users?status=active': [user('u1', 'bob'), user('u2', 'amy')], '/api/rarity-tiers': [], '/api/admin/users/u1/characters': [c] });
     renderWithProviders(<UsersAdmin />);
     fireEvent.click(await screen.findByRole('button', { name: 'Show characters bob' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Reassign Mapler' }));
@@ -228,6 +286,9 @@ describe('admin user characters layout', () => {
     expect(char.querySelector(':scope > .card')).not.toBeNull();
     expect(char.querySelector(':scope > .admin__row')).not.toBeNull();
     expect(char.querySelector(':scope > .admin__picker')).not.toBeNull();
+    // The new-owner picker asks the server for active accounts only.
+    expect(await screen.findByRole('button', { name: 'Choose amy' })).toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([u]) => String(u) === '/api/admin/users?status=active')).toBe(true);
   });
 });
 

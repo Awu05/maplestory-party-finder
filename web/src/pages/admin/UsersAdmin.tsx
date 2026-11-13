@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import type { RefObject } from 'react';
 import type { AdminUserDTO, CharacterDTO } from '@pf/shared';
 import {
   useAdminDeleteCharacter,
@@ -19,7 +20,8 @@ import { CharacterCard } from '../../components/card/CharacterCard';
 
 function ReassignPanel({ character, ownerId, onDone }: { character: CharacterDTO; ownerId: string; onDone: () => void }) {
   const [q, setQ] = useState('');
-  const users = useAdminUsers(useDebouncedValue(q));
+  // Only active accounts, so deleted ones don't use up the server's result limit.
+  const users = useAdminUsers(useDebouncedValue(q), 'active');
   const reassign = useReassignCharacter();
   const choices = users.data?.filter((u) => u.id !== ownerId && !u.banned && !u.deletedAt) ?? [];
 
@@ -91,7 +93,7 @@ function UserCharacters({ user }: { user: AdminUserDTO }) {
   );
 }
 
-function DeleteUserDialog({ user, onClose }: { user: AdminUserDTO; onClose: () => void }) {
+function DeleteUserDialog({ user, onClose, heading }: { user: AdminUserDTO; onClose: () => void; heading: RefObject<HTMLHeadingElement | null> }) {
   const del = useDeleteUser();
   return (
     <ConfirmDialog
@@ -101,6 +103,7 @@ function DeleteUserDialog({ user, onClose }: { user: AdminUserDTO; onClose: () =
       error={del.isError ? friendlyError(del.error) : undefined}
       onConfirm={() => del.mutate(user.id, { onSuccess: onClose })}
       onCancel={onClose}
+      focusAfterConfirm={heading}
     >
       <p>They won't be able to sign in and their open posts will close. You can reactivate the account later.</p>
     </ConfirmDialog>
@@ -113,12 +116,13 @@ export function UsersAdmin() {
   const users = useAdminUsers(useDebouncedValue(q), status);
   const setBanned = useSetBanned();
   const reactivate = useReactivateUser();
+  const headingRef = useRef<HTMLHeadingElement>(null);
   const [deleting, setDeleting] = useState<AdminUserDTO | null>(null);
   const [open, setOpen] = useState<string | null>(null);
 
   return (
     <div>
-      <h2>Users</h2>
+      <h2 ref={headingRef} tabIndex={-1}>Users</h2>
       <input type="search" aria-label="Search users" placeholder="Search display name or Discord username" value={q} onChange={(e) => setQ(e.target.value)} />
       <select aria-label="Filter by status" value={status} onChange={(e) => setStatus(e.target.value as UserStatusFilter)}>
         <option value="all">All</option>
@@ -179,7 +183,7 @@ export function UsersAdmin() {
           </div>
         );
       })}
-      {deleting && <DeleteUserDialog user={deleting} onClose={() => setDeleting(null)} />}
+      {deleting && <DeleteUserDialog user={deleting} heading={headingRef} onClose={() => setDeleting(null)} />}
     </div>
   );
 }

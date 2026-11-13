@@ -153,6 +153,18 @@ it('starting a link from another site is refused, and a logged-out or banned sta
   expect(banned.headers.location).toBe(`${ORIGIN}/?link=failed`);
 });
 
+it('an account deleted mid-link is not linked, and a deleted account cannot start a link', async () => {
+  const local = await passkeyAccount();
+  const pending = await startLink(local.cookie);
+  await prisma.user.update({ where: { id: local.id }, data: { deletedAt: new Date() } });
+  const done = await callback('fake:d-1:Real_Name', pending.state, pending.cookie);
+  expect(done.statusCode).toBe(302);
+  expect(done.headers.location).not.toBe(`${ORIGIN}/?link=done`);
+  expect(await prisma.user.findUniqueOrThrow({ where: { id: local.id } })).toMatchObject({ discordId: null });
+  const start = await app.inject({ url: '/api/auth/discord/link', headers: { cookie: local.cookie } });
+  expect(start.headers.location).toBe(`${ORIGIN}/?link=failed`);
+});
+
 it('a link callback while logged out, or after Discord reports an error, fails and clears the request', async () => {
   const local = await passkeyAccount();
   const pending = await startLink(local.cookie);

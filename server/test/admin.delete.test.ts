@@ -1,5 +1,6 @@
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
+import { Prisma } from '@prisma/client';
 import { buildTestApp, loginAs, makeCharacter, makeGuild, makePost, makeUser, makeWorld, prisma, resetDb } from './helpers.js';
 
 let app: FastifyInstance;
@@ -59,6 +60,16 @@ describe('DELETE /admin/guilds/:id', () => {
     expect(await prisma.webhookDelivery.count()).toBe(1);
   });
 
+  it('prunes the guild from closed and deleted posts too, so no later notice targets it', async () => {
+    const w = await makeWorld();
+    const g = await makeGuild({ worldIds: [w.id], webhookUrl: HOOK });
+    const c = await makeCharacter({ worldId: w.id, guildId: null });
+    const closed = await makePost({ posterCharacterId: c.id, status: 'closed', closedReason: 'finalized', announcedGuildIds: [g.id], finalizedNoticeSent: true });
+    const gone = await makePost({ posterCharacterId: c.id, deletedAt: new Date(), announcedGuildIds: [g.id] });
+    expect((await call('DELETE', `/api/admin/guilds/${g.id}`)).statusCode).toBe(204);
+    for (const p of [closed, gone]) expect((await prisma.post.findUniqueOrThrow({ where: { id: p.id } })).announcedGuildIds).toEqual([]);
+  });
+
   it('usage counts only live posts', async () => {
     const w = await makeWorld();
     const g = await makeGuild({ worldIds: [w.id] });
@@ -98,7 +109,7 @@ describe('DELETE /admin/worlds/:id', () => {
     const nexonChar = await makeCharacter({ worldId: bera.id, guildId: both.id, source: 'nexon' });
     const manualChar = await makeCharacter({ worldId: bera.id, guildId: both.id, source: 'manual' });
     const post = await makePost({ posterCharacterId: nexonChar.id, notificationGuildId: both.id, partyForumGuildId: beraOnly.id });
-    expect((await call('GET', `/api/admin/worlds/${bera.id}/usage`)).json()).toEqual({ characters: 2, posts: 1 });
+    expect((await call('GET', `/api/admin/worlds/${bera.id}/usage`)).json()).toEqual({ characters: 2, posts: 1, leavingGuild: { characters: 0, posts: 0 } });
 
     const res = await call('DELETE', `/api/admin/worlds/${bera.id}`);
     expect(res.statusCode).toBe(204);
@@ -124,6 +135,86 @@ describe('DELETE /admin/worlds/:id', () => {
     expect(res.json().error).toMatchObject({ code: 'WORLD_NAME_CLASH', igns: ['dupe'], message: 'These characters already exist on Kronos: dupe. Rename or remove them first.' });
     expect(await prisma.world.findUnique({ where: { id: bera.id } })).not.toBeNull();
     expect((await prisma.character.findUniqueOrThrow({ where: { id: moving.id } })).worldId).toBe(bera.id);
+  });
+
+  it('lists every clashing IGN and moves nothing at all', async () => {
+    const kronos = await makeWorld({ nexonWorldId: 45, name: 'Kronos' });
+    const bera = await makeWorld({ nexonWorldId: 1, name: 'Bera' });
+    const g = await makeGuild({ worldIds: [bera.id] });
+    await makeCharacter({ worldId: kronos.id, guildId: null, ign: 'One' });
+    await makeCharacter({ worldId: kronos.id, guildId: null, ign: 'Two' });
+    const a = await makeCharacter({ worldId: bera.id, guildId: g.id, ign: 'one' });
+    const b = await makeCharacter({ worldId: bera.id, guildId: g.id, ign: 'TWO' });
+    const fine = await makeCharacter({ worldId: bera.id, guildId: g.id, ign: 'Fine' });
+    const post = await makePost({ posterCharacterId: fine.id, guildId: g.id });
+    const res = await call('DELETE', `/api/admin/worlds/${bera.id}`);
+    expect(res.statusCode).toBe(409);
+    expect([...res.json().error.igns].sort()).toEqual(['TWO', 'one']);
+    for (const c of [a, b, fine]) {
+      const now = await prisma.character.findUniqueOrThrow({ where: { id: c.id } });
+      expect([now.worldId, now.guildId, now.syncStatus]).toEqual([bera.id, g.id, 'ok']);
+    }
+    const p = await prisma.post.findUniqueOrThrow({ where: { id: post.id } });
+    expect([p.worldId, p.guildId]).toEqual([bera.id, g.id]);
+    expect(await prisma.guildWorld.count({ where: { worldId: bera.id } })).toBe(1);
+  });
+
+  it('moves to Kronos matched case-insensitively', async () => {
+    const kronos = await makeWorld({ nexonWorldId: 45, name: 'KRONOS' });
+    const bera = await makeWorld({ nexonWorldId: 1, name: 'Bera' });
+    const c = await makeCharacter({ worldId: bera.id, guildId: null });
+    expect((await call('DELETE', `/api/admin/worlds/${bera.id}`)).statusCode).toBe(204);
+    expect((await prisma.character.findUniqueOrThrow({ where: { id: c.id } })).worldId).toBe(kronos.id);
+  });
+
+  it('refuses while Kronos is inactive', async () => {
+    await makeWorld({ nexonWorldId: 45, name: 'Kronos', active: false });
+    const bera = await makeWorld({ nexonWorldId: 1, name: 'Bera' });
+    const res = await call('DELETE', `/api/admin/worlds/${bera.id}`);
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toMatchObject({ code: 'KRONOS_INACTIVE' });
+    expect(await prisma.world.findUnique({ where: { id: bera.id } })).not.toBeNull();
+  });
+
+  it('characters and posts leave a guild that does not play on Kronos, and usage counts them', async () => {
+    const kronos = await makeWorld({ nexonWorldId: 45, name: 'Kronos' });
+    const bera = await makeWorld({ nexonWorldId: 1, name: 'Bera' });
+    const both = await makeGuild({ worldIds: [kronos.id, bera.id] });
+    const beraOnly = await makeGuild({ worldIds: [bera.id] });
+    const stays = await makeCharacter({ worldId: bera.id, guildId: both.id });
+    const leaves = await makeCharacter({ worldId: bera.id, guildId: beraOnly.id });
+    const guildless = await makeCharacter({ worldId: bera.id, guildId: null });
+    const keepPost = await makePost({ posterCharacterId: stays.id, guildId: both.id });
+    const leavePost = await makePost({ posterCharacterId: leaves.id, guildId: beraOnly.id });
+    await makePost({ posterCharacterId: leaves.id, guildId: beraOnly.id, deletedAt: new Date() });
+    expect((await call('GET', `/api/admin/worlds/${bera.id}/usage`)).json()).toEqual({ characters: 3, posts: 2, leavingGuild: { characters: 1, posts: 1 } });
+
+    expect((await call('DELETE', `/api/admin/worlds/${bera.id}`)).statusCode).toBe(204);
+    const guildOf = async (id: string) => (await prisma.character.findUniqueOrThrow({ where: { id } })).guildId;
+    expect([await guildOf(stays.id), await guildOf(leaves.id), await guildOf(guildless.id)]).toEqual([both.id, null, null]);
+    expect((await prisma.post.findUniqueOrThrow({ where: { id: keepPost.id } })).guildId).toBe(both.id);
+    expect((await prisma.post.findUniqueOrThrow({ where: { id: leavePost.id } })).guildId).toBeNull();
+    // The guild itself is kept; it just no longer serves the deleted world.
+    expect(await prisma.guild.findUnique({ where: { id: beraOnly.id } })).not.toBeNull();
+  });
+
+  it('a character created on the world mid-delete gives a 409 to retry, not a 500', async () => {
+    await makeWorld({ nexonWorldId: 45, name: 'Kronos' });
+    const bera = await makeWorld({ nexonWorldId: 1, name: 'Bera' });
+    // Simulate the race: the world delete fails on a row that appeared after the move (FK or unique violation).
+    for (const code of ['P2003', 'P2002']) {
+      const spy = vi.spyOn(prisma, '$transaction').mockRejectedValueOnce(
+        new Prisma.PrismaClientKnownRequestError('race', { code, clientVersion: 'test' }),
+      );
+      try {
+        const res = await call('DELETE', `/api/admin/worlds/${bera.id}`);
+        expect(res.statusCode).toBe(409);
+        expect(res.json().error).toMatchObject({ code: 'WORLD_CHANGED' });
+      } finally {
+        spy.mockRestore();
+      }
+    }
+    expect(await prisma.world.findUnique({ where: { id: bera.id } })).not.toBeNull();
   });
 });
 

@@ -133,6 +133,11 @@ function toClassDTO(c: { id: number; name: string; archetype: string; category: 
   return { id: c.id, name: c.name, archetype: c.archetype as JobClassDTO['archetype'], category: c.category as JobClassDTO['category'] };
 }
 
+/** The world everything moves to when a world is deleted: the lowest-id world named Kronos (any case). */
+function findKronos(db: Pick<PrismaClient, 'world'> | Prisma.TransactionClient) {
+  return db.world.findFirst({ where: { name: { equals: 'Kronos', mode: 'insensitive' } }, orderBy: { id: 'asc' } });
+}
+
 function isCode(err: unknown, code: string): boolean {
   return err instanceof Prisma.PrismaClientKnownRequestError && err.code === code;
 }
@@ -313,22 +318,41 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
     await requireAdmin(req);
     const { id } = idParam.parse(req.params);
     if (!(await prisma.world.findUnique({ where: { id }, select: { id: true } }))) throw new AppError(404, 'NOT_FOUND');
-    const [characters, posts] = await Promise.all([
+    const kronos = await findKronos(prisma);
+    // A guild "leaves" a moved character or post when it doesn't play on Kronos.
+    const leaves = kronos && kronos.id !== id ? { guildId: { not: null }, guild: { worlds: { none: { worldId: kronos.id } } } } : null;
+    const [characters, posts, charactersLeaving, postsLeaving] = await Promise.all([
       prisma.character.count({ where: { worldId: id } }),
       prisma.post.count({ where: { ...LIVE_POST, worldId: id } }),
+      leaves ? prisma.character.count({ where: { worldId: id, ...leaves } }) : 0,
+      leaves ? prisma.post.count({ where: { ...LIVE_POST, worldId: id, ...leaves } }) : 0,
     ]);
-    return { characters, posts };
+    return { characters, posts, leavingGuild: { characters: charactersLeaving, posts: postsLeaving } };
   });
 
   app.delete('/admin/worlds/:id', async (req, reply) => {
     await requireAdmin(req);
     const { id } = idParam.parse(req.params);
+    try {
+      await deleteWorld(id);
+    } catch (err) {
+      // A character or post written to this world while it was being deleted: nothing was changed.
+      if (isCode(err, 'P2002') || isCode(err, 'P2003')) {
+        throw new AppError(409, 'WORLD_CHANGED', 'This world changed while it was being deleted. Try again.');
+      }
+      throw err;
+    }
+    return reply.status(204).send();
+  });
+
+  async function deleteWorld(id: number) {
     await prisma.$transaction(async (tx) => {
       const world = await tx.world.findUnique({ where: { id } });
       if (!world) throw new AppError(404, 'NOT_FOUND');
-      const kronos = await tx.world.findFirst({ where: { name: { equals: 'Kronos', mode: 'insensitive' } }, orderBy: { id: 'asc' } });
+      const kronos = await findKronos(tx);
       if (!kronos) throw new AppError(409, 'NO_KRONOS', 'Add a Kronos world before deleting other worlds.');
       if (kronos.id === id) throw new AppError(409, 'CANNOT_DELETE_KRONOS', "Kronos is the default world and can't be deleted.");
+      if (!kronos.active) throw new AppError(409, 'KRONOS_INACTIVE', `Turn ${kronos.name} back on before deleting other worlds; their characters move there.`);
 
       const moving = await tx.character.findMany({ where: { worldId: id }, select: { ign: true, ignLower: true } });
       const taken = new Set((await tx.character.findMany({ where: { worldId: kronos.id, ignLower: { in: moving.map((c) => c.ignLower) } }, select: { ignLower: true } })).map((c) => c.ignLower));
@@ -336,6 +360,11 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       if (clashes.length > 0) {
         throw new AppError(409, 'WORLD_NAME_CLASH', `These characters already exist on ${kronos.name}: ${clashes.join(', ')}. Rename or remove them first.`, { igns: clashes });
       }
+
+      // Like a manual character moving worlds, a character or post leaves a guild that doesn't play on Kronos.
+      const notOnKronos = { guildId: { not: null }, guild: { worlds: { none: { worldId: kronos.id } } } };
+      await tx.character.updateMany({ where: { worldId: id, ...notOnKronos }, data: { guildId: null } });
+      await tx.post.updateMany({ where: { worldId: id, ...notOnKronos }, data: { guildId: null } });
 
       // A Nexon-synced character's world no longer matches Nexon, so the next sync should treat it as stale.
       await tx.character.updateMany({ where: { worldId: id, source: 'nexon' }, data: { worldId: kronos.id, syncStatus: 'stale' } });
@@ -360,8 +389,7 @@ export async function catalogRoutes(app: FastifyInstance): Promise<void> {
       await tx.guildWorld.deleteMany({ where: { worldId: id } });
       await tx.world.delete({ where: { id } });
     });
-    return reply.status(204).send();
-  });
+  }
 
   // ---- Admin: bosses ----
   app.post('/admin/bosses', async (req, reply) => {

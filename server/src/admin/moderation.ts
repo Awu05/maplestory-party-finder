@@ -131,7 +131,8 @@ export async function adminModerationRoutes(app: FastifyInstance): Promise<void>
     return toUserDTO(await prisma.user.findUniqueOrThrow({ where: { id }, include: userInclude }));
   });
 
-  // Does not unban a separately banned user, and closed posts stay closed.
+  // Does not unban a separately banned user, and closed posts stay closed. The session version is left
+  // alone: the delete already ended every old session, so the user simply signs in again.
   app.post('/admin/users/:id/reactivate', async (req) => {
     await requireAdmin(req);
     const { id } = idParam.parse(req.params);

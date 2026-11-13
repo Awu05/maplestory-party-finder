@@ -13,6 +13,10 @@ const FRIENDLY: Record<string, string> = {
   BANNED: 'Your account has been banned. Contact the admin.',
   DELETED: 'This account has been deleted.',
   CANNOT_DELETE_ADMIN: "Admins can't be deleted.",
+  // The names are listed under this message in the delete dialog.
+  WORLD_NAME_CLASH: 'These characters already exist on Kronos. Rename or remove them first:',
+  KRONOS_INACTIVE: 'Turn Kronos back on first: characters from a deleted world move there.',
+  WORLD_CHANGED: 'This world changed while it was being deleted. Try again.',
   FORBIDDEN: "You don't have permission to do that.",
   NOT_OWNER: "You don't own this character.",
   GUILD_INACTIVE: "That guild isn't accepting characters right now.",
