@@ -170,3 +170,17 @@ describe('finalize dialog styles', () => {
     for (const sel of ['.finalize-dialog', '.finalize-dialog__content', '.finalize-dialog__field']) expect(selectors(postCss)).toContain(sel);
   });
 });
+
+describe('admin characters grid', () => {
+  const adminCss = read('pages/admin/admin.css');
+  it('.admin__chars is a grid whose columns are bounded, and each .admin__char fills its column', () => {
+    expect(ruleBody(adminCss, '.admin__chars')).toMatch(/display:\s*grid/);
+    expect(ruleBody(adminCss, '.admin__chars')).toMatch(/grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(200px,\s*220px\)\)/);
+    expect(ruleBody(adminCss, '.admin__char')).toMatch(/min-width:\s*0/);
+    expect(ruleBody(adminCss, '.admin__char')).not.toMatch(/justify-items:\s*start/);
+    expect(ruleBody(adminCss, '.admin__char .card')).toMatch(/width:\s*100%/);
+    const phone = adminCss.slice(adminCss.indexOf('@media (max-width: 640px)', adminCss.indexOf('.admin__char .card')));
+    expect(ruleBody(phone, '.admin__chars')).toMatch(/grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
+  });
+});
+

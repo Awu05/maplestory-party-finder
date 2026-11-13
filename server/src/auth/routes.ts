@@ -105,7 +105,7 @@ export async function authRoutes(api: FastifyInstance): Promise<void> {
         linked = await withUsernameClaim((claim) => prisma.$transaction(async (tx) => {
           if (claim) await releaseUsernameClaim(tx, profile.username, (holder) => holder.id === linkUserId);
           const updated = await tx.user.updateMany({
-            where: { id: linkUserId, discordId: null, banned: false, sessionVersion: viewer.user.sessionVersion },
+            where: { id: linkUserId, discordId: null, banned: false, deletedAt: null, sessionVersion: viewer.user.sessionVersion },
             data: { discordId: profile.discordId, username: profile.username, usernameKey: claim ? usernameKey(profile.username) : null, avatar: profile.avatarUrl },
           });
           // Nothing matched: the account was banned, linked or signed out everywhere since the check
@@ -136,6 +136,7 @@ export async function authRoutes(api: FastifyInstance): Promise<void> {
       });
     }));
     if (user.banned) return reply.redirect(`${config.webOrigin}/?login=banned`);
+    if (user.deletedAt) return reply.redirect(`${config.webOrigin}/?login=deleted`);
     await startSession(req, user);
     return reply.redirect(`${config.webOrigin}/me/characters`);
   });

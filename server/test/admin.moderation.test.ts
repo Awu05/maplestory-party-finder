@@ -31,6 +31,8 @@ describe('authorization', () => {
     const routes: ['GET' | 'POST' | 'PATCH' | 'DELETE', string, unknown?][] = [
       ['GET', '/api/admin/users'],
       ['PATCH', '/api/admin/users/x', { banned: true }],
+      ['DELETE', '/api/admin/users/x'],
+      ['POST', '/api/admin/users/x/reactivate'],
       ['GET', '/api/admin/users/x/characters'],
       ['POST', '/api/admin/characters/x/reassign', { userId: 'y' }],
       ['DELETE', '/api/admin/characters/x'],

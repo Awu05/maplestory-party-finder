@@ -211,6 +211,18 @@ export const useUpdateGuild = () =>
     api<AdminGuildDTO>(`/api/admin/guilds/${id}`, { method: 'PATCH', json }),
   );
 
+export interface DeleteUsage { characters: number; posts: number }
+/** For a world: also how many moved characters and posts leave a guild that doesn't play on Kronos. */
+export interface WorldUsage extends DeleteUsage { leavingGuild: { characters: number; posts: number } }
+export const useGuildUsage = (id: string) =>
+  useQuery({ queryKey: ['admin', 'guild-usage', id], queryFn: () => api<DeleteUsage>(`/api/admin/guilds/${id}/usage`), gcTime: 0 });
+export const useDeleteGuild = () =>
+  useAdminMutation((id: string) => api<void>(`/api/admin/guilds/${id}`, { method: 'DELETE' }));
+export const useWorldUsage = (id: number) =>
+  useQuery({ queryKey: ['admin', 'world-usage', id], queryFn: () => api<WorldUsage>(`/api/admin/worlds/${id}/usage`), gcTime: 0 });
+export const useDeleteWorld = () =>
+  useAdminMutation((id: number) => api<void>(`/api/admin/worlds/${id}`, { method: 'DELETE' }));
+
 export interface WorldInput {
   name?: string;
   worldType?: WorldDTO['worldType'];
@@ -261,6 +273,21 @@ export const useWebhookHealth = () =>
     refetchInterval: 60_000,
   });
 
+export const useDeleteDelivery = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api<void>(`/api/admin/webhooks/deliveries/${id}`, { method: 'DELETE' }),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['admin', 'webhooks', 'health'] }),
+  });
+};
+export const useClearFailedDeliveries = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api<void>('/api/admin/webhooks/deliveries?status=failed', { method: 'DELETE' }),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['admin', 'webhooks', 'health'] }),
+  });
+};
+
 export type TestWebhookResult = { ok: true } | { ok: false; error: string };
 export function useTestWebhook() {
   const qc = useQueryClient();
@@ -282,12 +309,16 @@ export function useDebouncedValue<T>(value: T, ms = 300): T {
   return debounced;
 }
 
-export function useAdminUsers(q: string) {
+export type UserStatusFilter = 'all' | 'active' | 'deleted';
+export function useAdminUsers(q: string, status: UserStatusFilter = 'all') {
   const term = q.trim();
+  const params = new URLSearchParams();
+  if (term) params.set('q', term);
+  if (status !== 'all') params.set('status', status);
+  const query = params.toString();
   return useQuery({
-    queryKey: ['admin', 'users', term],
-    queryFn: () =>
-      api<AdminUserDTO[]>(term ? `/api/admin/users?q=${encodeURIComponent(term)}` : '/api/admin/users'),
+    queryKey: ['admin', 'users', term, status],
+    queryFn: () => api<AdminUserDTO[]>(query ? `/api/admin/users?${query}` : '/api/admin/users'),
   });
 }
 
@@ -323,6 +354,10 @@ export const useSetBanned = () =>
   useModerationMutation(({ id, banned }: { id: string; banned: boolean }) =>
     api<AdminUserDTO>(`/api/admin/users/${id}`, { method: 'PATCH', json: { banned } }),
   );
+export const useDeleteUser = () =>
+  useModerationMutation((id: string) => api<AdminUserDTO>(`/api/admin/users/${id}`, { method: 'DELETE' }));
+export const useReactivateUser = () =>
+  useModerationMutation((id: string) => api<AdminUserDTO>(`/api/admin/users/${id}/reactivate`, { method: 'POST' }));
 export const useReassignCharacter = () =>
   useModerationMutation(({ id, userId }: { id: string; userId: string }) =>
     api<CharacterDTO>(`/api/admin/characters/${id}/reassign`, { method: 'POST', json: { userId } }),

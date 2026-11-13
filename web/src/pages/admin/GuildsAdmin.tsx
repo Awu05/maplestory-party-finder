@@ -1,7 +1,10 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import type { RefObject } from 'react';
 import type { AdminGuildDTO } from '@pf/shared';
-import { useAdminGuilds, useAdminWorlds, useBosses, useCreateGuild, useTestWebhook, useUpdateGuild } from '../../api/hooks';
+import { useAdminGuilds, useAdminWorlds, useBosses, useCreateGuild, useDeleteGuild, useGuildUsage, useTestWebhook, useUpdateGuild } from '../../api/hooks';
 import { friendlyError } from '../../api/errors';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { plural } from '../../lib/plural';
 
 interface Draft {
   id: string | null;
@@ -28,6 +31,30 @@ function TestWebhookButton({ guild }: { guild: AdminGuildDTO }) {
   );
 }
 
+function DeleteGuildDialog({ guild, onClose, heading }: { guild: AdminGuildDTO; onClose: () => void; heading: RefObject<HTMLHeadingElement | null> }) {
+  const usage = useGuildUsage(guild.id);
+  const del = useDeleteGuild();
+  const u = usage.data;
+  return (
+    <ConfirmDialog
+      title={`Delete ${guild.name}?`}
+      confirmLabel="Delete guild"
+      confirmDisabled={!u}
+      busy={del.isPending}
+      error={usage.isError ? friendlyError(usage.error) : del.isError ? friendlyError(del.error) : undefined}
+      onConfirm={() => del.mutate(guild.id, { onSuccess: onClose })}
+      onCancel={onClose}
+      focusAfterConfirm={heading}
+    >
+      {u ? (
+        <p>{plural(u.characters, 'character')} will have no guild and {u.posts} {u.posts === 1 ? 'post will lose it as its' : 'posts will lose it as their'} Discord destination.</p>
+      ) : (
+        <p>Checking what this affects…</p>
+      )}
+    </ConfirmDialog>
+  );
+}
+
 const ROLE_ID = /^[1-9][0-9]{16,19}$/;
 
 const blank: Draft = { id: null, name: '', iconUrl: '', webhookUrl: '', partyForumWebhookUrl: '', worldIds: [], bossRoleIds: {} };
@@ -42,6 +69,8 @@ export function GuildsAdmin() {
   const [showHook, setShowHook] = useState(false);
   const [showForumHook, setShowForumHook] = useState(false);
   const [formError, setFormError] = useState('');
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const [deleting, setDeleting] = useState<AdminGuildDTO | null>(null);
   const mutation = draft?.id ? update : create;
 
   const worldName = (id: number) => worlds.data?.find((w) => w.id === id)?.name ?? String(id);
@@ -85,7 +114,7 @@ export function GuildsAdmin() {
 
   return (
     <div>
-      <h2>Guilds</h2>
+      <h2 ref={headingRef} tabIndex={-1}>Guilds</h2>
       {guilds.isError && <p role="alert" className="admin__error">{friendlyError(guilds.error)}</p>}
       <button type="button" className="btn btn--secondary" onClick={() => open(blank)}>Add guild</button>
       <table className="admin__table">
@@ -108,12 +137,15 @@ export function GuildsAdmin() {
               </td>
               <td><button type="button" className="btn btn--secondary" aria-label={`Edit ${g.name}`} onClick={() => edit(g)}>Edit</button>
                 {g.webhookUrl && <TestWebhookButton guild={g} />}
+                <button type="button" className="btn btn--danger" aria-label={`Delete ${g.name}`} onClick={() => setDeleting(g)}>Delete</button>
               </td>
             </tr>
           ))}
         </tbody>
       </table>
       {update.isError && !draft && <p role="alert" className="admin__error">{friendlyError(update.error)}</p>}
+
+      {deleting && <DeleteGuildDialog guild={deleting} heading={headingRef} onClose={() => setDeleting(null)} />}
 
       {draft && (
         <form className="admin__form" onSubmit={submit}>

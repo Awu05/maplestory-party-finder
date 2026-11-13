@@ -141,6 +141,13 @@ it('rejects banned users and stale authenticator counters', async () => {
   expect((await post('login/verify', key.authenticate(pending.options, { counter: 2 }), pending.cookie)).statusCode).toBe(400);
 });
 
+it('rejects a deleted user, even with the session version unchanged', async () => {
+  const { key, user } = await registered();
+  await prisma.user.update({ where: { id: user.id }, data: { deletedAt: new Date() } });
+  const pending = await loginOptions();
+  expect((await post('login/verify', key.authenticate(pending.options, { counter: 1 }), pending.cookie)).statusCode).toBe(400);
+});
+
 it('rejects cross-origin requests and refuses account switching while logged in', async () => {
   expect((await post('register/options', account, undefined, 'https://attacker.example')).statusCode).toBe(403);
   const { cookie } = await registered();

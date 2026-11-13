@@ -36,7 +36,7 @@ class ResetDelivery {
       try {
         await this.db.passwordResetToken.deleteMany({ where: { expiresAt: { lte: new Date() } } });
         const credential = await this.db.passwordCredential.findUnique({ where: { email: address }, include: { user: true } });
-        if (!credential || credential.user.banned) continue;
+        if (!credential || credential.user.banned || credential.user.deletedAt) continue;
         const token = randomBytes(32).toString('base64url');
         tokenHash = digest(token);
         const data = { tokenHash, expiresAt: new Date(Date.now() + 30 * 60_000), sessionVersion: credential.user.sessionVersion };
@@ -80,7 +80,7 @@ export async function passwordResetRoutes(api: FastifyInstance): Promise<void> {
     await prisma.$transaction(async (tx) => {
       const consumed = await tx.passwordResetToken.deleteMany({ where: { tokenHash, expiresAt: { gt: new Date() } } });
       if (consumed.count !== 1) throw invalid();
-      const updated = await tx.user.updateMany({ where: { id: token.userId, sessionVersion: token.sessionVersion, banned: false }, data: { sessionVersion: { increment: 1 } } });
+      const updated = await tx.user.updateMany({ where: { id: token.userId, sessionVersion: token.sessionVersion, banned: false, deletedAt: null }, data: { sessionVersion: { increment: 1 } } });
       if (updated.count !== 1) throw invalid();
       await tx.passwordCredential.update({ where: { userId: token.userId }, data: { passwordHash } });
     });

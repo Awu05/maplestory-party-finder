@@ -99,6 +99,17 @@ it('validates new passwords before consuming a reset token and rejects banned ac
   expect((await prisma.user.findUniqueOrThrow({ where: { id: account.json().id } })).sessionVersion).toBe(0);
 });
 
+it('sends no reset email to a deleted account and refuses its outstanding token', async () => {
+  const account = await post('register', signup);
+  const token = await request();
+  await prisma.user.update({ where: { id: account.json().id }, data: { deletedAt: new Date() } });
+  expect((await post('forgot', { email })).statusCode).toBe(200);
+  expect((await post('reset', { token, password })).statusCode).toBe(400);
+  expect((await prisma.user.findUniqueOrThrow({ where: { id: account.json().id } })).sessionVersion).toBe(0);
+  await app.close();
+  expect(sent).toHaveLength(1);
+});
+
 it('invalidates reset tokens issued for an earlier session version', async () => {
   const account = await post('register', signup);
   const token = await request();

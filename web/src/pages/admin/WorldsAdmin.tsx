@@ -1,13 +1,49 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import type { RefObject } from 'react';
 import type { WorldDTO } from '@pf/shared';
-import { useAdminWorlds, useCreateWorld, useUpdateWorld } from '../../api/hooks';
+import { useAdminWorlds, useCreateWorld, useDeleteWorld, useUpdateWorld, useWorldUsage } from '../../api/hooks';
+import { ApiError } from '../../api/client';
 import { friendlyError } from '../../api/errors';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { plural } from '../../lib/plural';
 
 interface Draft {
   id: number | null;
   nexonWorldId: string;
   name: string;
   worldType: WorldDTO['worldType'];
+}
+
+function DeleteWorldDialog({ world, onClose, heading }: { world: WorldDTO; onClose: () => void; heading: RefObject<HTMLHeadingElement | null> }) {
+  const usage = useWorldUsage(world.id);
+  const del = useDeleteWorld();
+  const u = usage.data;
+  const igns = del.error instanceof ApiError && Array.isArray(del.error.details.igns) ? (del.error.details.igns as string[]) : [];
+  return (
+    <ConfirmDialog
+      title={`Delete ${world.name}?`}
+      confirmLabel="Delete world"
+      confirmDisabled={!u}
+      busy={del.isPending}
+      error={usage.isError ? friendlyError(usage.error) : del.isError ? friendlyError(del.error) : undefined}
+      onConfirm={() => del.mutate(world.id, { onSuccess: onClose })}
+      onCancel={onClose}
+      focusAfterConfirm={heading}
+    >
+      {u ? <p>{plural(u.characters, 'character')} and {plural(u.posts, 'post')} will move to Kronos.</p> : <p>Checking what this affects…</p>}
+      {u && (u.leavingGuild.characters > 0 || u.leavingGuild.posts > 0) && (
+        <p>
+          {[u.leavingGuild.characters > 0 && plural(u.leavingGuild.characters, 'character'), u.leavingGuild.posts > 0 && plural(u.leavingGuild.posts, 'post')].filter(Boolean).join(' and ')}{' '}
+          will leave a guild that doesn't play on Kronos.
+        </p>
+      )}
+      {igns.length > 0 && (
+        <ul>
+          {igns.map((ign) => <li key={ign}>{ign}</li>)}
+        </ul>
+      )}
+    </ConfirmDialog>
+  );
 }
 
 const blank: Draft = { id: null, nexonWorldId: '', name: '', worldType: 'heroic' };
@@ -17,6 +53,8 @@ export function WorldsAdmin() {
   const create = useCreateWorld();
   const update = useUpdateWorld();
   const [draft, setDraft] = useState<Draft | null>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const [deleting, setDeleting] = useState<WorldDTO | null>(null);
   const mutation = draft?.id != null ? update : create;
 
   const open = (d: Draft) => {
@@ -35,7 +73,7 @@ export function WorldsAdmin() {
 
   return (
     <div>
-      <h2>Worlds</h2>
+      <h2 ref={headingRef} tabIndex={-1}>Worlds</h2>
       {worlds.isError && <p role="alert" className="admin__error">{friendlyError(worlds.error)}</p>}
       <button type="button" className="btn btn--secondary" onClick={() => open(blank)}>Add world</button>
       <table className="admin__table">
@@ -65,12 +103,17 @@ export function WorldsAdmin() {
                 >
                   Edit
                 </button>
+                {w.name.toLowerCase() !== 'kronos' && (
+                  <button type="button" className="btn btn--danger" aria-label={`Delete ${w.name}`} onClick={() => setDeleting(w)}>Delete</button>
+                )}
               </td>
             </tr>
           ))}
         </tbody>
       </table>
       {update.isError && !draft && <p role="alert" className="admin__error">{friendlyError(update.error)}</p>}
+
+      {deleting && <DeleteWorldDialog world={deleting} heading={headingRef} onClose={() => setDeleting(null)} />}
 
       {draft && (
         <form className="admin__form" onSubmit={submit}>

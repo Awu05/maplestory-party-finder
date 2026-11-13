@@ -64,7 +64,7 @@ export class DailySyncJob {
 
   private async run(now: Date): Promise<{ synced: number; stale: number }> {
     const characters = await this.prisma.character.findMany({
-      where: { source: 'nexon', owner: { banned: false } },
+      where: { source: 'nexon', owner: { banned: false, deletedAt: null } },
       orderBy: { lastSyncedAt: 'asc' },
       select: { id: true },
     });

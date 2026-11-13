@@ -7,13 +7,13 @@ type Db = PrismaClient | Prisma.TransactionClient;
 export async function weeklyRecipientIds(db: Db, postId: string): Promise<string[]> {
   const members = await db.postMember.findMany({
     where: { postId },
-    include: { user: { select: { discordId: true, banned: true } } },
+    include: { user: { select: { discordId: true, banned: true, deletedAt: true } } },
     orderBy: [{ joinedAt: 'asc' }, { id: 'asc' }],
   });
   const recipients = new Set<string>();
   for (const member of members) {
     const discordId = member.user.discordId;
-    if (discordId && !member.user.banned) recipients.add(discordId);
+    if (discordId && !member.user.banned && !member.user.deletedAt) recipients.add(discordId);
   }
   return [...recipients];
 }

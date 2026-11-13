@@ -40,6 +40,7 @@ export function Layout() {
   const [searchParams, setSearchParams] = useSearchParams();
   const loginFailed = searchParams.get('login') === 'failed';
   const loginBanned = searchParams.get('login') === 'banned';
+  const loginDeleted = searchParams.get('login') === 'deleted';
   const linkBanner = LINK_BANNERS[searchParams.get('link') ?? ''];
 
   function dismissParam(param: 'login' | 'link') {
@@ -160,6 +161,14 @@ export function Layout() {
       {loginBanned && (
         <div className="banner" role="alert">
           <span>Your account has been banned.</span>
+          <button type="button" className="btn btn--secondary btn--compact" aria-label="Dismiss" onClick={dismissLoginFailed}>
+            ×
+          </button>
+        </div>
+      )}
+      {loginDeleted && (
+        <div className="banner" role="alert">
+          <span>This account has been deleted.</span>
           <button type="button" className="btn btn--secondary btn--compact" aria-label="Dismiss" onClick={dismissLoginFailed}>
             ×
           </button>
