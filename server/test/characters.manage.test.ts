@@ -68,12 +68,14 @@ describe('characters list', () => {
     expect(igns(await get(`/api/characters?archetype=pirate&q=LI&worldId=${worldId}`))).toEqual(['Lia', 'Lily']);
   });
 
-  it('hides characters of inactive guilds, except with mine=1', async () => {
+  it('shows characters of inactive guilds; hides only banned or deleted owners', async () => {
     const dead = await makeGuild({ worldIds: [worldId], active: false });
-    await makeCharacter({ ign: 'Ghost', guildId: dead.id, worldId, ownerId });
+    await makeCharacter({ ign: 'Dormant', guildId: dead.id, worldId, ownerId });
     await makeCharacter({ ign: 'Live', guildId, worldId });
-    expect(igns(await get('/api/characters'))).toEqual(['Live']);
-    expect(igns(await get('/api/characters?mine=1', cookie))).toEqual(['Ghost']);
+    await makeCharacter({ ign: 'Banned', guildId, worldId, ownerId: (await makeUser({ banned: true })).id });
+    await makeCharacter({ ign: 'Deleted', guildId, worldId, ownerId: (await makeUser({ deletedAt: new Date() })).id });
+    expect(igns(await get('/api/characters')).sort()).toEqual(['Dormant', 'Live']);
+    expect(igns(await get('/api/characters?mine=1', cookie))).toEqual(['Dormant']);
     expect((await get('/api/characters?mine=1')).statusCode).toBe(401);
   });
 });
