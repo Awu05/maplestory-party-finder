@@ -40,7 +40,8 @@ async function reassignCharacter(prisma: PrismaClient, characterId: string, user
     const character = await tx.character.findUnique({ where: { id: characterId } });
     if (!character) throw new AppError(404, 'NOT_FOUND', 'Character not found');
     const target = await tx.user.findUnique({ where: { id: userId } });
-    if (!target || target.banned) throw new AppError(400, 'VALIDATION', 'Target user must exist and not be banned');
+    // A banned or deleted owner's characters are hidden from everyone, so the move would make it vanish.
+    if (!target || target.banned || target.deletedAt) throw new AppError(400, 'VALIDATION', 'Target user must exist and not be banned or deleted');
 
     const pending = await tx.request.findMany({ where: { characterId, status: 'pending' }, select: { id: true } });
     await tx.request.updateMany({
