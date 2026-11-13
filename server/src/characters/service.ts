@@ -150,7 +150,7 @@ export interface ListCharactersFilter {
   worldId?: number;
   archetype?: Archetype;
   q?: string;
-  /** When set, only this owner's characters (including those in inactive guilds). */
+  /** When set, only this owner's characters. Otherwise everyone's, except banned or deleted accounts' (a guild being inactive hides nothing). */
   ownerId?: string;
 }
 
@@ -159,7 +159,7 @@ export async function listCharacters(prisma: PrismaClient, filter: ListCharacter
     where: {
       ...(filter.ownerId
         ? { ownerId: filter.ownerId }
-        : { OR: [{ guildId: null }, { guild: { active: true } }], owner: { banned: false, deletedAt: null } }),
+        : { owner: { banned: false, deletedAt: null } }),
       ...(filter.worldId !== undefined ? { worldId: filter.worldId } : {}),
       ...(filter.archetype ? { archetype: filter.archetype } : {}),
       ...(filter.q ? { ignLower: { startsWith: filter.q.toLowerCase() } } : {}),

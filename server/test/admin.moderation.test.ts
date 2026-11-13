@@ -210,10 +210,21 @@ describe('characters', () => {
     expect((await edit(c2cookie)).statusCode).toBe(403);
   });
 
-  it('reassign rejects a missing or banned target', async () => {
+  it('a character from an unverified (passkey/password) account stays listed after a reassign', async () => {
+    const typed = await makeUser({ discordId: null, username: 'typed', usernameKey: 'typed' });
+    const other = await makeUser({ discordId: null, username: 'typed2', usernameKey: 'typed2' });
+    const c = await makeCharacter({ ownerId: typed.id, ign: 'Unverified', guildId: null, source: 'manual' });
+    const igns = async () => (await call('GET', '/api/characters', null)).json().map((x: { ign: string }) => x.ign);
+    expect(await igns()).toEqual(['Unverified']);
+    expect((await call('POST', `/api/admin/characters/${c.id}/reassign`, adminCookie, { userId: other.id })).statusCode).toBe(200);
+    expect(await igns()).toEqual(['Unverified']);
+  });
+
+  it('reassign rejects a missing, banned or deleted target', async () => {
     const c = await makeCharacter();
     const banned = await makeUser({ banned: true });
-    for (const userId of ['nope', banned.id]) {
+    const deleted = await makeUser({ deletedAt: new Date() });
+    for (const userId of ['nope', banned.id, deleted.id]) {
       const res = await call('POST', `/api/admin/characters/${c.id}/reassign`, adminCookie, { userId });
       expect(res.statusCode).toBe(400);
       expect(res.json().error.code).toBe('VALIDATION');
