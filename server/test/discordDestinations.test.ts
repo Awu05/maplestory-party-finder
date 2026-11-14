@@ -62,7 +62,10 @@ it('sends a guildless host’s announcement and closure to one guild, and the fo
   await events.drain();
   expect((await worker.runOnce()).sent).toBe(2);
   expect(sender.calls.map((sent) => sent.url).sort()).toEqual([notificationUrl, forumUrl].sort());
-  expect(sender.calls.every((sent) => JSON.stringify(sent.payload.allowed_mentions) === JSON.stringify({ parse: [] }))).toBe(true);
+  for (const sent of sender.calls) {
+    expect(sent.payload.allowed_mentions.parse).toEqual([]);
+    expect(sent.payload.allowed_mentions.users ?? []).toEqual([]);
+  }
 });
 
 it('treats None as no destination, without automatically choosing any guild', async () => {

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { POST_TYPE_LABELS } from '@pf/shared';
+import { POST_TYPE_LABELS, reminderListLabel } from '@pf/shared';
 import { useRarityTiers } from '../api/hooks';
 import {
   useAcceptRequest,
@@ -26,6 +26,7 @@ import { FinalizeTimeDialog } from '../components/post/FinalizeTimeDialog';
 import { formatWhen } from '../components/post/time';
 import { useLastActionError } from '../components/post/useLastActionError';
 import { DiscordDestinationSettings } from '../components/post/DiscordDestinationSettings';
+import { RunReminderSettings } from '../components/post/RunReminderSettings';
 import '../components/post/post.css';
 
 function DiscordAnnouncementButton({ availableAt, pending, onClick }: { availableAt: string; pending: boolean; onClick: () => void }) {
@@ -147,6 +148,8 @@ export function PostDetailPage() {
         </div>
       )}
       {p.note && <p>{p.note}</p>}
+      {p.reminderOffsets?.length > 0 && <p>Reminders: {reminderListLabel(p.reminderOffsets)} before</p>}
+      {posterActive && finalized && <RunReminderSettings key={`${p.id}:${p.reminderOffsets.join(',')}`} postId={p.id} offsets={p.reminderOffsets} />}
       {posterActive ? <DiscordDestinationSettings key={p.id} post={p} /> : <section className="post-discord" aria-label="Discord destinations">
         <h3>Discord</h3>
         <p>Notifications: {p.notificationGuild?.name ?? 'None'}</p>

@@ -1,5 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { WebhookWorker } from '../src/discord/outbox.js';
+import { RunReminderJob } from '../src/jobs/runReminders.js';
 import { buildTestApp, loginAs, makeBossDifficulty, makeCharacter, makeGuild, makeWorld, prisma, resetDb } from './helpers.js';
 
 const HOOK = 'https://discord.test/api/webhooks/1/secret';
@@ -10,6 +11,34 @@ afterAll(async () => {
 
 describe('notifications wiring (dispatcher + worker, end to end)', () => {
   beforeEach(resetDb);
+
+  it('finalizes a party, captures its thread, and delivers its run reminder and bell notification', async () => {
+    const { app, events, webhookSender } = await buildTestApp({ events: 'dispatcher' });
+    try {
+      const cookie = await loginAs(app, '123456789012345678', 'host');
+      const owner = await prisma.user.findUniqueOrThrow({ where: { discordId: '123456789012345678' } });
+      const world = await makeWorld();
+      const guild = await makeGuild({ worldIds: [world.id], partyForumWebhookUrl: HOOK });
+      const boss = await makeBossDifficulty();
+      const character = await makeCharacter({ ownerId: owner.id, worldId: world.id, guildId: guild.id });
+      const created = await app.inject({ method: 'POST', url: '/api/posts', headers: { cookie }, payload: {
+        type: 'recruiting', characterId: character.id, bossDifficultyIds: [boss.id], partySize: 4,
+        title: 'Crew', note: '', reminderOffsets: [15], partyForumGuildId: guild.id,
+      } });
+      expect(created.statusCode).toBe(201);
+      const postId = created.json().id;
+      const runAt = new Date(Date.now() + 15 * 60_000);
+      expect((await app.inject({ method: 'PUT', url: `/api/posts/${postId}/final-time`, headers: { cookie }, payload: { scheduledAt: runAt.toISOString() } })).statusCode).toBe(200);
+      await events.drain();
+      webhookSender.queue({ ok: true, channelId: 'party-thread' });
+      const worker = new WebhookWorker({ prisma, sender: webhookSender });
+      expect((await worker.runOnce()).sent).toBe(1);
+      await new RunReminderJob({ prisma, webOrigin: 'http://localhost:5173' }).runOnce();
+      expect((await worker.runOnce()).sent).toBe(1);
+      expect(webhookSender.calls[1]).toMatchObject({ threadId: 'party-thread', payload: { allowed_mentions: { users: ['123456789012345678'] } } });
+      expect(await prisma.notification.findFirstOrThrow()).toMatchObject({ userId: owner.id, kind: 'reminder', text: 'Reminder: Crew starts in 15 minutes' });
+    } finally { await events.drain(); await app.close(); }
+  });
 
   it("a post's own title is the Discord notification's title", async () => {
     const { app, events, webhookSender } = await buildTestApp({ events: 'dispatcher' });

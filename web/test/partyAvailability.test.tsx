@@ -13,7 +13,7 @@ const member = (id: string, role: PartyMemberDTO['role'], isMine = false): Party
 const members = [member('Lily', 'poster'), member('Bob', 'member', true)];
 const post: PostSummaryDTO = {
   id: 'p1', type: 'recruiting', world: { id: 1, name: 'Kronos' }, guild: { id: 'g1', name: 'G' },
-  poster: members[0], bosses: [], scheduledAt: null, weeklyTimeZone: null,
+  poster: members[0], bosses: [], scheduledAt: null, weeklyTimeZone: null, reminderOffsets: [],
   freeTimes: [136], freeTimesZone: 'UTC', expiresAt: '2026-12-01T00:00:00Z', createdAt: '2026-11-10T00:00:00Z',
   partySize: 4, memberCount: 2, minCp: null, title: '', note: '', status: 'open', deleted: false, isPoster: false,
 };

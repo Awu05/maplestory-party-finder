@@ -4,7 +4,7 @@ import { z } from 'zod';
 import type { AdminGuildDTO, BossDTO, GuildDTO, JobClassDTO, RarityTierDTO, WorldDTO } from '@pf/shared';
 import { getViewer, requireAdmin, requireUser } from '../auth/guards.js';
 import { AppError } from '../http/errors.js';
-import { CLASS_CATEGORIES } from '@pf/shared';
+import { CLASS_CATEGORIES, DISCORD_SNOWFLAKE } from '@pf/shared';
 import { findDestination } from '../discord/destinations.js';
 
 const WEBHOOK_RE = /^https:\/\/(discord|discordapp)\.com\/api\/webhooks\/\d+\/[\w-]+$/;
@@ -13,7 +13,7 @@ const webhookUrl = z.string().regex(WEBHOOK_RE, 'Invalid Discord webhook URL');
 const worldIds = z.array(z.number().int());
 const bossRoleIds = z.record(
   z.string().regex(/^[1-9]\d*$/).refine((id) => Number.isSafeInteger(Number(id)) && Number(id) <= 2147483647, 'Invalid boss ID'),
-  z.string().regex(/^[1-9]\d{16,19}$/, 'Enter a Discord role ID (17–20 digits)'),
+  z.string().regex(DISCORD_SNOWFLAKE, 'Enter a Discord role ID (17–20 digits)'),
 );
 
 async function assertBossesExist(prisma: PrismaClient, roles: Record<string, string> | undefined): Promise<void> {

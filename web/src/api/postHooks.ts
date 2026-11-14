@@ -51,6 +51,7 @@ function useInvalidatePosts() {
 }
 
 export interface PostInput {
+  reminderOffsets?: number[];
   notificationGuildId?: string | null;
   partyForumGuildId?: string | null;
   type: PostType;

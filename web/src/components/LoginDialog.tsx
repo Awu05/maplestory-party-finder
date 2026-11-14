@@ -32,6 +32,7 @@ function LoginDialog({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
   const [step, setStep] = useState<'choose' | 'create' | 'email' | 'forgot'>('choose');
   const [discordUsername, setDiscordUsername] = useState('');
+  const [discordUserId, setDiscordUserId] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -77,10 +78,10 @@ function LoginDialog({ onClose }: { onClose: () => void }) {
     setError('');
     try {
       if (method === 'password') {
-        complete(await api<MeDTO>('/api/auth/password/register', { method: 'POST', json: { discordUsername: discordUsername.trim(), displayName: displayName.trim(), email: email.trim(), password } }));
+        complete(await api<MeDTO>('/api/auth/password/register', { method: 'POST', json: { discordUsername: discordUsername.trim(), discordUserId: discordUserId.trim(), displayName: displayName.trim(), email: email.trim(), password } }));
         return;
       }
-      const optionsJSON = await api<PublicKeyCredentialCreationOptionsJSON>('/api/auth/passkeys/register/options', { method: 'POST', json: { discordUsername: discordUsername.trim(), displayName: displayName.trim() } });
+      const optionsJSON = await api<PublicKeyCredentialCreationOptionsJSON>('/api/auth/passkeys/register/options', { method: 'POST', json: { discordUsername: discordUsername.trim(), discordUserId: discordUserId.trim(), displayName: displayName.trim() } });
       const response = await startRegistration({ optionsJSON });
       complete(await api<MeDTO>('/api/auth/passkeys/register/verify', { method: 'POST', json: response }));
     } catch (cause) { showError(cause); }
@@ -173,6 +174,10 @@ function LoginDialog({ onClose }: { onClose: () => void }) {
         <label className="profile-dialog__field">Display name
           <input required autoComplete="nickname" maxLength={50} value={displayName} disabled={busy} onChange={(e) => setDisplayName(e.target.value)} />
         </label>
+        <label className="profile-dialog__field">Discord user ID
+          <input required inputMode="numeric" autoComplete="off" maxLength={50} value={discordUserId} disabled={busy} aria-describedby={`${headingId}-discord-id-help`} onChange={(e) => setDiscordUserId(e.target.value)} />
+        </label>
+        <p id={`${headingId}-discord-id-help`} className="profile-dialog__muted">In Discord, turn on Settings → Advanced → Developer Mode, then right-click your name and choose Copy User ID.</p>
         <p className="profile-dialog__muted">Your Discord username (2 to 32 letters, numbers, dots or underscores) is contact information only; this does not connect to Discord.</p>
         {passwordAuth && <fieldset className="login-method" disabled={busy}>
           <legend>Sign-in method</legend>

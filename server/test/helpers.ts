@@ -291,15 +291,15 @@ export async function loginAs(app: FastifyInstance, discordId = 'u-1', username 
 }
 
 export class FakeWebhookSender implements WebhookSender {
-  calls: { url: string; payload: WebhookPayload }[] = [];
+  calls: { url: string; payload: WebhookPayload; threadId?: string }[] = [];
   private results: SendResult[] = [];
 
   queue(result: SendResult): void {
     this.results.push(result);
   }
 
-  async send(url: string, payload: WebhookPayload): Promise<SendResult> {
-    this.calls.push({ url, payload });
+  async send(url: string, payload: WebhookPayload, opts?: { threadId?: string }): Promise<SendResult> {
+    this.calls.push({ url, payload, ...(opts?.threadId ? { threadId: opts.threadId } : {}) });
     return this.results.shift() ?? { ok: true };
   }
 }

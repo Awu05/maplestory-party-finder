@@ -5,11 +5,12 @@ import { bossLabel, buildAcceptPing, buildRequestPing, type WebhookPayload } fro
 import { enqueuePostAnnouncement, enqueuePostClosure } from '../discord/postAnnouncement.js';
 import { enqueueDelivery } from '../discord/outbox.js';
 import { findDestination } from '../discord/destinations.js';
+import { pingableId } from '../discord/pingable.js';
 import { postSummaryInclude, toPostSummaryDTO } from '../posts/serialize.js';
 import type { Storage } from '../storage/storage.js';
 import { errName, type Logger } from '../log.js';
 
-type NotificationKind = 'join_request' | 'invite' | 'accepted' | 'declined' | 'auto_declined' | 'removed' | 'member_left' | 'time_set';
+export type NotificationKind = 'join_request' | 'invite' | 'accepted' | 'declined' | 'auto_declined' | 'removed' | 'member_left' | 'time_set' | 'reminder';
 
 const requestDispatchInclude = {
   character: { select: { ownerId: true, guildId: true, ign: true, jobName: true, level: true, combatPower: true } },
@@ -204,8 +205,9 @@ export class EventDispatcher implements DomainEvents {
     if (recipientUserId === actorUserId) return;
     const guild = await findDestination(this.prisma, guildId, worldId, 'notifications');
     if (!guild) return;
-    const user = await this.prisma.user.findUnique({ where: { id: recipientUserId }, select: { discordId: true } });
-    if (!user?.discordId) return;
-    await enqueueDelivery(this.prisma, guild.id, eventType, build(user.discordId), postId);
+    const user = await this.prisma.user.findUnique({ where: { id: recipientUserId }, select: { discordId: true, typedDiscordId: true, banned: true, deletedAt: true } });
+    const ping = user ? pingableId(user) : null;
+    if (!ping) return;
+    await enqueueDelivery(this.prisma, guild.id, eventType, build(ping.id), postId);
   }
 }

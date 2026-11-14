@@ -28,6 +28,18 @@ const pending = async (postId: string, over: Record<string, unknown> = {}) => {
 const reqStatus = async (id: string) => (await prisma.request.findUniqueOrThrow({ where: { id } })).status;
 
 describe('PATCH /api/posts/:id', () => {
+  it('replaces reminders, preserves omitted offsets, and clears them when switching to LFP', async () => {
+    const p = await makePost({ posterUserId: userId, reminderOffsets: [15] });
+    expect((await patch(p.id, { reminderOffsets: [1440, 60] })).json().reminderOffsets).toEqual([60, 1440]);
+    expect((await patch(p.id, { note: 'same reminders' })).json().reminderOffsets).toEqual([60, 1440]);
+    expect((await patch(p.id, { type: 'lfp' })).json().reminderOffsets).toEqual([]);
+  });
+  it('allows updating reminders on an active finalized run', async () => {
+    const p = await makePost({ posterUserId: userId, status: 'closed', closedReason: 'finalized' });
+    const result = await patch(p.id, { reminderOffsets: [15] });
+    expect(result.statusCode).toBe(200);
+    expect(result.json().reminderOffsets).toEqual([15]);
+  });
   it('sets, changes and clears the title', async () => {
     const p = await makePost({ posterUserId: userId });
     expect((await patch(p.id, { title: ' Sunday crew ' })).json().title).toBe('Sunday crew');

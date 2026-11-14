@@ -1,4 +1,4 @@
-import { POST_TYPE_LABELS, formatCpShort } from '@pf/shared';
+import { DISCORD_SNOWFLAKE, POST_TYPE_LABELS, formatCpShort } from '@pf/shared';
 import type { PostBossDTO, PostSummaryDTO } from '@pf/shared';
 
 export type WebhookPayload = {
@@ -9,7 +9,8 @@ export type WebhookPayload = {
   thread_name?: string;
   /** Stored with a queued weekly reminder (stripped before sending) to check it and rebuild its message. */
   _weekly?: WeeklyReminderMeta;
-  _forum?: { webOrigin: string };
+  _forum?: { webOrigin: string; requestId?: string };
+  _reminder?: { runAt: string; offsetMinutes: number; webOrigin: string };
 };
 
 /** The parts of a post a weekly reminder shows. */
@@ -45,7 +46,7 @@ const clip = (s: string, max: number): string => (s.length > max ? s.slice(0, ma
 const unverifiedDiscordName = (name: string): string => `Discord name, unverified: ${name}`;
 
 export const bossLabel = (b: Pick<PostBossDTO, 'bossName' | 'difficulty'>): string => `${b.difficulty} ${b.bossName}`;
-const bossesLabel = (post: Pick<WeeklyReminderPost, 'bosses'>): string => post.bosses.map(bossLabel).join(' + ');
+export const bossesLabel = (post: Pick<WeeklyReminderPost, 'bosses'>): string => post.bosses.map(bossLabel).join(' + ');
 const postLink = (post: Pick<PostSummaryDTO, 'id'>, webOrigin: string): string => `${webOrigin}/posts/${post.id}`;
 
 export function discordTime(iso: string | null): string {
@@ -55,7 +56,7 @@ export function discordTime(iso: string | null): string {
 }
 
 export function buildNewPostMessage(post: PostSummaryDTO, webOrigin: string, bossRoleIds: string[] = []): WebhookPayload {
-  const roles = [...new Set(bossRoleIds.filter((id) => /^[1-9]\d{16,19}$/.test(id)))];
+  const roles = [...new Set(bossRoleIds.filter((id) => DISCORD_SNOWFLAKE.test(id)))];
   const recruiting = post.type !== 'lfp';
   const snap = post.poster.snapshot;
   const field = (name: string, value: string) => ({ name, value: clip(neutralize(value), FIELD_MAX), inline: true });
@@ -142,19 +143,19 @@ export function buildTestMessage(guildName: string): WebhookPayload {
 }
 
 /** Thread title and opening message for a finalized party. */
-export function buildPartyThread(post: WeeklyReminderPost & { title?: string; world: { name: string }; poster: { snapshot: { ign: string } } }, webOrigin: string, members: { ign: string; discordId: string | null; discordUsername?: string }[] = []): { name: string; message: WebhookPayload } {
+export function buildPartyThread(post: WeeklyReminderPost & { title?: string; world: { name: string }; poster: { snapshot: { ign: string } } }, webOrigin: string, members: { ign: string; discordId: string | null; verified?: boolean; discordUsername?: string }[] = []): { name: string; message: WebhookPayload } {
   const bosses = clip(neutralize(bossesLabel(post)), 700);
   const poster = clip(neutralize(post.poster.snapshot.ign), 100);
   const title = clip(neutralize(post.title?.trim() ?? ''), 100);
-  const roster = members.filter((member) => member.discordId === null || /^[1-9]\d{16,19}$/.test(member.discordId))
+  const roster = members.filter((member) => member.discordId === null || DISCORD_SNOWFLAKE.test(member.discordId))
     .map((member) => member.discordId === null
       ? `• ${clip(neutralize(member.ign), 50)}${member.discordUsername ? ` (${unverifiedDiscordName(clip(neutralize(member.discordUsername), 50))})` : ''}`
-      : `• ${clip(neutralize(member.ign), 50)}: <@${member.discordId}> (\`${member.discordId}\`)`).join('\n');
+      : `• ${clip(neutralize(member.ign), 50)}: <@${member.discordId}> (${member.verified === false ? 'unverified' : `\`${member.discordId}\``})`).join('\n');
   return {
     name: clip(`${title || bosses} — ${poster}`, 100),
     message: {
       content: `${title ? `**${title}**\n${bosses}` : `**${bosses}**`}\nHosted by ${poster} · ${clip(neutralize(post.world.name), 100)}\nTime: ${discordTime(post.scheduledAt)}\nMembers:\n${roster || 'No Discord IDs available'}\nParty details: ${postLink(post, webOrigin)}`,
-      allowed_mentions: { parse: [] },
+      allowed_mentions: { parse: [], users: [...new Set(members.flatMap((member) => member.discordId && DISCORD_SNOWFLAKE.test(member.discordId) ? [member.discordId] : []))] },
     },
   };
 }
@@ -175,4 +176,18 @@ export function buildWeeklyReminder(args: {
     content: [...users.map((id) => `<@${id}>`), text].join(' '),
     allowed_mentions: { parse: [], users },
   };
+}
+
+export function buildRunReminder(input: {
+  post: { id: string; title: string; bosses: PostBossDTO[] };
+  runAt: Date; pinged: string[]; unpinged: string[]; webOrigin: string;
+}): WebhookPayload {
+  const users = [...new Set(input.pinged.filter((id) => DISCORD_SNOWFLAKE.test(id)))];
+  const unix = Math.floor(input.runAt.getTime() / 1000);
+  const title = clip(neutralize(input.post.title.trim() || bossesLabel(input.post)), 700);
+  const lines = [`⏰ **${title}** starts <t:${unix}:R> (<t:${unix}:F>)`];
+  if (users.length) lines.push(users.map((id) => `<@${id}>`).join(' '));
+  if (input.unpinged.length) lines.push(`Unpinged: ${clip(input.unpinged.map((name) => clip(neutralize(name), 50)).join(', '), 500)}`);
+  lines.push(`Party details: ${postLink(input.post, input.webOrigin)}`);
+  return { content: lines.join('\n'), allowed_mentions: { parse: [], users } };
 }

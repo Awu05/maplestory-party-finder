@@ -5,7 +5,7 @@ import { buildTestApp, loginAs, makeCharacter, makeUser, prisma, resetDb } from 
 import { VirtualPasskey } from './passkeyFixtures.js';
 
 const ORIGIN = 'http://localhost:5173';
-const account = { discordUsername: 'maple_user', displayName: 'Maple Player' };
+const account = { discordUserId: '123456789012345678', discordUsername: 'maple_user', displayName: 'Maple Player' };
 let app: FastifyInstance;
 beforeEach(async () => { await resetDb(); ({ app } = await buildTestApp()); });
 afterEach(async () => { await app.close(); });
@@ -85,7 +85,7 @@ it('consumes registration challenges once, including when an old signed cookie i
 it('rejects re-registering an existing credential and rolls back the new account', async () => {
   const { key } = await registered();
   // A different name, so only the reused credential conflicts.
-  const pending = await registration({ ...account, discordUsername: 'second_user' });
+  const pending = await registration({ ...account, discordUserId: '223456789012345678', discordUsername: 'second_user' });
   expect((await post('register/verify', key.register(pending.options), pending.cookie)).statusCode).toBe(400);
   expect(await prisma.user.count()).toBe(1);
   expect(await prisma.passkey.count()).toBe(1);
@@ -157,7 +157,7 @@ it('rejects cross-origin requests and refuses account switching while logged in'
 
 it('normalizes names and does not create an account for invalid or abandoned signup attempts', async () => {
   expect((await post('register/options', { ...account, displayName: '\u200B ' })).statusCode).toBe(400);
-  const pending = await registration({ discordUsername: ' @maple_user ', displayName: ' Maple Player ' });
+  const pending = await registration({ discordUserId: account.discordUserId, discordUsername: ' @maple_user ', displayName: ' Maple Player ' });
   expect(pending.options.user).toMatchObject({ name: 'maple_user', displayName: 'Maple Player' });
   expect(await prisma.user.count()).toBe(0);
   await registration(account, pending.cookie);

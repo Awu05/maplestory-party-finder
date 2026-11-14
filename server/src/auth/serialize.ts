@@ -5,5 +5,6 @@ export function toMeDTO({ user, isAdmin }: Viewer): NonNullable<MeDTO> {
   return {
     id: user.id, discordUsername: user.username, displayName: user.displayName,
     avatarUrl: user.avatar, isAdmin, discordLinked: user.discordId !== null,
+    discordUserId: user.discordId ?? user.typedDiscordId,
   };
 }

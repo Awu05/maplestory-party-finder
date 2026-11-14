@@ -5,7 +5,7 @@ import { DerivationQueue, hashPassword, verifyPassword } from '../src/auth/passw
 
 const ORIGIN = 'http://localhost:5173';
 const password = 'a long maple password';
-const account = { discordUsername: 'maple_user', displayName: 'Maple Player', email: 'maple@example.com', password };
+const account = { discordUserId: '123456789012345678', discordUsername: 'maple_user', displayName: 'Maple Player', email: 'maple@example.com', password };
 let app: FastifyInstance;
 beforeEach(async () => { await resetDb(); ({ app } = await buildTestApp()); });
 afterEach(async () => { await app.close(); });
@@ -45,7 +45,7 @@ it('never links a contact username to an existing Discord administrator', async 
 });
 
 it('rejects duplicate email addresses atomically without replacing the first account', async () => {
-  const results = await Promise.all([post('register', account), post('register', { ...account, discordUsername: 'second_user', email: 'MAPLE@EXAMPLE.COM', password: 'a different long password' })]);
+  const results = await Promise.all([post('register', account), post('register', { ...account, discordUsername: 'second_user', discordUserId: '223456789012345678', email: 'MAPLE@EXAMPLE.COM', password: 'a different long password' })]);
   expect(results.map((result) => result.statusCode).sort()).toEqual([200, 400]);
   expect(await prisma.user.count()).toBe(1);
   expect(await prisma.passwordCredential.count()).toBe(1);
@@ -95,7 +95,7 @@ it('rejects cross-origin requests, active account switching, and oversized reque
 });
 
 it('clears unfinished passkey ceremonies when signing in with a password', async () => {
-  const pending = await app.inject({ method: 'POST', url: '/api/auth/passkeys/register/options', headers: { origin: ORIGIN }, payload: { discordUsername: account.discordUsername, displayName: account.displayName } });
+  const pending = await app.inject({ method: 'POST', url: '/api/auth/passkeys/register/options', headers: { origin: ORIGIN }, payload: { discordUsername: account.discordUsername, discordUserId: account.discordUserId, displayName: account.displayName } });
   expect(pending.statusCode).toBe(200);
   expect(await prisma.passkeyChallenge.count()).toBe(1);
   const result = await post('register', account, cookieOf(pending));

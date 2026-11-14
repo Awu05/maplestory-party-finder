@@ -26,6 +26,38 @@ afterEach(async () => { await app.close(); });
 
 const finalize = (at: Date) => app.inject({ method: 'PUT', url: `/api/posts/${postId}/final-time`, headers: { cookie }, payload: { scheduledAt: at.toISOString() } });
 
+it('captures the party thread ID and clears it when the party reopens', async () => {
+  await finalize(new Date(Date.now() + 86_400_000));
+  const sender = new FakeWebhookSender();
+  sender.queue({ ok: true, channelId: 'thread-1' });
+  await new WebhookWorker({ prisma, sender }).runOnce();
+  expect((await prisma.post.findUniqueOrThrow({ where: { id: postId } })).partyThreadId).toBe('thread-1');
+  expect((await app.inject({ method: 'POST', url: `/api/posts/${postId}/reopen`, headers: { cookie } })).statusCode).toBe(200);
+  expect((await prisma.post.findUniqueOrThrow({ where: { id: postId } })).partyThreadId).toBeNull();
+});
+
+it('never saves an old thread response for a reopened and refinalized run', async () => {
+  await finalize(new Date(Date.now() + 86_400_000));
+  let started!: () => void;
+  let release!: () => void;
+  const sending = new Promise<void>((resolve) => { started = resolve; });
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const sender = { send: async () => { started(); await gate; return { ok: true as const, channelId: 'old-thread' }; } };
+  const worker = new WebhookWorker({ prisma, sender }).runOnce();
+  await sending;
+  try {
+    expect((await app.inject({ method: 'POST', url: `/api/posts/${postId}/reopen`, headers: { cookie } })).statusCode).toBe(200);
+    expect((await finalize(new Date(Date.now() + 2 * 86_400_000))).statusCode).toBe(200);
+  } finally { release(); }
+  await worker;
+  expect((await prisma.post.findUniqueOrThrow({ where: { id: postId } })).partyThreadId).toBeNull();
+  expect(await prisma.webhookDelivery.count({ where: { postId, status: 'pending', eventType: 'post.party_thread' } })).toBe(1);
+  const next = new FakeWebhookSender();
+  next.queue({ ok: true, channelId: 'new-thread' });
+  await new WebhookWorker({ prisma, sender: next }).runOnce();
+  expect((await prisma.post.findUniqueOrThrow({ where: { id: postId } })).partyThreadId).toBe('new-thread');
+});
+
 it('atomically fails a discarded thread before a concurrent finalization queues its replacement', async () => {
   expect((await finalize(new Date(Date.now() + 86_400_000))).statusCode).toBe(200);
   expect((await app.inject({ method: 'POST', url: `/api/posts/${postId}/reopen`, headers: { cookie } })).statusCode).toBe(200);
@@ -158,7 +190,7 @@ it('queues and delivers exactly one forum thread for the host guild', async () =
   expect(sender.calls[0]!.payload.thread_name).toContain('Hard Lucid');
   expect(sender.calls[0]!.payload.content).toContain(`<@${OWNER_DISCORD_ID}>`);
   expect(sender.calls[0]!.payload.content).toContain(`<@${MEMBER_DISCORD_ID}>`);
-  expect(sender.calls[0]!.payload.allowed_mentions).toEqual({ parse: [] });
+  expect(sender.calls[0]!.payload.allowed_mentions).toEqual({ parse: [], users: [OWNER_DISCORD_ID, MEMBER_DISCORD_ID] });
   expect((await finalize(second)).statusCode).toBe(200);
   expect(await prisma.webhookDelivery.count({ where: { postId, eventType: 'post.party_thread' } })).toBe(1);
 });
@@ -218,4 +250,24 @@ it("marks a password or passkey member's typed Discord name as unverified in the
   expect(content).toContain('LocalHero (Discord name, unverified: typed_name)');
   expect(content).not.toContain('@typed_name');
   expect(content).toContain(`<@${OWNER_DISCORD_ID}>`);
+});
+
+it('a thread queued before request tokens existed is not sent twice when the time changes mid-send', async () => {
+  await finalize(new Date(Date.now() + 86_400_000));
+  const row = await prisma.webhookDelivery.findFirstOrThrow({ where: { postId, eventType: 'post.party_thread' } });
+  const { requestId: _dropped, ...legacy } = (row.payload as { _forum: { webOrigin: string; requestId?: string } })._forum;
+  await prisma.webhookDelivery.update({ where: { id: row.id }, data: { payload: { ...(row.payload as object), _forum: legacy } } });
+  let started!: () => void;
+  let release!: () => void;
+  const sending = new Promise<void>((resolve) => { started = resolve; });
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const sender = { send: async () => { started(); await gate; return { ok: true as const, channelId: 'legacy-thread' }; } };
+  const worker = new WebhookWorker({ prisma, sender }).runOnce();
+  await sending;
+  try {
+    expect((await finalize(new Date(Date.now() + 2 * 86_400_000))).statusCode).toBe(200);
+  } finally { release(); }
+  await worker;
+  expect(await prisma.webhookDelivery.count({ where: { postId, status: 'pending', eventType: 'post.party_thread' } })).toBe(0);
+  expect((await prisma.post.findUniqueOrThrow({ where: { id: postId } })).partyThreadId).toBe('legacy-thread');
 });

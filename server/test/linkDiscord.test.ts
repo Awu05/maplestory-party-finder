@@ -17,7 +17,7 @@ const me = async (cookie: string) => (await app.inject({ url: '/api/auth/me', he
 
 async function passkeyAccount(discordUsername = 'typed_name') {
   const key = new VirtualPasskey();
-  const options = await post('/api/auth/passkeys/register/options', { discordUsername, displayName: 'Maple Player' });
+  const options = await post('/api/auth/passkeys/register/options', { discordUserId: String(123456789012345678n + BigInt(await prisma.user.count())), discordUsername, displayName: 'Maple Player' });
   const result = await post('/api/auth/passkeys/register/verify', key.register(options.json<PublicKeyCredentialCreationOptionsJSON>()), cookieOf(options));
   expect(result.statusCode).toBe(200);
   return { key, id: result.json().id as string, cookie: cookieOf(result) };

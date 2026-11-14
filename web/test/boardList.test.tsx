@@ -42,7 +42,7 @@ const p1: PostSummaryDTO = {
   bosses: [{ bossDifficultyId: 7, bossName: 'Lucid', difficulty: 'Hard' }],
   scheduledAt: null,
   freeTimes: [],
-  weeklyTimeZone: null, freeTimesZone: null,
+  weeklyTimeZone: null, reminderOffsets: [], freeTimesZone: null,
   expiresAt: '2026-11-16T00:00:00Z',
   createdAt: '2026-11-09T00:00:00Z',
   partySize: 4,

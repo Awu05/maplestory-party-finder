@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { PostSummaryDTO } from '@pf/shared';
 import {
-  bossLabel, buildAcceptPing, buildNewPostMessage, buildPartyThread, buildPostClosedMessage, buildRequestPing, buildTestMessage, buildWeeklyReminder, discordTime, neutralize, weeklyReminderPost,
+  bossLabel, buildAcceptPing, buildNewPostMessage, buildPartyThread, buildPostClosedMessage, buildRequestPing, buildTestMessage, buildWeeklyReminder, buildRunReminder, discordTime, neutralize, weeklyReminderPost,
 } from '../src/discord/messages';
+import { rosterMember } from '../src/discord/pingable';
 
 const ZW = '​';
 const ORIGIN = 'https://pf.example';
@@ -31,13 +32,39 @@ const fields = (p: ReturnType<typeof buildNewPostMessage>) =>
   Object.fromEntries((p.embeds![0] as any).fields.map((f: any) => [f.name, f.value]));
 
 describe('helpers', () => {
+  it('a roster never pings banned, deleted or malformed accounts', () => {
+    const user = (over: object) => ({ discordId: null, typedDiscordId: '123456789012345678', username: 'typed', ...over });
+    const thread = buildPartyThread(makePost(), ORIGIN, [
+      rosterMember('Typed', user({})),
+      rosterMember('Banned', user({ discordId: '223456789012345678', banned: true })),
+      rosterMember('Gone', user({ typedDiscordId: '323456789012345678', deletedAt: new Date() })),
+      rosterMember('Bad', user({ typedDiscordId: '12' })),
+    ]);
+    expect(thread.message.allowed_mentions).toEqual({ parse: [], users: ['123456789012345678'] });
+    expect(thread.message.content).toContain('• Banned\n');
+    expect(thread.message.content).not.toContain('Banned (');
+  });
+  it('pings typed IDs in the roster and marks them unverified', () => {
+    const thread = buildPartyThread(makePost(), ORIGIN, [{ ign: 'Lily', discordId: '123456789012345678', verified: false }]);
+    expect(thread.message.content).toContain('Lily: <@123456789012345678> (unverified)');
+    expect(thread.message.allowed_mentions).toEqual({ parse: [], users: ['123456789012345678'] });
+  });
+  it('builds a safe reminder with relative and full timestamps and optional unpinged names', () => {
+    const input = { post: makePost({ title: '@everyone crew' }), runAt: new Date('2025-11-10T20:00:00Z'), pinged: ['123456789012345678'], unpinged: ['<@123456789012345678>'], webOrigin: ORIGIN };
+    const message = buildRunReminder(input);
+    expect(message.content).toContain(`**@${ZW}everyone crew** starts <t:1762804800:R> (<t:1762804800:F>)`);
+    expect(message.content).toContain(`Unpinged: <@${ZW}123456789012345678>`);
+    expect(message.content).toContain(`${ORIGIN}/posts/p1`);
+    expect(message.allowed_mentions).toEqual({ parse: [], users: ['123456789012345678'] });
+    expect(buildRunReminder({ ...input, unpinged: [] }).content).not.toContain('Unpinged:');
+  });
   it('lists unlinked accounts by their typed name, marked unverified, without allowing Discord mentions', () => {
     const thread = buildPartyThread(makePost(), ORIGIN, [{ ign: 'Local', discordId: null, discordUsername: '<@123456789012345678> @everyone' }]);
     expect(thread.message.content).toContain(`Local (Discord name, unverified: <@${ZW}123456789012345678> @${ZW}everyone)`);
     expect(thread.message.content).not.toContain('Discord: @');
     expect(thread.message.content).not.toContain('<@123456789012345678>');
     expect(thread.message.content).not.toContain('@everyone');
-    expect(thread.message.allowed_mentions).toEqual({ parse: [] });
+    expect(thread.message.allowed_mentions).toEqual({ parse: [], users: [] });
   });
   it('builds a safe, concise finalized party thread with time and link', () => {
     const post = makePost({ bosses: [{ bossDifficultyId: 1, bossName: '@everyone', difficulty: 'Hard' }] });
@@ -49,7 +76,7 @@ describe('helpers', () => {
     expect(thread.message.content).toContain('Alice: <@123456789012345678> (`123456789012345678`)');
     expect(thread.message.content).toContain('<@234567890123456789>');
     expect(thread.message.content).not.toContain('bad-id');
-    expect(thread.message.allowed_mentions).toEqual({ parse: [] });
+    expect(thread.message.allowed_mentions).toEqual({ parse: [], users: ['123456789012345678', '234567890123456789'] });
   });
   it('a custom title heads the announcement, with the bosses moved to their own field', () => {
     const custom = buildNewPostMessage(makePost({ title: '  Weekly Lucid/Will @everyone  ' }), ORIGIN);

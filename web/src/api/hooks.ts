@@ -27,7 +27,7 @@ export function useUpdateProfile() {
   const qc = useQueryClient();
   return useMutation({
     /** `discordUsername` only for accounts not linked to Discord; left out, the typed name is unchanged. */
-    mutationFn: (profile: { displayName: string | null; discordUsername?: string }) => api<MeDTO>('/api/auth/me', { method: 'PATCH', json: profile }),
+    mutationFn: (profile: { displayName: string | null; discordUsername?: string; discordUserId?: string }) => api<MeDTO>('/api/auth/me', { method: 'PATCH', json: profile }),
     onSuccess: async (me) => {
       qc.setQueryData(['me'], me);
       await Promise.all(['characters', 'posts', 'requests', 'admin'].map((key) => qc.invalidateQueries({ queryKey: [key] })));

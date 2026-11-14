@@ -83,7 +83,7 @@ describe('soft-deleting users', () => {
 
   it('a deleted user cannot sign in by password', async () => {
     const email = 'gone@example.com';
-    const post = (path: 'register' | 'login') => app.inject({ method: 'POST', url: `/api/auth/password/${path}`, headers: { origin: 'http://localhost:5173' }, payload: path === 'login' ? { email, password } : { discordUsername: 'Gone', displayName: 'Gone', email, password } });
+    const post = (path: 'register' | 'login') => app.inject({ method: 'POST', url: `/api/auth/password/${path}`, headers: { origin: 'http://localhost:5173' }, payload: path === 'login' ? { email, password } : { discordUserId: '123456789012345678', discordUsername: 'Gone', displayName: 'Gone', email, password } });
     const password = 'correct horse battery staple';
     const reg = await post('register');
     expect(reg.statusCode).toBe(200);

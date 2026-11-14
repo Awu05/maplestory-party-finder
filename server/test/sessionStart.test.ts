@@ -7,7 +7,7 @@ import { isAdminUser } from '../src/auth/guards.js';
 
 const ORIGIN = 'http://localhost:5173';
 const password = 'a long maple password';
-const account = { discordUsername: 'maple_user', displayName: 'Maple Player' };
+const account = { discordUserId: '123456789012345678', discordUsername: 'maple_user', displayName: 'Maple Player' };
 let app: FastifyInstance;
 beforeEach(async () => { await resetDb(); ({ app } = await buildTestApp()); });
 afterEach(async () => { await app.close(); });

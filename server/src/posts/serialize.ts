@@ -78,6 +78,7 @@ export function toPostSummaryDTO(row: PostSummaryRow, viewerUserId: string | nul
     bosses: toBossDTOs(row),
     scheduledAt: row.scheduledAt?.toISOString() ?? null,
     weeklyTimeZone: row.weeklyTimeZone,
+    reminderOffsets: row.reminderOffsets,
     freeTimes: row.freeTimes,
     freeTimesZone: row.freeTimesZone,
     expiresAt: row.expiresAt.toISOString(),
