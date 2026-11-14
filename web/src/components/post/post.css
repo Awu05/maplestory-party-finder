@@ -75,6 +75,13 @@ a.post-card:hover {
   padding: 0;
   list-style: none;
 }
+/* Parties stack one per row; each party's members run side to side. */
+.my-parties__list--parties {
+  grid-template-columns: minmax(0, 1fr);
+}
+.my-parties__list--parties .lineup {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 220px));
+}
 .my-parties > section + section {
   margin-top: var(--space-6);
 }
