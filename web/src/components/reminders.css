@@ -1,0 +1,25 @@
+.reminders {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+.reminders h3 {
+  margin: 0;
+}
+.reminders small,
+.reminders__suffix {
+  color: var(--muted);
+}
+.reminders__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.reminders__amount {
+  width: 5.5rem;
+}
+.reminders__error {
+  margin: 0;
+}
