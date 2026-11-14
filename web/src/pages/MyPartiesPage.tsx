@@ -61,7 +61,7 @@ function PartiesTab({ tiers }: { tiers: RarityTierDTO[] }) {
         {upcoming.length === 0 ? (
           <p>No upcoming parties.</p>
         ) : (
-          <ul className="post-list-plain my-parties__list">
+          <ul className="post-list-plain my-parties__list my-parties__list--parties">
             {upcoming.map((p) => (
               <PartyItem key={p.id} party={p} tiers={tiers} />
             ))}
@@ -71,7 +71,7 @@ function PartiesTab({ tiers }: { tiers: RarityTierDTO[] }) {
       {past.length > 0 && (
         <section aria-label="Past">
           <h2>Past</h2>
-          <ul className="post-list-plain my-parties__list">
+          <ul className="post-list-plain my-parties__list my-parties__list--parties">
             {past.map((p) => (
               <PartyItem key={p.id} party={p} tiers={tiers} />
             ))}
