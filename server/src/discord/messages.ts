@@ -63,7 +63,12 @@ export function buildNewPostMessage(post: PostSummaryDTO, webOrigin: string, bos
   const when = post.scheduledAt
     ? discordTime(post.scheduledAt)
     : post.freeTimes.length > 0 ? 'Not set yet — see free times on the post' : 'Flexible';
-  const fields = [field('World', post.world.name), field('When', when)];
+  // A custom title replaces the boss list in the heading, so the bosses get their own field.
+  const title = post.title.trim();
+  const fields = [
+    ...(title ? [{ name: 'Bosses', value: clip(neutralize(bossesLabel(post)), FIELD_MAX), inline: false }] : []),
+    field('World', post.world.name), field('When', when),
+  ];
   if (recruiting && post.partySize != null) fields.push(field('Slots', `${post.memberCount}/${post.partySize}`));
   if (post.minCp != null) fields.push(field('Min CP', formatCpShort(post.minCp)));
   fields.push(field('Poster', `${snap.ign} · ${snap.jobName} · Lv ${snap.level} · CP ${formatCpShort(post.poster.cpAtJoin)}`));
@@ -85,7 +90,7 @@ export function buildNewPostMessage(post: PostSummaryDTO, webOrigin: string, bos
   return {
     ...(roles.length ? { content: roles.map((id) => `<@&${id}>`).join(' ') } : {}),
     embeds: [{
-      title: clip(neutralize(`${POST_TYPE_LABELS[post.type]}: ${bossesLabel(post)}`), TITLE_MAX),
+      title: clip(neutralize(title || `${POST_TYPE_LABELS[post.type]}: ${bossesLabel(post)}`), TITLE_MAX),
       url: postLink(post, webOrigin),
       color: recruiting ? COLOR_RECRUITING : COLOR_LFP,
       ...(/^https?:\/\//.test(snap.imageUrl) ? { thumbnail: { url: snap.imageUrl } } : {}),
@@ -137,17 +142,18 @@ export function buildTestMessage(guildName: string): WebhookPayload {
 }
 
 /** Thread title and opening message for a finalized party. */
-export function buildPartyThread(post: WeeklyReminderPost & { world: { name: string }; poster: { snapshot: { ign: string } } }, webOrigin: string, members: { ign: string; discordId: string | null; discordUsername?: string }[] = []): { name: string; message: WebhookPayload } {
+export function buildPartyThread(post: WeeklyReminderPost & { title?: string; world: { name: string }; poster: { snapshot: { ign: string } } }, webOrigin: string, members: { ign: string; discordId: string | null; discordUsername?: string }[] = []): { name: string; message: WebhookPayload } {
   const bosses = clip(neutralize(bossesLabel(post)), 700);
   const poster = clip(neutralize(post.poster.snapshot.ign), 100);
+  const title = clip(neutralize(post.title?.trim() ?? ''), 100);
   const roster = members.filter((member) => member.discordId === null || /^[1-9]\d{16,19}$/.test(member.discordId))
     .map((member) => member.discordId === null
       ? `• ${clip(neutralize(member.ign), 50)}${member.discordUsername ? ` (${unverifiedDiscordName(clip(neutralize(member.discordUsername), 50))})` : ''}`
       : `• ${clip(neutralize(member.ign), 50)}: <@${member.discordId}> (\`${member.discordId}\`)`).join('\n');
   return {
-    name: clip(`${bosses} — ${poster}`, 100),
+    name: clip(`${title || bosses} — ${poster}`, 100),
     message: {
-      content: `**${bosses}**\nHosted by ${poster} · ${clip(neutralize(post.world.name), 100)}\nTime: ${discordTime(post.scheduledAt)}\nMembers:\n${roster || 'No Discord IDs available'}\nParty details: ${postLink(post, webOrigin)}`,
+      content: `${title ? `**${title}**\n${bosses}` : `**${bosses}**`}\nHosted by ${poster} · ${clip(neutralize(post.world.name), 100)}\nTime: ${discordTime(post.scheduledAt)}\nMembers:\n${roster || 'No Discord IDs available'}\nParty details: ${postLink(post, webOrigin)}`,
       allowed_mentions: { parse: [] },
     },
   };

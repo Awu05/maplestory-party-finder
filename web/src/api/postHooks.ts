@@ -61,6 +61,8 @@ export interface PostInput {
   freeTimesZone: string | null;
   partySize?: number;
   minCp?: number;
+  /** Empty means the default Discord title (type: bosses). */
+  title?: string;
   note: string;
 }
 export type UpdatePostInput = Partial<Omit<PostInput, 'minCp'>> & { minCp?: number | null };

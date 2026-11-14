@@ -96,7 +96,10 @@ export interface PostSummaryDTO {
   weeklyTimeZone: string | null;
   /** Local half-hour slots (day * 48 + slot, 0 = Sunday) in freeTimesZone; scheduledAt is the final time. */
   freeTimes: number[]; freeTimesZone: string | null;
-  partySize: number | null; memberCount: number; minCp: number | null; note: string;
+  partySize: number | null; memberCount: number; minCp: number | null;
+  /** The poster's own title; empty means the default (type: bosses). */
+  title: string;
+  note: string;
   status: PostStatus; // effective
   /** Recruitment is closed, but the scheduled party is still active. */
   recruitmentClosed?: boolean;

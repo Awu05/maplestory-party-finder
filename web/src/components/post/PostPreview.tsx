@@ -72,9 +72,10 @@ function PreviewBody({
       <>
         {outsideFilters && <p className="post-preview__filter-note">This post isn't in your current filters.</p>}
         <div className="post-preview__head">
-          <h2 className="post-preview__title">{p.bosses.map(bossLabel).join(', ')}</h2>
+          <h2 className="post-preview__title">{p.title || p.bosses.map(bossLabel).join(', ')}</h2>
           <StatusPill status={p.status} deleted={p.deleted} />
         </div>
+        {p.title && <p className="post-preview__meta">{p.bosses.map(bossLabel).join(', ')}</p>}
         <p className="post-preview__meta">
           {[p.world.name, (p.guild?.name ?? 'No guild')].join(' · ')}
         </p>

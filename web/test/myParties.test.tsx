@@ -50,7 +50,7 @@ const post = (id: string, boss: string, over: Partial<PostDetailDTO> = {}): Post
     partySize: 4,
     memberCount: 2,
     minCp: null,
-    note: '',
+    title: '', note: '',
     status: 'open',
     deleted: false,
     isPoster: false,

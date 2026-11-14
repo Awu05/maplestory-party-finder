@@ -25,6 +25,7 @@ export interface CreatePostInput {
   freeTimesZone?: string | null;
   partySize?: number;
   minCp?: number;
+  title?: string;
   note: string;
   notificationGuildId?: string | null;
   partyForumGuildId?: string | null;
@@ -120,6 +121,7 @@ export async function createPost(prisma: PrismaClient, userId: string, input: Cr
         createdAt: now,
         partySize: input.partySize ?? null,
         minCp: input.minCp === undefined ? null : BigInt(input.minCp),
+        title: input.title ?? '',
         note: input.note,
         bosses: { create: input.bossDifficultyIds.map((bossDifficultyId) => ({ bossDifficultyId })) },
         members: {
@@ -487,6 +489,7 @@ export interface EditPostInput {
   freeTimesZone?: string | null;
   partySize?: number;
   minCp?: number | null;
+  title?: string;
   note?: string;
 }
 
@@ -579,6 +582,7 @@ export async function editPost(prisma: PrismaClient, viewer: Viewer, id: string,
         partySize,
         minCp,
         ...(dropFinalTime ? { scheduledAt: null, weeklyTimeZone: null, weeklyAnchorAt: null, expiresAt: postExpiresAt(null, now) } : {}),
+        ...(input.title !== undefined ? { title: input.title } : {}),
         ...(input.note !== undefined ? { note: input.note } : {}),
         ...(free ?? {}),
         ...(character ? { posterCharacterId: character.id, worldId: character.worldId, guildId: character.guildId } : {}),

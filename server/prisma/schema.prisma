@@ -254,6 +254,8 @@ model Post {
   expiresAt         DateTime
   partySize         Int?
   minCp             BigInt?
+  /// The poster's own title, used for the Discord notification; empty means the default (type: bosses).
+  title             String       @default("")
   note              String       @default("")
   status            PostStatus   @default(open)
   /// manual | finalized | full | lfp_matched | character_deleted

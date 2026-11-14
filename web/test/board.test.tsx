@@ -52,7 +52,7 @@ const post: PostSummaryDTO = {
   partySize: 4,
   memberCount: 2,
   minCp: 300_000_000,
-  note: 'Chill run',
+  title: '', note: 'Chill run',
   status: 'open',
   deleted: false,
   isPoster: false,
@@ -76,6 +76,13 @@ describe('BoardPage', () => {
     expect(screen.getByText('Hard Lucid')).toBeInTheDocument();
     expect(screen.getByText('2 / 4')).toBeInTheDocument();
     expect(screen.getByText('Flexible', { selector: '.post-row__when' })).toBeInTheDocument();
+  });
+
+  it("a row leads with the post's own title, followed by its bosses", async () => {
+    mockApi({ ...base, '/api/auth/me': null, '/api/posts': [{ ...post, title: 'Chill Lucid clear' }] });
+    renderWithProviders(<App />);
+    expect(await screen.findByText('Chill Lucid clear', { selector: '.post-row__bosses' })).toBeInTheDocument();
+    expect(screen.getByText('Hard Lucid', { selector: '.post-row__subtitle' })).toBeInTheDocument();
   });
 
   it('logged-in user with a Kronos character sends worldIds on the first request', async () => {

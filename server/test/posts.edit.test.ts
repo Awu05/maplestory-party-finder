@@ -28,6 +28,15 @@ const pending = async (postId: string, over: Record<string, unknown> = {}) => {
 const reqStatus = async (id: string) => (await prisma.request.findUniqueOrThrow({ where: { id } })).status;
 
 describe('PATCH /api/posts/:id', () => {
+  it('sets, changes and clears the title', async () => {
+    const p = await makePost({ posterUserId: userId });
+    expect((await patch(p.id, { title: ' Sunday crew ' })).json().title).toBe('Sunday crew');
+    expect((await prisma.post.findUniqueOrThrow({ where: { id: p.id } })).title).toBe('Sunday crew');
+    expect((await patch(p.id, { note: 'only the note' })).json().title).toBe('Sunday crew');
+    expect((await patch(p.id, { title: '' })).json().title).toBe('');
+    expect((await patch(p.id, { title: 'y'.repeat(101) })).statusCode).toBe(400);
+  });
+
   it('does not overwrite half-hour slots from a stale browser tab', async () => {
     const p = await makePost({ posterUserId: userId, freeTimes: [136, 137], freeTimesZone: 'UTC' });
     const res = await app.inject({ method: 'PATCH', url: `/api/posts/${p.id}`, headers: { cookie }, payload: { freeTimes: [68], freeTimesZone: 'UTC' } });

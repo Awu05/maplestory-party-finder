@@ -121,6 +121,13 @@ describe('POST /api/posts', () => {
     expect(events.events).toContainEqual({ type: 'post.created', postId: res.json().id });
   });
 
+  it('stores an optional title, trimmed; defaults to empty; over 100 characters -> 400', async () => {
+    expect((await post(body())).json().title).toBe('');
+    expect((await post(body({ title: '  Weekly Lucid run  ' }))).json().title).toBe('Weekly Lucid run');
+    expect((await post(body({ title: 'x'.repeat(100) }))).statusCode).toBe(201);
+    expect((await post(body({ title: 'x'.repeat(101) }))).statusCode).toBe(400);
+  });
+
   it('stores sorted unique free times and the zone, unfinalized, expiring created + 7 days', async () => {
     const res = await post(body({ freeTimes: [68, 20, 68], freeTimesZone: 'America/New_York' }));
     expect(res.statusCode).toBe(201);
