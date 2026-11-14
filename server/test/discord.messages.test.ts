@@ -22,7 +22,7 @@ function makePost(over: Partial<PostSummaryDTO> = {}): PostSummaryDTO {
     ],
     scheduledAt: '2025-11-10T20:00:00Z', expiresAt: '2025-11-11T00:00:00Z', createdAt: '2025-11-09T00:00:00Z',
     freeTimes: [], freeTimesZone: null,
-    partySize: 4, memberCount: 2, minCp: 50_000_000, note: 'bring pots',
+    partySize: 4, memberCount: 2, minCp: 50_000_000, title: '', note: 'bring pots',
     status: 'open', deleted: false, isPoster: false,
     ...over,
   } as PostSummaryDTO;
@@ -50,6 +50,22 @@ describe('helpers', () => {
     expect(thread.message.content).toContain('<@234567890123456789>');
     expect(thread.message.content).not.toContain('bad-id');
     expect(thread.message.allowed_mentions).toEqual({ parse: [] });
+  });
+  it('a custom title heads the announcement, with the bosses moved to their own field', () => {
+    const custom = buildNewPostMessage(makePost({ title: '  Weekly Lucid/Will @everyone  ' }), ORIGIN);
+    const embed = custom.embeds![0] as any;
+    expect(embed.title).toBe(`Weekly Lucid/Will @${ZW}everyone`);
+    expect(embed.fields[0]).toEqual({ name: 'Bosses', value: 'Hard Lucid + Hard Will', inline: false });
+    expect(custom.allowed_mentions.parse).toEqual([]);
+    const plain = buildNewPostMessage(makePost({ title: '   ' }), ORIGIN);
+    expect((plain.embeds![0] as any).title).toBe('Recruiting: Hard Lucid + Hard Will');
+    expect(fields(plain)).not.toHaveProperty('Bosses');
+  });
+  it('a custom title names the party thread and leads its message', () => {
+    const thread = buildPartyThread(makePost({ title: 'Sunday crew' }), ORIGIN);
+    expect(thread.name).toBe('Sunday crew — Alice');
+    expect(thread.message.content?.startsWith('**Sunday crew**\nHard Lucid + Hard Will\nHosted by Alice')).toBe(true);
+    expect(buildPartyThread(makePost(), ORIGIN).name).toBe('Hard Lucid + Hard Will — Alice');
   });
   it('bossLabel', () => expect(bossLabel(makePost().bosses[0])).toBe('Hard Lucid'));
   it('discordTime', () => {

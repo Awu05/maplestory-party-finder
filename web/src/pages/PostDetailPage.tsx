@@ -133,6 +133,7 @@ export function PostDetailPage() {
           {p.world.name} · {(p.guild?.name ?? 'No guild')}
         </span>
       </header>
+      {p.title && <h1 className="post-detail__title">{p.title}</h1>}
       <ul className="post-card__bosses">
         {p.bosses.map((b) => (
           <li key={b.bossDifficultyId}>{bossLabel(b)}</li>

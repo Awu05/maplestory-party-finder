@@ -111,6 +111,16 @@ a.post-card:hover {
   border: 1px solid var(--border);
   font-size: 0.85rem;
 }
+.post-card__title {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.post-detail__title {
+  margin: 0 0 var(--space-2);
+  font-size: 1.4rem;
+  overflow-wrap: anywhere;
+}
 .post-card__note {
   margin: 0;
   display: -webkit-box;
@@ -356,6 +366,15 @@ a.post-card:hover {
 }
 .post-row__bosses {
   font-weight: 600;
+}
+/* The bosses, after a post's own title. */
+.post-row__subtitle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 0.85rem;
 }
 .post-row__meta {
   color: var(--muted);

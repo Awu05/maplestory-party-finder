@@ -62,7 +62,7 @@ const post = (over: Partial<PostDetailDTO> = {}): PostDetailDTO => {
     partySize: 4,
     memberCount: 2,
     minCp: 300_000_000,
-    note: 'Chill run',
+    title: '', note: 'Chill run',
     status: 'open',
     deleted: false,
     isPoster: false,
@@ -98,6 +98,17 @@ const called = (fetchMock: ReturnType<typeof mockApi>, url: string, method: stri
 afterEach(() => vi.restoreAllMocks());
 
 describe('PostDetailPage lineup', () => {
+  it('shows the post title as the page heading, and no heading without one', async () => {
+    renderPage({ '/api/posts/p1': post({ title: 'Chill Lucid clear' }) });
+    expect(await screen.findByRole('heading', { level: 1, name: 'Chill Lucid clear' })).toBeInTheDocument();
+  });
+
+  it('a post without a title shows no title heading', async () => {
+    renderPage({ '/api/posts/p1': post() });
+    await screen.findByText('Chill run');
+    expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
+  });
+
   it('disables Discord announcements until the cooldown expires', async () => {
     const availableAt = new Date(Date.now() + 60_000).toISOString();
     renderPage({ '/api/posts/p1': post({ isPoster: true, discordAnnouncementAvailableAt: availableAt }) });

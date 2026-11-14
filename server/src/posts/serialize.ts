@@ -85,6 +85,7 @@ export function toPostSummaryDTO(row: PostSummaryRow, viewerUserId: string | nul
     partySize: row.partySize,
     memberCount: row.members.length,
     minCp: row.minCp === null ? null : Number(row.minCp),
+    title: row.title,
     note: row.note,
     status: effectivePostStatus(row, now),
     recruitmentClosed: isActiveFinalized(row, now),

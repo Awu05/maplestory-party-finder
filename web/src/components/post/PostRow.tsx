@@ -52,7 +52,10 @@ export const PostRow = forwardRef<HTMLAnchorElement, Props>(function PostRow(
       <span className="post-row__body">
         <span className="post-row__top">
           <span className={`post-badge post-badge--${post.type}`}>{POST_TYPE_LABELS[post.type]}</span>
-          <span className="post-row__bosses">{post.bosses.map(bossLabel).join(', ')}</span>
+          {post.title ? <>
+            <span className="post-row__bosses">{post.title}</span>
+            <span className="post-row__subtitle">{post.bosses.map(bossLabel).join(', ')}</span>
+          </> : <span className="post-row__bosses">{post.bosses.map(bossLabel).join(', ')}</span>}
         </span>
         <span className="post-row__meta">
           {showWorld && <>

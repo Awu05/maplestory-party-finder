@@ -54,7 +54,7 @@ const recruitingPost: PostDetailDTO = {
   partySize: 4,
   memberCount: 1,
   minCp: null,
-  note: '',
+  title: '', note: '',
   status: 'open',
   deleted: false,
   isPoster: false,

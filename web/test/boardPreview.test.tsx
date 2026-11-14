@@ -50,7 +50,7 @@ const p1: PostSummaryDTO = {
   partySize: null,
   memberCount: 1,
   minCp: null,
-  note: '',
+  title: '', note: '',
   status: 'open',
   deleted: false,
   isPoster: false,
@@ -63,7 +63,7 @@ const p2: PostSummaryDTO = {
   partySize: 4,
   memberCount: 2,
   minCp: 300_000_000,
-  note: 'Chill run',
+  title: '', note: 'Chill run',
 };
 const detail = (s: PostSummaryDTO, over: Partial<PostDetailDTO> = {}): PostDetailDTO => ({
   ...s,

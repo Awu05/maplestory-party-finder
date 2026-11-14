@@ -58,7 +58,7 @@ function makePost(over: Partial<PostDetailDTO> = {}): PostDetailDTO {
     partySize: 4,
     memberCount: 1,
     minCp: 300_000_000,
-    note: 'Chill run',
+    title: '', note: 'Chill run',
     status: 'open',
     deleted: false,
     isPoster: true,
@@ -171,10 +171,36 @@ describe('NewPostPage (create)', () => {
       freeTimesZone: null,
       partySize: 4,
       minCp: 300000000,
-      note: '',
+      title: '', note: '',
       notificationGuildId: null,
       partyForumGuildId: null,
     });
+  });
+
+  it('sends a typed title, trimmed, and shows the default Discord title as a placeholder', async () => {
+    const m = mockApi({ ...base, '/api/posts/p1': makePost(), 'POST /api/posts': makePost() });
+    renderWithProviders(<App />, { route: '/posts/new' });
+    await pickCharacter();
+    const title = screen.getByLabelText('Title');
+    expect(title).toHaveAttribute('placeholder', 'Recruiting: your bosses');
+    await pickBoss('Hard Lucid');
+    expect(title).toHaveAttribute('placeholder', 'Recruiting: Hard Lucid');
+    expect(title).toHaveAttribute('maxLength', '100');
+    fireEvent.change(title, { target: { value: '  Chill Lucid clear  ' } });
+    save();
+    await screen.findByRole('heading', { name: 'Lineup' });
+    expect(body(writes(m)[0])).toMatchObject({ title: 'Chill Lucid clear' });
+  });
+
+  it('editing only the title PATCHes just the title; clearing it sends an empty one', async () => {
+    const post = makePost({ title: 'Old title' });
+    const m = mockApi({ ...base, '/api/posts/p1': post, 'PATCH /api/posts/p1': post });
+    renderWithProviders(<App />, { route: '/posts/p1/edit' });
+    await waitFor(() => expect(screen.getByLabelText('Title')).toHaveValue('Old title'));
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: '' } });
+    save();
+    await screen.findByRole('heading', { name: 'Lineup' });
+    expect(body(writes(m)[0])).toEqual({ title: '' });
   });
 
   it('LFP hides party size and min CP and omits them from the body', async () => {
@@ -193,7 +219,7 @@ describe('NewPostPage (create)', () => {
       bossDifficultyIds: [7],
       freeTimes: [],
       freeTimesZone: null,
-      note: '',
+      title: '', note: '',
       notificationGuildId: null,
       partyForumGuildId: null,
     });

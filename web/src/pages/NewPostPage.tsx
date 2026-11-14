@@ -15,6 +15,7 @@ import { browserTimeZone } from '../lib/timeZone';
 import './characters.css';
 
 const NOTE_MAX = 300;
+const TITLE_MAX = 100;
 const DEFAULT_PARTY_SIZE = 4;
 
 interface Values {
@@ -24,6 +25,7 @@ interface Values {
   freeTimes: number[];
   partySize: number;
   minCp: string;
+  title: string;
   note: string;
   notificationGuildId: string;
   partyForumGuildId: string;
@@ -47,6 +49,7 @@ function valuesFromPost(post: PostDetailDTO, editingZone: string): Values {
       : [],
     partySize: post.partySize ?? DEFAULT_PARTY_SIZE,
     minCp: post.minCp === null ? '' : post.minCp.toLocaleString('en-US'),
+    title: post.title,
     note: post.note,
     notificationGuildId: post.notificationGuild?.id ?? '',
     partyForumGuildId: post.partyForumGuild?.id ?? '',
@@ -78,6 +81,7 @@ function changedFields(v: Values, orig: Values, editingZone: string): UpdatePost
       if (cp !== parseCp(orig.minCp)) out.minCp = cp;
     }
   }
+  if (v.title.trim() !== orig.title) out.title = v.title.trim();
   if (v.note !== orig.note) out.note = v.note;
   if (v.notificationGuildId !== orig.notificationGuildId) out.notificationGuildId = v.notificationGuildId || null;
   // The server clears an LFP post's party chat guild itself.
@@ -96,6 +100,7 @@ const EMPTY: Values = {
   freeTimes: [],
   partySize: DEFAULT_PARTY_SIZE,
   minCp: '',
+  title: '',
   note: '',
   notificationGuildId: '',
   partyForumGuildId: '',
@@ -125,6 +130,9 @@ function PostForm({ characters, bosses, post }: FormProps) {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const freeHintId = useId();
+  // What Discord shows when no title is typed (the server builds the same "type: bosses" title).
+  const bossLabels = bosses.flatMap((boss) => boss.difficulties.filter((d) => v.bossIds.includes(d.id)).map((d) => `${d.difficulty} ${boss.name}`));
+  const defaultTitle = `${POST_TYPE_LABELS[v.type]}: ${bossLabels.length > 0 ? bossLabels.join(' + ') : 'your bosses'}`;
   const selectedCharacter = characters.find((character) => character.id === v.characterId);
   const worldId = selectedCharacter?.world.id ?? post?.world.id;
   const choices = (destinations.data ?? []).filter((guild) => guild.worldIds.includes(worldId ?? -1));
@@ -180,6 +188,7 @@ function PostForm({ characters, bosses, post }: FormProps) {
           freeTimes: v.freeTimes,
           freeTimesZone: v.freeTimes.length > 0 ? browserTimeZone() : null,
           ...(v.type !== 'lfp' ? { partySize: v.partySize, ...(cp !== null ? { minCp: cp } : {}) } : {}),
+          title: v.title.trim(),
           note: v.note,
           notificationGuildId: v.notificationGuildId || null,
           partyForumGuildId: v.type === 'lfp' ? null : v.partyForumGuildId || null,
@@ -253,6 +262,13 @@ function PostForm({ characters, bosses, post }: FormProps) {
           </label>
         </>
       )}
+      <div>
+        <label>
+          Title
+          <input type="text" value={v.title} maxLength={TITLE_MAX} placeholder={defaultTitle} onChange={(e) => set({ title: e.target.value })} />
+        </label>
+        <small>{`Optional. Used as the Discord notification title; leave blank for "${defaultTitle}". ${v.title.length}/${TITLE_MAX}`}</small>
+      </div>
       <div>
         <label>
           Note

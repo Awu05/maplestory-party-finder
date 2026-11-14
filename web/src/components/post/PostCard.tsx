@@ -21,6 +21,7 @@ export function PostCard({ post, tiers, onOpen }: Props) {
         <span className={`post-badge post-badge--${post.type}`}>{POST_TYPE_LABELS[post.type]}</span>
         <span className="post-card__when">{whenLabel(post)}</span>
       </div>
+      {post.title && <p className="post-card__title">{post.title}</p>}
       {poster.character ? (
         <CharacterCard character={poster.character} tiers={tiers} />
       ) : (

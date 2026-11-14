@@ -11,6 +11,27 @@ afterAll(async () => {
 describe('notifications wiring (dispatcher + worker, end to end)', () => {
   beforeEach(resetDb);
 
+  it("a post's own title is the Discord notification's title", async () => {
+    const { app, events, webhookSender } = await buildTestApp({ events: 'dispatcher' });
+    const worker = new WebhookWorker({ prisma, sender: webhookSender });
+    const u1 = await loginAs(app, 'u-1', 'one');
+    const u1Id = (await prisma.user.findUniqueOrThrow({ where: { discordId: 'u-1' } })).id;
+    const kronos = await makeWorld({ nexonWorldId: 45, name: 'Kronos' });
+    const g1 = await makeGuild({ name: 'G1', worldIds: [kronos.id], webhookUrl: HOOK });
+    const lucid = (await makeBossDifficulty({ bossName: 'Lucid', difficulty: 'Hard', partyCap: 6 })).id;
+    const alice = await makeCharacter({ ownerId: u1Id, worldId: kronos.id, guildId: g1.id, ign: 'Alice' });
+    const created = await app.inject({
+      method: 'POST', url: '/api/posts', headers: { cookie: u1 },
+      payload: { type: 'recruiting', characterId: alice.id, bossDifficultyIds: [lucid], partySize: 4, title: 'Chill Lucid clear', note: '', notificationGuildId: g1.id },
+    });
+    expect(created.statusCode).toBe(201);
+    await events.drain();
+    await worker.runOnce();
+    const embed = webhookSender.calls[0]!.payload.embeds![0] as { title: string; fields: { name: string; value: string }[] };
+    expect(embed.title).toBe('Chill Lucid clear');
+    expect(embed.fields[0]).toMatchObject({ name: 'Bosses', value: 'Hard Lucid' });
+  });
+
   it('post -> embed; join request -> notification + ping; accept -> notification + accept ping', async () => {
     const { app, events, webhookSender } = await buildTestApp({ events: 'dispatcher' });
     const worker = new WebhookWorker({ prisma, sender: webhookSender });

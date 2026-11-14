@@ -48,7 +48,7 @@ const p1: PostSummaryDTO = {
   partySize: 4,
   memberCount: 2,
   minCp: 300_000_000,
-  note: 'Chill run',
+  title: '', note: 'Chill run',
   status: 'open',
   deleted: false,
   isPoster: false,

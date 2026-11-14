@@ -22,7 +22,7 @@ const ANNOUNCEMENTS = new Set(['post.created', 'post.reopened', 'post.announceme
 const deliveryPostSelect = {
   id: true, notificationGuildId: true, partyForumGuildId: true, worldId: true,
   status: true, closedReason: true, expiresAt: true, deletedAt: true,
-  weeklyTimeZone: true, weeklyAnchorAt: true, scheduledAt: true,
+  weeklyTimeZone: true, weeklyAnchorAt: true, scheduledAt: true, title: true,
 } satisfies Prisma.PostSelect;
 type ForumState = { status: string; closedReason: string | null; deletedAt: Date | null; expiresAt: Date; partyForumGuildId: string | null };
 
@@ -173,7 +173,7 @@ export class WebhookWorker {
         return;
       }
       const thread = buildPartyThread({
-        id: post.id, scheduledAt: post.scheduledAt?.toISOString() ?? null, world: { name: post.world.name },
+        id: post.id, title: post.title, scheduledAt: post.scheduledAt?.toISOString() ?? null, world: { name: post.world.name },
         poster: { snapshot: parseSnapshot(poster.snapshot) },
         bosses: toBossDTOs({ bosses }),
       }, webOrigin, members.map((member) => ({ ign: parseSnapshot(member.snapshot).ign, discordId: member.user.discordId, discordUsername: member.user.username })));

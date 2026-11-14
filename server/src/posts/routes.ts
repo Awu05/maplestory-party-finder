@@ -14,6 +14,8 @@ export const bossDifficultyIdsSchema = z
   .refine((ids) => new Set(ids).size === ids.length, 'Duplicate bossDifficultyIds');
 export const scheduledAtSchema = z.string().datetime().transform((s) => new Date(s)).nullable();
 export const noteSchema = z.string().max(300);
+/** The poster's own title for the post and its Discord notification; empty means the default. */
+export const titleSchema = z.string().trim().max(100);
 export const partySizeSchema = z.number().int();
 export const minCpSchema = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
 /** Local half-hour slots (day * 48 + slot, 0-335); the service dedupes and sorts. */
@@ -43,6 +45,7 @@ const postFields = z.object({
   freeTimesZone: freeTimesZoneSchema.optional(),
   partySize: partySizeSchema.optional(),
   minCp: minCpSchema.optional(),
+  title: titleSchema.default(''),
   note: noteSchema,
   notificationGuildId: z.string().min(1).nullable().optional(),
   partyForumGuildId: z.string().min(1).nullable().optional(),
@@ -53,7 +56,7 @@ export const createPostBody = postFields.superRefine(checkFreeTimes(false));
 // Every create field optional; minCp may be null to clear it. At least one field is required.
 export const editPostBody = postFields
   .partial()
-  .extend({ freeTimes: freeTimesSchema.optional(), minCp: minCpSchema.nullable().optional() })
+  .extend({ freeTimes: freeTimesSchema.optional(), minCp: minCpSchema.nullable().optional(), title: titleSchema.optional() })
   .refine((b) => Object.values(b).some((v) => v !== undefined), 'Provide at least one field to change')
   .superRefine(checkFreeTimes(true));
 
