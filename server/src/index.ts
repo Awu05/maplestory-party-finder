@@ -10,6 +10,7 @@ import { HttpWebhookSender } from './discord/sender.js';
 import { WebhookWorker } from './discord/outbox.js';
 import { DailySyncJob } from './jobs/dailySync.js';
 import { WeeklyReminderJob } from './jobs/weeklyReminders.js';
+import { RunReminderJob } from './jobs/runReminders.js';
 import { LocalDiskStorage } from './storage/storage.js';
 import { LocalScouterValidator, OcrWorker } from './storage/scouterValidator.js';
 import { SmtpPasswordResetMailer } from './auth/resetMailer.js';
@@ -46,11 +47,13 @@ const log = { error: (obj: object, msg: string) => app.log.error(obj, msg) };
 const worker = new WebhookWorker({ prisma, sender: webhookSender, log });
 const job = new DailySyncJob({ prisma, nexon, log });
 const weeklyReminders = new WeeklyReminderJob({ prisma, storage, webOrigin: config.webOrigin, log });
+const runReminders = new RunReminderJob({ prisma, webOrigin: config.webOrigin, log });
 if (config.jobsEnabled) {
   worker.start(5_000);
   job.start(3_600_000);
   weeklyReminders.start();
-  app.log.info('Webhook worker, daily sync and weekly reminder jobs started');
+  runReminders.start();
+  app.log.info('Webhook worker, daily sync, weekly and run reminder jobs started');
 } else {
   app.log.info('JOBS_ENABLED is false: background jobs not started');
 }
@@ -62,8 +65,8 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
   app.log.info({ signal }, 'Shutting down');
   let code = 0;
   try {
-    // Both stop quickly: each finishes only its in-flight unit of work, so Docker's 10s grace holds.
-    await Promise.all([job.stop(), weeklyReminders.stop(), worker.stop()]);
+    // Finish in-flight work before disconnecting the database.
+    await Promise.all([job.stop(), weeklyReminders.stop(), runReminders.stop(), worker.stop()]);
   } catch (err) {
     code = 1;
     app.log.error({ err }, 'Error stopping background jobs');

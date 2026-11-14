@@ -7,7 +7,7 @@ const origin = 'http://localhost:5173';
 const email = 'maple@example.com';
 const oldPassword = 'a long maple password';
 const password = 'my new maple password';
-const signup = { email, password: oldPassword, discordUsername: 'maple', displayName: 'Maple' };
+const signup = { discordUserId: '123456789012345678', email, password: oldPassword, discordUsername: 'maple', displayName: 'Maple' };
 let app: FastifyInstance;
 let sent: { to: string; url: string }[];
 let failMail = false;

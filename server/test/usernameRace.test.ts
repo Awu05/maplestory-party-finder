@@ -16,8 +16,9 @@ const race = { plan: [] as Step[], made: 0 };
 type Tx = Prisma.TransactionClient;
 function racingPrisma(): PrismaClient {
   const beforeWrite = async (username: unknown, userId?: unknown) => {
+    if (typeof username !== 'string') return;
     const step = race.plan.shift();
-    if (!step || typeof username !== 'string') return;
+    if (!step) return;
     race.made++;
     if (step === 'ban') { await prisma.user.update({ where: { id: String(userId) }, data: { banned: true } }); return; }
     if (step === 'row') await prisma.user.create({ data: { username, usernameKey: username.toLowerCase() } });
@@ -75,7 +76,7 @@ it('still logs in, without a name claim, when the name keeps being taken', async
 
 it('still links when the name keeps being taken mid-link, without a name claim', async () => {
   const cookieOf = (r: { headers: { 'set-cookie'?: string | string[] } }) => String(r.headers['set-cookie']).split(';')[0]!;
-  const options = await app.inject({ method: 'POST', url: '/api/auth/passkeys/register/options', headers: { origin: ORIGIN }, payload: { discordUsername: 'typed', displayName: 'P' } });
+  const options = await app.inject({ method: 'POST', url: '/api/auth/passkeys/register/options', headers: { origin: ORIGIN }, payload: { discordUserId: '123456789012345678', discordUsername: 'typed', displayName: 'P' } });
   const created = await app.inject({ method: 'POST', url: '/api/auth/passkeys/register/verify', headers: { origin: ORIGIN, cookie: cookieOf(options) }, payload: new VirtualPasskey().register(options.json<PublicKeyCredentialCreationOptionsJSON>()) });
   const start = await app.inject({ url: '/api/auth/discord/link', headers: { cookie: cookieOf(created) } });
   const state = new URL(String(start.headers.location)).searchParams.get('state')!;
@@ -87,7 +88,7 @@ it('still links when the name keeps being taken mid-link, without a name claim',
 
 it('a link that turns invalid at the last moment leaves the other holder of the name untouched', async () => {
   const register = async (discordUsername: string, displayName: string) => {
-    const options = await app.inject({ method: 'POST', url: '/api/auth/passkeys/register/options', headers: { origin: ORIGIN }, payload: { discordUsername, displayName } });
+    const options = await app.inject({ method: 'POST', url: '/api/auth/passkeys/register/options', headers: { origin: ORIGIN }, payload: { discordUserId: String(123456789012345678n + BigInt(await prisma.user.count())), discordUsername, displayName } });
     const done = await app.inject({ method: 'POST', url: '/api/auth/passkeys/register/verify', headers: { origin: ORIGIN, cookie: String(options.headers['set-cookie']).split(';')[0]! }, payload: new VirtualPasskey().register(options.json<PublicKeyCredentialCreationOptionsJSON>()) });
     return { id: done.json().id as string, cookie: String(done.headers['set-cookie']).split(';')[0]! };
   };

@@ -1,7 +1,8 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { effectivePostStatus, isActiveFinalized } from '@pf/shared';
-import { buildPartyThread, buildWeeklyReminder, type WebhookPayload } from './messages.js';
-import { SEND_TIMEOUT_MS, type SendResult, type WebhookSender } from './sender.js';
+import { buildPartyThread, buildWeeklyReminder, buildRunReminder, type WebhookPayload } from './messages.js';
+import { pingableId, rosterMember } from './pingable.js';
+import { SEND_TIMEOUT_MS, UNKNOWN_CHANNEL, type SendResult, type WebhookSender } from './sender.js';
 import { errName, type Logger } from '../log.js';
 import { weeklyRecipientIds } from './weeklyRecipients.js';
 import { parseSnapshot } from '../posts/snapshot.js';
@@ -17,12 +18,15 @@ const DEADLINE_MARGIN_MS = 10_000;
 const MIN_RETRY_AFTER_MS = 1_000;
 const MAX_RETRY_AFTER_MS = 3_600_000;
 const MAX_WEEKLY_REMINDER_AGE_MS = 15 * 60_000;
-const POST_DELIVERIES = new Set(['post.created', 'post.reopened', 'post.announcement', 'post.closed', 'post.weekly_reminder', 'post.party_thread', 'request.created', 'request.accepted']);
+/** Same limit as the reminder job's lateness: a reminder still unsent this long after it was due is dropped, not sent late. */
+const MAX_RUN_REMINDER_AGE_MS = 15 * 60_000;
+const POST_DELIVERIES = new Set(['post.created', 'post.reopened', 'post.announcement', 'post.closed', 'post.weekly_reminder', 'post.party_thread', 'post.run_reminder', 'request.created', 'request.accepted']);
 const ANNOUNCEMENTS = new Set(['post.created', 'post.reopened', 'post.announcement']);
 const deliveryPostSelect = {
   id: true, notificationGuildId: true, partyForumGuildId: true, worldId: true,
   status: true, closedReason: true, expiresAt: true, deletedAt: true,
   weeklyTimeZone: true, weeklyAnchorAt: true, scheduledAt: true, title: true,
+  reminderOffsets: true, partyThreadId: true, type: true, posterUserId: true,
 } satisfies Prisma.PostSelect;
 type ForumState = { status: string; closedReason: string | null; deletedAt: Date | null; expiresAt: Date; partyForumGuildId: string | null };
 
@@ -95,9 +99,10 @@ export class WebhookWorker {
       const postId = row.postId;
       if (row.eventType === 'post.party_thread' && postId) {
         const failed = await this.prisma.$transaction(async (tx) => {
-          // Finalization also locks the post before touching its deliveries.
-          const [current] = await tx.$queryRaw<ForumState[]>`SELECT status, "closedReason", "deletedAt", "expiresAt", "partyForumGuildId" FROM "Post" WHERE id = ${postId} FOR UPDATE`;
-          if (recheckForum && isActiveFinalized(current, this.now()) && current.partyForumGuildId === row.guildId) {
+          const locked = await this.lockCurrentThread(tx, row, postId);
+          if (!locked) return false;
+          const { current } = locked;
+          if (recheckForum && isActiveFinalized(current, this.now()) && current?.partyForumGuildId === row.guildId) {
             await tx.webhookDelivery.updateMany({ where: guard, data: { nextAttemptAt: this.now() } });
             return false;
           }
@@ -110,7 +115,8 @@ export class WebhookWorker {
       counts.failed++;
     };
     const isForum = row.eventType === 'post.party_thread';
-    const targetWebhook = isForum ? row.partyForumWebhookUrl : row.webhookUrl;
+    const isReminder = row.eventType === 'post.run_reminder';
+    const targetWebhook = isForum || isReminder ? row.partyForumWebhookUrl : row.webhookUrl;
     if (!targetWebhook || !row.active) {
       await fail(row.attempts + 1, 'Webhook not configured');
       return;
@@ -123,7 +129,7 @@ export class WebhookWorker {
     }) : null;
     // A closure notice goes to the guilds that saw the announcement, whatever the destination is now.
     if (postId && row.eventType !== 'post.closed') {
-      const selected = isForum ? post?.partyForumGuildId : post?.notificationGuildId;
+      const selected = isForum || isReminder ? post?.partyForumGuildId : post?.notificationGuildId;
       if (post && selected !== row.guildId) {
         // The poster moved the post's Discord destination: not a delivery failure.
         await this.prisma.webhookDelivery.deleteMany({ where: guard });
@@ -155,11 +161,38 @@ export class WebhookWorker {
       }
     }
     let payload = row.payload;
+    let threadId: string | undefined;
+    if (isReminder) {
+      const meta = row.payload._reminder;
+      const active = post && (isActiveFinalized(post, this.now()) || post.weeklyTimeZone && ['open', 'full'].includes(post.status) && effectivePostStatus(post, this.now()) !== 'closed');
+      const poster = post ? await this.prisma.user.findUnique({ where: { id: post.posterUserId }, select: { banned: true, deletedAt: true } }) : null;
+      if (!post || !active || post.type === 'lfp' || !poster || poster.banned || poster.deletedAt || !post.partyThreadId || !meta
+        || post.scheduledAt?.toISOString() !== meta.runAt || post.scheduledAt <= this.now() || !post.reminderOffsets.includes(meta.offsetMinutes)
+        || this.now().getTime() - (Date.parse(meta.runAt) - meta.offsetMinutes * 60_000) > MAX_RUN_REMINDER_AGE_MS) {
+        await this.prisma.webhookDelivery.deleteMany({ where: guard });
+        return;
+      }
+      const [bosses, members] = await Promise.all([
+        this.prisma.postBoss.findMany({ where: { postId: post.id }, include: { bossDifficulty: { include: { boss: true } } } }),
+        this.prisma.postMember.findMany({ where: { postId: post.id }, include: { user: { select: { discordId: true, typedDiscordId: true, banned: true, deletedAt: true } } }, orderBy: { joinedAt: 'asc' } }),
+      ]);
+      const pinged: string[] = [];
+      const unpinged: string[] = [];
+      for (const member of members) {
+        // Banned and deleted members are left out entirely; "Unpinged" is for members with no Discord ID.
+        if (member.user.banned || member.user.deletedAt) continue;
+        const ping = pingableId(member.user);
+        if (ping) pinged.push(ping.id);
+        else unpinged.push(parseSnapshot(member.snapshot).ign);
+      }
+      payload = buildRunReminder({ post: { id: post.id, title: post.title, bosses: toBossDTOs({ bosses }) }, runAt: post.scheduledAt, pinged, unpinged, webOrigin: meta.webOrigin });
+      threadId = post.partyThreadId;
+    }
     if (isForum && row.postId) {
       // Loaded only once the thread is known to be current.
       const [bosses, members] = post ? await Promise.all([
         this.prisma.postBoss.findMany({ where: { postId: row.postId }, include: { bossDifficulty: { include: { boss: true } } } }),
-        this.prisma.postMember.findMany({ where: { postId: row.postId }, include: { user: { select: { discordId: true, username: true } } }, orderBy: { joinedAt: 'asc' } }),
+        this.prisma.postMember.findMany({ where: { postId: row.postId }, include: { user: { select: { discordId: true, typedDiscordId: true, username: true, banned: true, deletedAt: true } } }, orderBy: { joinedAt: 'asc' } }),
       ]) : [[], []];
       const poster = members.find((member) => member.role === 'poster');
       if (!post || !poster) {
@@ -176,7 +209,7 @@ export class WebhookWorker {
         id: post.id, title: post.title, scheduledAt: post.scheduledAt?.toISOString() ?? null, world: { name: post.world.name },
         poster: { snapshot: parseSnapshot(poster.snapshot) },
         bosses: toBossDTOs({ bosses }),
-      }, webOrigin, members.map((member) => ({ ign: parseSnapshot(member.snapshot).ign, discordId: member.user.discordId, discordUsername: member.user.username })));
+      }, webOrigin, members.map((member) => rosterMember(parseSnapshot(member.snapshot).ign, member.user)));
       payload = { ...thread.message, thread_name: thread.name };
     }
     if (row.eventType === 'post.weekly_reminder' && row.postId) {
@@ -197,12 +230,22 @@ export class WebhookWorker {
     }
     let res: SendResult;
     try {
-      res = await this.sender.send(targetWebhook, payload);
+      res = await this.sender.send(targetWebhook, payload, threadId ? { threadId } : undefined);
     } catch (err) {
       res = { ok: false, status: null, error: errName(err) };
     }
     if (res.ok) {
-      await upd({ status: 'sent', sentAt: this.now(), lastError: null });
+      if (isForum && row.postId) {
+        const channelId = res.channelId;
+        const postId = row.postId;
+        const saved = await this.prisma.$transaction(async (tx) => {
+          if (!(await this.lockCurrentThread(tx, row, postId))) return false;
+          await tx.webhookDelivery.updateMany({ where: guard, data: { status: 'sent', sentAt: this.now(), lastError: null } });
+          if (channelId) await tx.post.updateMany({ where: { id: postId, forumThreadRequested: true, partyForumGuildId: row.guildId }, data: { partyThreadId: channelId } });
+          return true;
+        });
+        if (!saved) return;
+      } else await upd({ status: 'sent', sentAt: this.now(), lastError: null });
       if (row.postId && ANNOUNCEMENTS.has(row.eventType)) {
         // This guild's channel now shows the post, so it gets the closure notice.
         await this.prisma.$executeRaw`
@@ -211,6 +254,10 @@ export class WebhookWorker {
       }
       counts.sent++;
     } else if (res.status === 404 || res.status === 401) {
+      // Only a deleted thread forgets the thread; a deleted or rotated webhook keeps it for when it's fixed.
+      if (isReminder && res.status === 404 && res.discordCode === UNKNOWN_CHANNEL && row.postId && threadId) {
+        await this.prisma.post.updateMany({ where: { id: row.postId, partyThreadId: threadId }, data: { partyThreadId: null } });
+      }
       await fail(row.attempts + 1, res.error);
     } else {
       // A 429 counts as an attempt too (else a webhook that is always rate-limited retries forever),
@@ -227,6 +274,19 @@ export class WebhookWorker {
         counts.retried++;
       }
     }
+  }
+
+  /**
+   * Locks the post (finalization locks it too before touching its deliveries) and checks the queued
+   * thread is still this run's: a reopen and re-finalize gives the row a new token. When it isn't,
+   * the row is retried now with its new content and this returns null. `current` is undefined when the post is gone.
+   */
+  private async lockCurrentThread(tx: Prisma.TransactionClient, row: Claimed, postId: string): Promise<{ current: ForumState | undefined } | null> {
+    const [current] = await tx.$queryRaw<ForumState[]>`SELECT status, "closedReason", "deletedAt", "expiresAt", "partyForumGuildId" FROM "Post" WHERE id = ${postId} FOR UPDATE`;
+    const delivery = await tx.webhookDelivery.findUnique({ where: { id: row.id }, select: { payload: true } });
+    if ((delivery?.payload as WebhookPayload | undefined)?._forum?.requestId === row.payload._forum?.requestId) return { current };
+    await tx.webhookDelivery.updateMany({ where: { id: row.id, status: 'pending' }, data: { nextAttemptAt: this.now() } });
+    return null;
   }
 
   start(intervalMs = 5000): void {

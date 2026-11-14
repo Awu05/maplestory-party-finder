@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { isValidTimeZone } from '@pf/shared';
+import { MAX_REMINDERS, isValidReminderOffset, isValidTimeZone, normalizeReminderOffsets } from '@pf/shared';
 import { getViewer, requireAdmin, requireUser } from '../auth/guards.js';
 import { adminDeletePost, announcePost, closePost, createPost, deletePost, editPost, finalizePostTime, getVisiblePost, listBoard, listMyParties, listMyPosts, removeMember, renewPost, reopenPost, setMemberFreeTimes } from './service.js';
 import { toPostDetailDTO, toPostSummaryDTO } from './serialize.js';
@@ -21,6 +21,9 @@ export const minCpSchema = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
 /** Local half-hour slots (day * 48 + slot, 0-335); the service dedupes and sorts. */
 export const freeTimesSchema = z.array(z.number().int().min(0).max(335)).max(336);
 export const freeTimesZoneSchema = z.string().nullable();
+export const reminderOffsetsSchema = z.array(z.number().refine(isValidReminderOffset, 'Reminders must be whole minutes between 5 minutes and 7 days'))
+  .transform(normalizeReminderOffsets)
+  .pipe(z.array(z.number()).max(MAX_REMINDERS));
 
 /**
  * A sent zone must be a real IANA zone, and non-empty freeTimes needs one. An edit that omits the
@@ -46,6 +49,7 @@ const postFields = z.object({
   partySize: partySizeSchema.optional(),
   minCp: minCpSchema.optional(),
   title: titleSchema.default(''),
+  reminderOffsets: reminderOffsetsSchema.optional(),
   note: noteSchema,
   notificationGuildId: z.string().min(1).nullable().optional(),
   partyForumGuildId: z.string().min(1).nullable().optional(),

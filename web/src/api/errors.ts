@@ -1,6 +1,7 @@
 import { ApiError } from './client';
 
 const FRIENDLY: Record<string, string> = {
+  DISCORD_ID_TAKEN: 'That Discord ID is already used by another account.',
   VALIDATION: 'Some fields are invalid. Check the values and try again.',
   DUPLICATE: 'That already exists.',
   IN_USE: 'Still in use by characters, so it cannot be removed.',

@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
 import {
   canonicalTimeZone, DAY_MS, effectivePostStatus, FLEXIBLE_TTL_MS, isActiveFinalized, MAX_SCHEDULE_AHEAD_MS, maxPartySizeFor, MIN_PARTY_SIZE, postExpiresAt, SCHEDULE_PAST_TOLERANCE_MS,
   type PostType,
@@ -11,6 +12,7 @@ import { postInclude, postSummaryInclude, type PostRow, type PostSummaryRow } fr
 import { assertPostgresZone } from './pgZones.js';
 import { memberSnapshot, parseSnapshot } from './snapshot.js';
 import { buildPartyThread } from '../discord/messages.js';
+import { rosterMember } from '../discord/pingable.js';
 import { enqueuePostAnnouncement } from '../discord/postAnnouncement.js';
 import { enqueueDelivery } from '../discord/outbox.js';
 import { toPostSummaryDTO } from './serialize.js';
@@ -26,6 +28,7 @@ export interface CreatePostInput {
   partySize?: number;
   minCp?: number;
   title?: string;
+  reminderOffsets?: number[];
   note: string;
   notificationGuildId?: string | null;
   partyForumGuildId?: string | null;
@@ -94,6 +97,7 @@ export async function createPost(prisma: PrismaClient, userId: string, input: Cr
   const notificationGuildId = input.notificationGuildId ?? null;
   const partyForumGuildId = input.partyForumGuildId ?? null;
   assertNoLfpPartyChat(input.type, partyForumGuildId);
+  if (input.type === 'lfp' && input.reminderOffsets?.length) throw new AppError(400, 'VALIDATION', 'Looking-for-party posts have no run reminders.');
   await validateDestination(prisma, notificationGuildId, character.worldId, 'notifications');
   await validateDestination(prisma, partyForumGuildId, character.worldId, 'partyForum');
 
@@ -122,6 +126,7 @@ export async function createPost(prisma: PrismaClient, userId: string, input: Cr
         partySize: input.partySize ?? null,
         minCp: input.minCp === undefined ? null : BigInt(input.minCp),
         title: input.title ?? '',
+        reminderOffsets: input.reminderOffsets ?? [],
         note: input.note,
         bosses: { create: input.bossDifficultyIds.map((bossDifficultyId) => ({ bossDifficultyId })) },
         members: {
@@ -343,7 +348,7 @@ export async function reopenPost(prisma: PrismaClient, viewer: Viewer, id: strin
       ...(row.worldId !== character.worldId ? { notificationGuildId: null, partyForumGuildId: null } : {}),
       // A reopened party is a new run: its next finalize may request a new party chat, and only the
       // guilds that see this run's announcement get its closure notices.
-      forumThreadRequested: false, announcedGuildIds: [], finalizedNoticeSent: false,
+      forumThreadRequested: false, partyThreadId: null, announcedGuildIds: [], finalizedNoticeSent: false,
     }, include: postInclude });
     // A party that is still full is not recruiting, so there is nothing to announce.
     const queued = full ? 0 : await enqueuePostAnnouncement(tx, post, storage, webOrigin, now, 'post.reopened');
@@ -362,12 +367,17 @@ type ForumContext = { storage: Storage; webOrigin: string };
 async function requestPartyThread(tx: Prisma.TransactionClient, post: PostRow, forum: ForumContext, now: Date): Promise<boolean> {
   const guild = await findDestination(tx, post.partyForumGuildId, post.worldId, 'partyForum');
   if (!guild) return false;
-  const users = await tx.user.findMany({ where: { id: { in: post.members.map((member) => member.userId) } }, select: { id: true, discordId: true, username: true } });
+  const users = await tx.user.findMany({ where: { id: { in: post.members.map((member) => member.userId) } }, select: { id: true, discordId: true, typedDiscordId: true, username: true, banned: true, deletedAt: true } });
   const ids = new Map(users.map((user) => [user.id, user]));
-  const roster = post.members.map((member) => ({ ign: parseSnapshot(member.snapshot).ign, discordId: ids.get(member.userId)?.discordId ?? null, discordUsername: ids.get(member.userId)?.username }));
+  const roster = post.members.map((member) => rosterMember(parseSnapshot(member.snapshot).ign, ids.get(member.userId)));
   const thread = buildPartyThread(toPostSummaryDTO(post, null, forum.storage, now), forum.webOrigin, roster);
-  const payload = { ...thread.message, thread_name: thread.name, _forum: { webOrigin: forum.webOrigin } };
   const pending = { postId: post.id, eventType: 'post.party_thread', status: 'pending' as const };
+  const previous = post.forumThreadRequested ? await tx.webhookDelivery.findFirst({ where: pending, select: { payload: true } }) : null;
+  const previousMeta = previous?.payload as { _forum?: { requestId?: string } } | undefined;
+  // A refresh keeps the queued row's token, so a send already in flight still counts as this run's thread.
+  // Rows queued before tokens existed stay without one rather than gaining a token the in-flight send lacks.
+  const requestId = previous ? previousMeta?._forum?.requestId : randomUUID();
+  const payload = { ...thread.message, thread_name: thread.name, _forum: { webOrigin: forum.webOrigin, ...(requestId ? { requestId } : {}) } };
   if (post.forumThreadRequested) {
     await tx.webhookDelivery.updateMany({ where: pending, data: { payload } });
     return false;
@@ -480,6 +490,7 @@ export async function removeMember(prisma: PrismaClient, viewer: Viewer, postId:
 }
 
 export interface EditPostInput {
+  reminderOffsets?: number[];
   notificationGuildId?: string | null;
   partyForumGuildId?: string | null;
   type?: PostType;
@@ -505,10 +516,11 @@ export async function editPost(prisma: PrismaClient, viewer: Viewer, id: string,
   return prisma.$transaction(async (tx) => {
     const row = await loadPostForUpdate(tx, id);
     assertPoster(row, viewer);
-    const onlyDestinations = Object.keys(input).every((key) => key === 'notificationGuildId' || key === 'partyForumGuildId');
-    if (effectivePostStatus(row, now) === 'closed' && !(isActiveFinalized(row, now) && onlyDestinations)) throw new AppError(409, 'POST_CLOSED', 'Post is closed');
+    const onlyPartySettings = Object.keys(input).every((key) => key === 'notificationGuildId' || key === 'partyForumGuildId' || key === 'reminderOffsets');
+    if (effectivePostStatus(row, now) === 'closed' && !(isActiveFinalized(row, now) && onlyPartySettings)) throw new AppError(409, 'POST_CLOSED', 'Post is closed');
 
     const type = input.type ?? row.type;
+    if (type === 'lfp' && input.reminderOffsets?.length) throw new AppError(400, 'VALIDATION', 'Looking-for-party posts have no run reminders.');
     const typeChanged = type !== row.type;
     const characterChanged = input.characterId !== undefined && input.characterId !== row.posterCharacterId;
     const memberCount = row.members.length;
@@ -580,6 +592,7 @@ export async function editPost(prisma: PrismaClient, viewer: Viewer, id: string,
         notificationGuildId,
         partyForumGuildId,
         partySize,
+        reminderOffsets: type === 'lfp' ? [] : input.reminderOffsets ?? row.reminderOffsets,
         minCp,
         ...(dropFinalTime ? { scheduledAt: null, weeklyTimeZone: null, weeklyAnchorAt: null, expiresAt: postExpiresAt(null, now) } : {}),
         ...(input.title !== undefined ? { title: input.title } : {}),

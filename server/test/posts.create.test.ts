@@ -40,6 +40,18 @@ const body = (over: Record<string, unknown> = {}) => ({
 });
 
 describe('POST /api/posts', () => {
+  it('stores sorted unique reminder offsets and exposes them in the DTO', async () => {
+    const result = await post(body({ reminderOffsets: [1440, 15, 15] }));
+    expect(result.statusCode).toBe(201);
+    expect(result.json().reminderOffsets).toEqual([15, 1440]);
+    expect((await prisma.post.findUniqueOrThrow({ where: { id: result.json().id } })).reminderOffsets).toEqual([15, 1440]);
+  });
+  it.each([[5, 10, 15, 20], [4], [10081], [5.5]])('rejects invalid reminder offsets %j', async (...reminderOffsets) => {
+    expect((await post(body({ reminderOffsets }))).statusCode).toBe(400);
+  });
+  it('rejects reminders on looking-for-party posts', async () => {
+    expect((await post(body({ type: 'lfp', partySize: undefined, reminderOffsets: [15] }))).statusCode).toBe(400);
+  });
   it('allows a carrying post to invite and accept a player looking for a party', async () => {
     const created = await post(body({ type: 'carrying' }));
     expect(created.statusCode).toBe(201);

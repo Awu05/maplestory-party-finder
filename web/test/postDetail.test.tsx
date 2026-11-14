@@ -56,7 +56,7 @@ const post = (over: Partial<PostDetailDTO> = {}): PostDetailDTO => {
     bosses: [{ bossDifficultyId: 7, bossName: 'Lucid', difficulty: 'Hard' }],
     scheduledAt: '2026-12-01T20:00:00Z',
     freeTimes: [],
-    weeklyTimeZone: null, freeTimesZone: null,
+    weeklyTimeZone: null, reminderOffsets: [], freeTimesZone: null,
     expiresAt: '2026-12-02T00:00:00Z',
     createdAt: '2026-11-09T00:00:00Z',
     partySize: 4,
@@ -79,6 +79,26 @@ const post = (over: Partial<PostDetailDTO> = {}): PostDetailDTO => {
 };
 
 const tiers = { '/api/discord-destinations': [], '/api/rarity-tiers': [{ id: 1, name: 'Common', minCp: 0, sortOrder: 0 }] };
+
+it('shows configured run reminders', async () => {
+  renderPage({ '/api/posts/p1': post({ reminderOffsets: [15, 1440] }) });
+  expect(await screen.findByText('Reminders: 1 day and 15 minutes before')).toBeVisible();
+});
+
+it('omits reminders when none are configured', async () => {
+  renderPage({ '/api/posts/p1': post() });
+  await screen.findByRole('heading', { name: 'Lineup' });
+  expect(screen.queryByText(/Reminders:/)).not.toBeInTheDocument();
+});
+
+it('lets the poster change reminders after finalizing the party', async () => {
+  const p = post({ status: 'closed', recruitmentClosed: true, isPoster: true, reminderOffsets: [15] });
+  const fetch = renderPage({ '/api/posts/p1': p, 'PATCH /api/posts/p1': { ...p, reminderOffsets: [] } });
+  fireEvent.click(await screen.findByRole('button', { name: 'Edit reminders' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Remove reminder 1' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save reminders' }));
+  await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/posts/p1', expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ reminderOffsets: [] }) })));
+});
 
 function renderPage(routes: Record<string, unknown>) {
   const fetchMock = mockApi({ ...tiers, ...routes });

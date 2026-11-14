@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
+import { DISCORD_SNOWFLAKE } from '@pf/shared';
 import { AppError } from '../http/errors.js';
 import { SlidingWindowLimiter } from '../http/slidingWindowLimiter.js';
 import { getViewer } from './guards.js';
@@ -15,7 +16,10 @@ export const discordUsernameField = z
   // Invisible characters picked up when pasting (zero-width spaces and the like) are removed, not kept.
   .transform((value) => value.replace(/[\p{Cc}\p{Cf}]/gu, '').trim().replace(/^(?:@\s*)+/, '').trim())
   .pipe(z.string().regex(/^[A-Za-z0-9_.]{2,32}$/, 'Enter a Discord username: 2 to 32 letters, numbers, dots or underscores.'));
-export const signupBody = z.object({ discordUsername: discordUsernameField, displayName: name }).strict();
+export const discordUserIdField = z.string()
+  .transform((value) => value.replace(/[\p{Cc}\p{Cf}\s]/gu, ''))
+  .pipe(z.string().regex(DISCORD_SNOWFLAKE, 'Enter your Discord user ID: the 17 to 20 digit number from Copy User ID.'));
+export const signupBody = z.object({ discordUsername: discordUsernameField, discordUserId: discordUserIdField, displayName: name }).strict();
 
 export interface AttemptLimiterOptions {
   windowMs?: number;

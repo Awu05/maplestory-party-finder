@@ -72,6 +72,15 @@ const notes = () => prisma.notification.findMany({ orderBy: { createdAt: 'asc' }
 const deliveries = () => prisma.webhookDelivery.findMany({ orderBy: { createdAt: 'asc' } });
 const content = (d: { payload: unknown }) => (d.payload as { content?: string }).content ?? '';
 
+it('pings a request recipient who only has a typed Discord ID', async () => {
+  const post = await recruiting();
+  await prisma.user.update({ where: { id: u1Id }, data: { discordId: null, typedDiscordId: '123456789012345678' } });
+  await join(post.id, bob.id, u2);
+  await events.drain();
+  const delivery = await prisma.webhookDelivery.findFirstOrThrow({ where: { eventType: 'request.created' } });
+  expect(delivery.payload).toMatchObject({ allowed_mentions: { parse: [], users: ['123456789012345678'] } });
+});
+
 describe('post.created', () => {
   it('announces a guildless host in their selected notification guild', async () => {
     await prisma.character.update({ where: { id: alice.id }, data: { guildId: null } });

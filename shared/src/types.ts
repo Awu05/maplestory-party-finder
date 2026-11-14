@@ -65,7 +65,7 @@ export type BossDTO = {
 export type RarityTierDTO = { id: number; name: string; minCp: number; sortOrder: number };
 
 /** discordUsername is '' for an unlinked account whose typed name was claimed by its real Discord owner. */
-export type MeDTO = { id: string; discordUsername: string; displayName: string | null; avatarUrl: string | null; isAdmin: boolean; discordLinked?: boolean } | null;
+export type MeDTO = { id: string; discordUsername: string; discordUserId: string | null; displayName: string | null; avatarUrl: string | null; isAdmin: boolean; discordLinked?: boolean } | null;
 
 export type PostType = 'lfp' | 'recruiting' | 'carrying';
 export type PostStatus = 'open' | 'full' | 'closed';
@@ -94,6 +94,7 @@ export interface PostSummaryDTO {
   poster: PartyMemberDTO; bosses: PostBossDTO[];
   scheduledAt: string | null; expiresAt: string; createdAt: string;
   weeklyTimeZone: string | null;
+  reminderOffsets: number[];
   /** Local half-hour slots (day * 48 + slot, 0 = Sunday) in freeTimesZone; scheduledAt is the final time. */
   freeTimes: number[]; freeTimesZone: string | null;
   partySize: number | null; memberCount: number; minCp: number | null;

@@ -2,7 +2,7 @@ import { LoginButton } from '../components/LoginDialog';
 import { useId, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { POST_TYPE_LABELS, freeSlotCoverageForViewer, freeSlotsForViewer, maxPartySizeFor } from '@pf/shared';
+import { POST_TYPE_LABELS, freeSlotCoverageForViewer, freeSlotsForViewer, isValidReminderOffset, maxPartySizeFor, normalizeReminderOffsets } from '@pf/shared';
 import type { BossDTO, CharacterDTO, PostDetailDTO, PostType } from '@pf/shared';
 import { useBosses, useCharacters, useMe } from '../api/hooks';
 import { useCreatePost, useDiscordDestinations, usePost, useUpdatePost } from '../api/postHooks';
@@ -11,6 +11,7 @@ import { friendlyError } from '../api/errors';
 import { BossMultiPicker } from '../components/post/BossMultiPicker';
 import { DiscordDestinationFields } from '../components/post/DiscordDestinationFields';
 import { FreeTimeGrid } from '../components/post/FreeTimeGrid';
+import { ReminderEditor } from '../components/ReminderEditor';
 import { browserTimeZone } from '../lib/timeZone';
 import './characters.css';
 
@@ -19,6 +20,7 @@ const TITLE_MAX = 100;
 const DEFAULT_PARTY_SIZE = 4;
 
 interface Values {
+  reminderOffsets: number[];
   type: PostType;
   characterId: string;
   bossIds: number[];
@@ -40,6 +42,7 @@ const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n
 
 function valuesFromPost(post: PostDetailDTO, editingZone: string): Values {
   return {
+    reminderOffsets: post.reminderOffsets ?? [],
     type: post.type,
     characterId: post.poster.characterId ?? '',
     bossIds: post.bosses.map((b) => b.bossDifficultyId),
@@ -67,6 +70,7 @@ const sameSet = (a: number[], b: number[]) => a.length === b.length && a.every((
 
 function changedFields(v: Values, orig: Values, editingZone: string): UpdatePostInput {
   const out: UpdatePostInput = {};
+  if (v.type !== 'lfp' && !sameSet(v.reminderOffsets, orig.reminderOffsets)) out.reminderOffsets = normalizeReminderOffsets(v.reminderOffsets);
   if (v.type !== orig.type) out.type = v.type;
   if (v.characterId !== orig.characterId) out.characterId = v.characterId;
   if (!sameSet(v.bossIds, orig.bossIds)) out.bossDifficultyIds = v.bossIds;
@@ -94,6 +98,7 @@ function changedFields(v: Values, orig: Values, editingZone: string): UpdatePost
 }
 
 const EMPTY: Values = {
+  reminderOffsets: [],
   type: 'recruiting',
   characterId: '',
   bossIds: [],
@@ -167,6 +172,7 @@ function PostForm({ characters, bosses, post }: FormProps) {
     // A deleted poster character (blank on edit) stays blank unless the user picks another.
     if (!v.characterId && !(post && orig.characterId === '')) return setError('Pick a character.');
     if (v.bossIds.length === 0) return setError('Pick at least one boss.');
+    if (v.type !== 'lfp' && v.reminderOffsets.some((minutes) => !isValidReminderOffset(minutes))) return setError('Use whole minutes between 5 minutes and 7 days.');
     const cp = v.type !== 'lfp' ? parseCp(v.minCp) : null;
     if (cp !== null && (Number.isNaN(cp) || cp <= 0)) return setError('Enter the minimum combat power as a number.');
 
@@ -183,6 +189,7 @@ function PostForm({ characters, bosses, post }: FormProps) {
       } else {
         const created = await create.mutateAsync({
           type: v.type,
+          reminderOffsets: v.type === 'lfp' ? [] : normalizeReminderOffsets(v.reminderOffsets),
           characterId: v.characterId,
           bossDifficultyIds: v.bossIds,
           freeTimes: v.freeTimes,
@@ -269,6 +276,7 @@ function PostForm({ characters, bosses, post }: FormProps) {
         </label>
         <small>{`Optional. Used as the Discord notification title; leave blank for "${defaultTitle}". ${v.title.length}/${TITLE_MAX}`}</small>
       </div>
+      {v.type !== 'lfp' && <ReminderEditor value={v.reminderOffsets} onChange={(reminderOffsets) => set({ reminderOffsets })} disabled={saving} />}
       <div>
         <label>
           Note

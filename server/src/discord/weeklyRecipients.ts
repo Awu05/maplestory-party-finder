@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { findDestination } from './destinations.js';
+import { pingableId } from './pingable.js';
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -7,13 +8,13 @@ type Db = PrismaClient | Prisma.TransactionClient;
 export async function weeklyRecipientIds(db: Db, postId: string): Promise<string[]> {
   const members = await db.postMember.findMany({
     where: { postId },
-    include: { user: { select: { discordId: true, banned: true, deletedAt: true } } },
+    include: { user: { select: { discordId: true, typedDiscordId: true, banned: true, deletedAt: true } } },
     orderBy: [{ joinedAt: 'asc' }, { id: 'asc' }],
   });
   const recipients = new Set<string>();
   for (const member of members) {
-    const discordId = member.user.discordId;
-    if (discordId && !member.user.banned && !member.user.deletedAt) recipients.add(discordId);
+    const discordId = pingableId(member.user)?.id;
+    if (discordId) recipients.add(discordId);
   }
   return [...recipients];
 }

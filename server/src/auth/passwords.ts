@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { AppError } from '../http/errors.js';
 import { AttemptLimiter, createAuthRequestGuard, signupBody } from './localAuth.js';
 import { hashPassword, verifyPassword } from './passwordHash.js';
+import { ensureDiscordIdAvailable, isDiscordIdConflict, discordIdTaken, withDiscordIdClaim } from './discordIds.js';
 import { toMeDTO } from './serialize.js';
 import { isAdminUser, startSession } from './guards.js';
 import { ensureUsernameAvailable, isUsernameConflict, usernameKey, usernameTaken } from './usernames.js';
@@ -33,14 +34,17 @@ ${address}`;
     const input = registration.parse(req.body);
     registrations.check(attemptKey(req, input.email));
     await ensureUsernameAvailable(prisma, input.discordUsername);
+    await ensureDiscordIdAvailable(prisma, input.discordUserId);
     const passwordHash = await hashPassword(input.password);
     let user;
     try {
-      user = await prisma.user.create({ data: {
+      user = await withDiscordIdClaim(prisma, input.discordUserId, (tx) => tx.user.create({ data: {
         username: input.discordUsername, usernameKey: usernameKey(input.discordUsername), displayName: input.displayName,
+        typedDiscordId: input.discordUserId,
         passwordCredential: { create: { email: input.email, passwordHash } },
-      } });
+      } }));
     } catch (error) {
+      if (isDiscordIdConflict(error)) throw discordIdTaken();
       if (isUsernameConflict(error)) throw usernameTaken();
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         throw new AppError(400, 'ACCOUNT_UNAVAILABLE', 'Could not create an account with these details. Try signing in or use a different email.');

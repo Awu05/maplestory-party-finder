@@ -28,6 +28,17 @@ beforeEach(async () => {
   clock = T0;
 });
 
+it('sends to an existing thread and captures its channel ID', async () => {
+  let url = '';
+  const http = new HttpWebhookSender(async (input) => {
+    url = String(input);
+    return new Response(JSON.stringify({ channel_id: '123456789012345678' }), { status: 200 });
+  });
+  expect(await http.send(URL_, payload, { threadId: '123456789012345678' })).toEqual({ ok: true, channelId: '123456789012345678' });
+  expect(new URL(url).searchParams.get('thread_id')).toBe('123456789012345678');
+  expect(new URL(url).searchParams.get('wait')).toBe('true');
+});
+
 describe('WebhookWorker', () => {
   it.each(['closed', 'full', 'open'] as const)('sends closure notices only while recruitment is closed (%s)', async (status) => {
     const guild = await makeGuild({ webhookUrl: URL_ });
@@ -305,4 +316,9 @@ describe('HttpWebhookSender', () => {
     expect(seen).toBe(`${URL_}?wait=true`);
     expect(res).toEqual({ ok: false, status: 429, retryAfterMs: 1500, error: 'HTTP 429' });
   });
+});
+
+it('reports the Discord error code of a 404', async () => {
+  const http = new HttpWebhookSender(async () => new Response(JSON.stringify({ message: 'Unknown Channel', code: 10003 }), { status: 404 }));
+  expect(await http.send(URL_, payload, { threadId: '123456789012345678' })).toEqual({ ok: false, status: 404, error: 'HTTP 404', discordCode: 10003 });
 });

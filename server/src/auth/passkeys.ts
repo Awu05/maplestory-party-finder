@@ -9,6 +9,7 @@ import {
 import { z } from 'zod';
 import { AppError } from '../http/errors.js';
 import { toMeDTO } from './serialize.js';
+import { ensureDiscordIdAvailable, isDiscordIdConflict, discordIdTaken, withDiscordIdClaim } from './discordIds.js';
 import { createAuthRequestGuard, signupBody } from './localAuth.js';
 import { isAdminUser, startSession } from './guards.js';
 import { ensureUsernameAvailable, isUsernameConflict, usernameKey, usernameTaken } from './usernames.js';
@@ -25,7 +26,7 @@ export async function passkeyRoutes(api: FastifyInstance): Promise<void> {
   const rpID = new URL(origin).hostname;
   const checkRequest = createAuthRequestGuard(api);
 
-  async function saveChallenge(req: FastifyRequest, data: { challenge: string; purpose: string; userId?: string; username?: string; displayName?: string }): Promise<void> {
+  async function saveChallenge(req: FastifyRequest, data: { challenge: string; purpose: string; userId?: string; username?: string; displayName?: string; typedDiscordId?: string }): Promise<void> {
     const previous = req.session.get('passkeyChallengeId');
     await prisma.passkeyChallenge.deleteMany({ where: { OR: [{ expiresAt: { lte: new Date() } }, ...(previous ? [{ id: previous }] : [])] } });
     const id = randomBytes(32).toString('base64url');
@@ -52,6 +53,7 @@ export async function passkeyRoutes(api: FastifyInstance): Promise<void> {
     const input = signupBody.parse(req.body);
     // Checked early so nobody is asked for a passkey for a name they can't have; creation re-checks via the unique index.
     await ensureUsernameAvailable(prisma, input.discordUsername);
+    await ensureDiscordIdAvailable(prisma, input.discordUserId);
     const userId = randomUUID();
     const options = await generateRegistrationOptions({
       rpName: 'Maple Party Finder', rpID,
@@ -59,7 +61,7 @@ export async function passkeyRoutes(api: FastifyInstance): Promise<void> {
       attestationType: 'none', supportedAlgorithmIDs: [-7, -257],
       authenticatorSelection: { residentKey: 'required', userVerification: 'required' },
     });
-    await saveChallenge(req, { challenge: options.challenge, purpose: 'register', userId, username: input.discordUsername, displayName: input.displayName });
+    await saveChallenge(req, { challenge: options.challenge, purpose: 'register', userId, username: input.discordUsername, displayName: input.displayName, typedDiscordId: input.discordUserId });
     return options;
   });
 
@@ -71,15 +73,18 @@ export async function passkeyRoutes(api: FastifyInstance): Promise<void> {
     try {
       verification = await verifyRegistrationResponse({ response, expectedChallenge: challenge.challenge, expectedOrigin: origin, expectedRPID: rpID, requireUserVerification: true, supportedAlgorithmIDs: [-7, -257] });
     } catch { throw invalid(); }
-    if (!verification.verified || !challenge.userId || !challenge.username || !challenge.displayName) throw invalid();
+    if (!verification.verified || !challenge.userId || !challenge.username || !challenge.displayName || !challenge.typedDiscordId) throw invalid();
     const { credential: key, credentialDeviceType, credentialBackedUp } = verification.registrationInfo;
+    const { userId, username, displayName, typedDiscordId } = challenge;
     let user;
     try {
-      user = await prisma.user.create({ data: {
-        id: challenge.userId, username: challenge.username, usernameKey: usernameKey(challenge.username), displayName: challenge.displayName,
+      user = await withDiscordIdClaim(prisma, typedDiscordId, (tx) => tx.user.create({ data: {
+        id: userId, username, usernameKey: usernameKey(username), displayName,
+        typedDiscordId,
         passkeys: { create: { id: key.id, publicKey: Buffer.from(key.publicKey), counter: BigInt(key.counter), deviceType: credentialDeviceType, backedUp: credentialBackedUp, transports: response.response.transports ?? [] } },
-      } });
+      } }));
     } catch (error) {
+      if (isDiscordIdConflict(error)) throw discordIdTaken();
       if (isUsernameConflict(error)) throw usernameTaken();
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') throw invalid();
       throw error;

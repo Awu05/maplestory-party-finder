@@ -86,7 +86,7 @@ it('shows a typed Discord name as unverified and editable, with a Link Discord b
   const link = within(dialog).getByRole('link', { name: 'Link Discord account' });
   expect(link).toHaveAttribute('href', '/api/auth/discord/link');
   expect(link).toHaveClass('btn', 'btn--secondary');
-  expect(within(dialog).getByText(/verifies your Discord name and turns on Discord pings/)).toBeVisible();
+  expect(within(dialog).getByText(/verifies your Discord name and user ID/)).toBeVisible();
   const name = within(dialog).getByLabelText(/Discord username/);
   expect(name).toHaveValue('typed_name');
   expect(within(dialog).getByText('unverified')).toBeVisible();
@@ -94,6 +94,25 @@ it('shows a typed Discord name as unverified and editable, with a Link Discord b
   fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   expect(fetch).toHaveBeenCalledWith('/api/auth/me', expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ displayName: 'Typed', discordUsername: 'new_name' }) }));
+});
+
+it('shows and saves the typed Discord user ID for an unlinked account', async () => {
+  const me = { id: 'u1', discordUsername: 'typed_name', discordUserId: '123456789012345678', displayName: 'Typed', avatarUrl: null, isAdmin: false, discordLinked: false };
+  const fetch = mockApi({ ...NOTIF, '/api/auth/me': me, 'PATCH /api/auth/me': { ...me, discordUserId: '223456789012345678' } });
+  renderWithProviders(<App />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Profile: Typed' }));
+  expect(screen.getByLabelText('Discord user ID')).toHaveValue(me.discordUserId);
+  fireEvent.change(screen.getByLabelText('Discord user ID'), { target: { value: ' 223456789012345678 ' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(fetch).toHaveBeenCalledWith('/api/auth/me', expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ displayName: 'Typed', discordUserId: '223456789012345678' }) }));
+});
+
+it('hides the typed user ID field for a linked account', async () => {
+  mockApi({ ...NOTIF, '/api/auth/me': { id: 'u1', discordUsername: 'linked', displayName: 'Linked', avatarUrl: null, isAdmin: false, discordLinked: true } });
+  renderWithProviders(<App />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Profile: Linked' }));
+  expect(screen.queryByLabelText('Discord user ID')).not.toBeInTheDocument();
 });
 
 it('shows a taken Discord username error and keeps the popup open', async () => {

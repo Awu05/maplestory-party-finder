@@ -8,7 +8,8 @@ import { passkeyRoutes } from './passkeys.js';
 import { passwordRoutes } from './passwords.js';
 import { passwordResetRoutes } from './passwordReset.js';
 import { toMeDTO } from './serialize.js';
-import { discordUsernameField } from './localAuth.js';
+import { discordUsernameField, discordUserIdField } from './localAuth.js';
+import { ensureDiscordIdAvailable, isDiscordIdConflict, discordIdTaken, clearTypedDiscordId, withDiscordIdClaim } from './discordIds.js';
 import { ensureUsernameAvailable, isUsernameConflict, releaseUsernameClaim, usernameKey, usernameTaken, withUsernameClaim } from './usernames.js';
 import { AppError } from '../http/errors.js';
 
@@ -23,9 +24,10 @@ const profileBody = z
       .optional(),
     // Only for accounts not linked to Discord: their typed (unverified) name.
     discordUsername: discordUsernameField.optional(),
+    discordUserId: discordUserIdField.optional(),
   })
   .strict()
-  .refine((body) => body.displayName !== undefined || body.discordUsername !== undefined, { message: 'Nothing to update' });
+  .refine((body) => Object.values(body).some((value) => value !== undefined), { message: 'Nothing to update' });
 
 /** The linking account stopped being linkable between the checks and the write. */
 class LinkNoLongerValid extends Error {}
@@ -103,10 +105,11 @@ export async function authRoutes(api: FastifyInstance): Promise<void> {
       let linked;
       try {
         linked = await withUsernameClaim((claim) => prisma.$transaction(async (tx) => {
+          await clearTypedDiscordId(tx, profile.discordId);
           if (claim) await releaseUsernameClaim(tx, profile.username, (holder) => holder.id === linkUserId);
           const updated = await tx.user.updateMany({
             where: { id: linkUserId, discordId: null, banned: false, deletedAt: null, sessionVersion: viewer.user.sessionVersion },
-            data: { discordId: profile.discordId, username: profile.username, usernameKey: claim ? usernameKey(profile.username) : null, avatar: profile.avatarUrl },
+            data: { discordId: profile.discordId, typedDiscordId: null, username: profile.username, usernameKey: claim ? usernameKey(profile.username) : null, avatar: profile.avatarUrl },
           });
           // Nothing matched: the account was banned, linked or signed out everywhere since the check
           // above. Throw so the whole transaction rolls back, including a name released from someone else.
@@ -127,12 +130,13 @@ export async function authRoutes(api: FastifyInstance): Promise<void> {
 
     // "Real Discord wins": a Discord login takes its name from whichever other account holds it.
     const user = await withUsernameClaim((claim) => prisma.$transaction(async (tx) => {
+      await clearTypedDiscordId(tx, profile.discordId);
       if (claim) await releaseUsernameClaim(tx, profile.username, (holder) => holder.discordId === profile.discordId);
       const key = claim ? usernameKey(profile.username) : null;
       return tx.user.upsert({
         where: { discordId: profile.discordId },
         create: { discordId: profile.discordId, username: profile.username, usernameKey: key, avatar: profile.avatarUrl },
-        update: { username: profile.username, usernameKey: key, avatar: profile.avatarUrl },
+        update: { typedDiscordId: null, username: profile.username, usernameKey: key, avatar: profile.avatarUrl },
       });
     }));
     if (user.banned) return reply.redirect(`${config.webOrigin}/?login=banned`);
@@ -148,24 +152,33 @@ export async function authRoutes(api: FastifyInstance): Promise<void> {
 
   api.patch('/auth/me', async (req): Promise<MeDTO> => {
     const viewer = await requireUser(req);
-    const { displayName, discordUsername } = profileBody.parse(req.body);
+    const { displayName, discordUsername, discordUserId } = profileBody.parse(req.body);
     const linkedError = () => new AppError(400, 'DISCORD_LINKED', 'Your Discord username comes from Discord.');
     if (discordUsername !== undefined) {
       if (viewer.user.discordId !== null) throw linkedError();
       await ensureUsernameAvailable(prisma, discordUsername, viewer.user.id);
     }
+    if (discordUserId !== undefined) {
+      if (viewer.user.discordId !== null) throw linkedError();
+      await ensureDiscordIdAvailable(prisma, discordUserId, viewer.user.id);
+    }
     let user;
     try {
-      user = await prisma.user.update({
+      const save = (db: Prisma.TransactionClient) => db.user.update({
         // A typed name is only ever saved on an account that is still unlinked.
-        where: { id: viewer.user.id, ...(discordUsername !== undefined ? { AND: [{ discordId: null }] } : {}) },
+        where: { id: viewer.user.id, ...(discordUsername !== undefined || discordUserId !== undefined ? { AND: [{ discordId: null }] } : {}) },
         data: {
           ...(displayName !== undefined ? { displayName: displayName || null } : {}),
+          ...(discordUserId !== undefined ? { typedDiscordId: discordUserId } : {}),
           // Stays unverified: only linking Discord verifies a name.
           ...(discordUsername !== undefined ? { username: discordUsername, usernameKey: usernameKey(discordUsername) } : {}),
         },
       });
+      user = discordUserId !== undefined
+        ? await withDiscordIdClaim(prisma, discordUserId, save, viewer.user.id)
+        : await save(prisma);
     } catch (error) {
+      if (isDiscordIdConflict(error)) throw discordIdTaken();
       if (isUsernameConflict(error)) throw usernameTaken();
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') throw linkedError();
       throw error;

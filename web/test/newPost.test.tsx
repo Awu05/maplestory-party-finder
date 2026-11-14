@@ -52,7 +52,7 @@ function makePost(over: Partial<PostDetailDTO> = {}): PostDetailDTO {
     bosses: [{ bossDifficultyId: 7, bossName: 'Lucid', difficulty: 'Hard' }],
     scheduledAt: localInputToUtcIso('2026-11-10T20:00'),
     freeTimes: [],
-    weeklyTimeZone: null, freeTimesZone: null,
+    weeklyTimeZone: null, reminderOffsets: [], freeTimesZone: null,
     expiresAt: '2026-11-17T00:00:00Z',
     createdAt: '2026-11-09T00:00:00Z',
     partySize: 4,
@@ -102,6 +102,43 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe('NewPostPage (create)', () => {
+  it('saves reminders in minutes, sorted, and hides the section for LFP', async () => {
+    const fetch = mockApi({ ...base, 'POST /api/posts': makePost(), '/api/posts/p1': makePost() });
+    renderWithProviders(<App />, { route: '/posts/new' });
+    await pickCharacter();
+    await pickBoss('Hard Lucid');
+    expect(screen.getByText(/Reminders start once the time is finalized/)).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Add reminder' }));
+    fireEvent.change(screen.getByLabelText('Reminder 1 amount'), { target: { value: '1' } });
+    fireEvent.change(screen.getByLabelText('Reminder 1 unit'), { target: { value: '1440' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add reminder' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Looking for party' }));
+    expect(screen.queryByRole('group', { name: 'Reminders' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Recruiting' }));
+    save();
+    await screen.findByRole('heading', { name: 'Lineup' });
+    expect(body(writes(fetch)[0]).reminderOffsets).toEqual([15, 1440]);
+  });
+  it.each(['4', '10081'])('blocks invalid reminder amount %s', async (amount) => {
+    const fetch = mockApi(base);
+    renderWithProviders(<App />, { route: '/posts/new' });
+    await pickCharacter();
+    await pickBoss('Hard Lucid');
+    fireEvent.click(screen.getByRole('button', { name: 'Add reminder' }));
+    fireEvent.change(screen.getByLabelText('Reminder 1 amount'), { target: { value: amount } });
+    expect(screen.getByRole('alert')).toHaveTextContent('between 5 minutes and 7 days');
+    save();
+    expect(writes(fetch)).toHaveLength(0);
+  });
+  it('limits the editor to three reminders and supports removal', async () => {
+    mockApi(base);
+    renderWithProviders(<App />, { route: '/posts/new' });
+    await pickCharacter();
+    for (let i = 0; i < 3; i++) fireEvent.click(screen.getByRole('button', { name: 'Add reminder' }));
+    expect(screen.queryByRole('button', { name: 'Add reminder' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Remove reminder 2' }));
+    expect(screen.getByRole('button', { name: 'Add reminder' })).toBeVisible();
+  });
   it('lets a guildless character select different notification and party chat guilds', async () => {
     const destinations = [
       { id: 'notify', name: 'Notification guild', worldIds: [5], notifications: true, partyForum: false },
@@ -164,6 +201,7 @@ describe('NewPostPage (create)', () => {
     await screen.findByRole('heading', { name: 'Lineup' });
     expect(writes(m)).toHaveLength(1);
     expect(body(writes(m)[0])).toEqual({
+      reminderOffsets: [],
       type: 'recruiting',
       characterId: 'c1',
       bossDifficultyIds: [7],
@@ -214,6 +252,7 @@ describe('NewPostPage (create)', () => {
     save();
     await screen.findByRole('heading', { name: 'Lineup' });
     expect(body(writes(m)[0])).toEqual({
+      reminderOffsets: [],
       type: 'lfp',
       characterId: 'c1',
       bossDifficultyIds: [7],
@@ -299,6 +338,18 @@ describe('NewPostPage (create)', () => {
 });
 
 describe('NewPostPage (edit)', () => {
+  it('prefills reminders and sends the changed offsets', async () => {
+    const p = makePost({ reminderOffsets: [15, 1440] });
+    const fetch = mockApi({ ...base, '/api/posts/p1': p, 'PATCH /api/posts/p1': p });
+    renderWithProviders(<App />, { route: '/posts/p1/edit' });
+    expect(await screen.findByLabelText('Reminder 1 amount')).toHaveValue(15);
+    expect(screen.getByLabelText('Reminder 2 amount')).toHaveValue(1);
+    expect(screen.getByLabelText('Reminder 2 unit')).toHaveValue('1440');
+    fireEvent.click(screen.getByRole('button', { name: 'Remove reminder 1' }));
+    save();
+    await screen.findByRole('heading', { name: 'Lineup' });
+    expect(body(writes(fetch)[0])).toEqual({ reminderOffsets: [1440] });
+  });
   it('clears Discord destinations on world changes even when the guild serves both worlds', async () => {
     const guild = { id: 'shared', name: 'Shared guild' };
     const post = makePost({ notificationGuild: guild, partyForumGuild: guild });

@@ -2,6 +2,7 @@ import { beforeEach, expect, it } from 'vitest';
 import type { Prisma } from '@prisma/client';
 import { WeeklyReminderJob } from '../src/jobs/weeklyReminders.js';
 import { WebhookWorker } from '../src/discord/outbox.js';
+import { weeklyRecipientIds } from '../src/discord/weeklyRecipients.js';
 import { addMember, buildTestApp, FakeWebhookSender, makeCharacter, makeGuild, makePost, prisma, resetDb } from './helpers.js';
 
 const at = new Date('2027-03-08T00:30:00Z'); // Sunday 19:30 in New York, before DST.
@@ -71,6 +72,18 @@ it('never treats an unlinked account contact username as a reminder recipient ID
   const delivery = await prisma.webhookDelivery.findFirstOrThrow({ where: { postId: post.id } });
   expect(delivery.payload).toMatchObject({ allowed_mentions: { users: [owner.discordId] } });
   expect(JSON.stringify(delivery.payload)).not.toContain('123456789012345678');
+});
+
+it('includes typed IDs, deduplicates recipients and skips unavailable members', async () => {
+  const { post, character } = await party();
+  const id = '123456789012345678';
+  await prisma.user.update({ where: { id: character.ownerId }, data: { discordId: null, typedDiscordId: id } });
+  const second = await makeCharacter({ ownerId: character.ownerId, worldId: post.worldId });
+  await addMember(post.id, second.id);
+  const banned = await makeCharacter({ worldId: post.worldId });
+  await prisma.user.update({ where: { id: banned.ownerId }, data: { banned: true, typedDiscordId: '223456789012345678', discordId: null } });
+  await addMember(post.id, banned.id);
+  expect(await weeklyRecipientIds(prisma, post.id)).toEqual([id]);
 });
 
 it('advances and queues weekly reminders for finalized carrying parties', async () => {

@@ -5,7 +5,7 @@ import { buildTestApp, loginAs, makeUser, prisma, resetDb } from './helpers.js';
 import { VirtualPasskey } from './passkeyFixtures.js';
 
 const ORIGIN = 'http://localhost:5173';
-const account = { discordUsername: 'maple_user', displayName: 'Maple Player' };
+const account = { discordUserId: '123456789012345678', discordUsername: 'maple_user', displayName: 'Maple Player' };
 const password = 'a long maple password';
 let app: FastifyInstance;
 beforeEach(async () => { await resetDb(); ({ app } = await buildTestApp()); });
@@ -27,7 +27,7 @@ async function passkeyAccount(input = account) {
 it('claims the typed name (lower-cased) at sign-up', async () => {
   const { id } = await passkeyAccount({ ...account, discordUsername: ' @Maple_User ' });
   expect(await prisma.user.findUniqueOrThrow({ where: { id } })).toMatchObject({ username: 'Maple_User', usernameKey: 'maple_user' });
-  const result = await post('/api/auth/password/register', { discordUsername: 'Other', displayName: 'P', email: 'p@example.com', password });
+  const result = await post('/api/auth/password/register', { discordUserId: '223456789012345678', discordUsername: 'Other', displayName: 'P', email: 'p@example.com', password });
   expect(await prisma.user.findUniqueOrThrow({ where: { id: result.json().id } })).toMatchObject({ username: 'Other', usernameKey: 'other' });
 });
 
@@ -51,7 +51,7 @@ it('refuses a passkey account whose name was claimed between the options and ver
 });
 
 it('refuses a password sign-up whose name is claimed, including two at once', async () => {
-  const register = (email: string, discordUsername = 'maple_user') => post('/api/auth/password/register', { ...account, discordUsername, email, password });
+  const register = (email: string, discordUsername = 'maple_user') => post('/api/auth/password/register', { ...account, discordUserId: String(123456789012345678n + BigInt(email.charCodeAt(0))), discordUsername, email, password });
   const results = await Promise.all([register('a@example.com'), register('b@example.com', 'MAPLE_user')]);
   expect(results.map((r) => r.statusCode).sort()).toEqual([200, 409]);
   expect(results.find((r) => r.statusCode === 409)!.json()).toEqual(taken);
@@ -131,7 +131,7 @@ it.each([
 
 it('accepts Discord-style names of 2 to 32 letters, digits, dots and underscores', async () => {
   for (const [i, discordUsername] of ['ab', 'Maple.User_99', 'x'.repeat(32)].entries()) {
-    const result = await post('/api/auth/passkeys/register/options', { displayName: `P${i}`, discordUsername });
+    const result = await post('/api/auth/passkeys/register/options', { discordUserId: String(123456789012345678n + BigInt(i)), displayName: `P${i}`, discordUsername });
     expect(result.statusCode, discordUsername).toBe(200);
   }
 });

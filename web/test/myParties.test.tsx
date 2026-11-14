@@ -44,7 +44,7 @@ const post = (id: string, boss: string, over: Partial<PostDetailDTO> = {}): Post
     bosses: [{ bossDifficultyId: 7, bossName: boss, difficulty: 'Hard' }],
     scheduledAt: '2026-12-01T20:00:00Z',
     freeTimes: [],
-    weeklyTimeZone: null, freeTimesZone: null,
+    weeklyTimeZone: null, reminderOffsets: [], freeTimesZone: null,
     expiresAt: '2026-12-02T00:00:00Z',
     createdAt: '2026-11-09T00:00:00Z',
     partySize: 4,

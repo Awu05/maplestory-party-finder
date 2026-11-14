@@ -17,16 +17,19 @@ async function open() {
   return screen.findByRole('dialog', { name: 'Log in' });
 }
 
-it('opens the account form with only two fields and restores focus after closing', async () => {
+it('opens the account form with contact fields and restores focus after closing', async () => {
   mockApi(base);
   renderWithProviders(<App />);
   const trigger = await screen.findByRole('button', { name: 'Log in' });
   const dialog = await open();
   fireEvent.click(within(dialog).getByRole('button', { name: 'Create account' }));
   const create = await screen.findByRole('dialog', { name: 'Create account' });
-  expect(within(create).getAllByRole('textbox')).toHaveLength(2);
+  expect(within(create).getAllByRole('textbox')).toHaveLength(3);
   expect(within(create).getByLabelText('Discord username')).toHaveFocus();
   expect(within(create).getByLabelText('Display name')).toBeInTheDocument();
+  expect(within(create).getByLabelText('Discord user ID')).toBeRequired();
+  expect(within(create).getByLabelText('Discord user ID')).toHaveAttribute('inputmode', 'numeric');
+  expect(within(create).getByText(/Developer Mode, then right-click your name and choose Copy User ID/)).toBeVisible();
   expect(within(create).getByText(/there is no email or password recovery/)).toBeInTheDocument();
   fireEvent.click(within(create).getByRole('button', { name: 'Back' }));
   expect(screen.getByRole('dialog', { name: 'Log in' })).toBeInTheDocument();
@@ -43,15 +46,16 @@ it('creates a passkey account and navigates to My characters', async () => {
   const dialog = await open();
   fireEvent.click(within(dialog).getByRole('button', { name: 'Create account' }));
   fireEvent.change(screen.getByLabelText('Discord username'), { target: { value: ' maple_user ' } });
+  fireEvent.change(screen.getByLabelText('Discord user ID'), { target: { value: ' 123456789012345678 ' } });
   fireEvent.change(screen.getByLabelText('Display name'), { target: { value: ' Maple Player ' } });
   fireEvent.click(screen.getByRole('button', { name: 'Create account' }));
   expect(await screen.findByRole('heading', { name: 'My characters' })).toBeInTheDocument();
   expect(startRegistration).toHaveBeenCalledWith({ optionsJSON: options });
   const call = fetch.mock.calls.find(([url]) => url === '/api/auth/passkeys/register/options')!;
-  expect(JSON.parse(String(call[1]?.body))).toEqual({ discordUsername: 'maple_user', displayName: 'Maple Player' });
+  expect(JSON.parse(String(call[1]?.body))).toEqual({ discordUserId: '123456789012345678', discordUsername: 'maple_user', displayName: 'Maple Player' });
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Profile: Maple Player' }));
-  expect(screen.getByText(/Discord pings are unavailable/)).toBeInTheDocument();
+  expect(screen.getByText(/Add your Discord user ID/)).toBeInTheDocument();
 });
 
 it('signs in to an existing account using the saved passkey', async () => {
@@ -72,6 +76,7 @@ it('handles a cancelled passkey prompt without creating an account', async () =>
   const dialog = await open();
   fireEvent.click(within(dialog).getByRole('button', { name: 'Create account' }));
   fireEvent.change(screen.getByLabelText('Discord username'), { target: { value: 'maple_user' } });
+  fireEvent.change(screen.getByLabelText('Discord user ID'), { target: { value: ' 123456789012345678 ' } });
   fireEvent.change(screen.getByLabelText('Display name'), { target: { value: 'Maple Player' } });
   fireEvent.click(screen.getByRole('button', { name: 'Create account' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('cancelled or timed out');
@@ -100,6 +105,7 @@ it('creates an email/password account without invoking the passkey prompt', asyn
   fireEvent.click(within(dialog).getByRole('button', { name: 'Create account' }));
   fireEvent.click(screen.getByRole('radio', { name: 'Email and password' }));
   fireEvent.change(screen.getByLabelText('Discord username'), { target: { value: 'maple_user' } });
+  fireEvent.change(screen.getByLabelText('Discord user ID'), { target: { value: ' 123456789012345678 ' } });
   fireEvent.change(screen.getByLabelText('Display name'), { target: { value: 'Maple Player' } });
   fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'maple@example.com' } });
   fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'a long maple password' } });
@@ -111,7 +117,7 @@ it('creates an email/password account without invoking the passkey prompt', asyn
   fireEvent.click(screen.getByRole('button', { name: 'Create account' }));
   expect(await screen.findByRole('heading', { name: 'My characters' })).toBeInTheDocument();
   const call = fetch.mock.calls.find(([url]) => url === '/api/auth/password/register')!;
-  expect(JSON.parse(String(call[1]?.body))).toEqual({ discordUsername: 'maple_user', displayName: 'Maple Player', email: 'maple@example.com', password: 'a long maple password' });
+  expect(JSON.parse(String(call[1]?.body))).toEqual({ discordUserId: '123456789012345678', discordUsername: 'maple_user', displayName: 'Maple Player', email: 'maple@example.com', password: 'a long maple password' });
   expect(startRegistration).not.toHaveBeenCalled();
 });
 
@@ -206,6 +212,7 @@ it('shows the server message when the typed Discord username is already in use',
   const dialog = await open();
   fireEvent.click(within(dialog).getByRole('button', { name: 'Create account' }));
   fireEvent.change(screen.getByLabelText('Discord username'), { target: { value: 'maple_user' } });
+  fireEvent.change(screen.getByLabelText('Discord user ID'), { target: { value: ' 123456789012345678 ' } });
   fireEvent.change(screen.getByLabelText('Display name'), { target: { value: 'Maple Player' } });
   fireEvent.click(screen.getByRole('button', { name: 'Create account' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('That Discord username is already in use.');

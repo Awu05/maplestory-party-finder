@@ -30,6 +30,7 @@ enum SyncStatus {
 model User {
   id            String         @id @default(cuid())
   discordId     String?        @unique
+  typedDiscordId String?       @unique
   username      String
   /// Lower-cased username: this account's current claim on that name (null = no claim). Unique, case-insensitive.
   usernameKey   String?        @unique
@@ -87,6 +88,7 @@ model PasskeyChallenge {
   userId      String?
   username    String?
   displayName String?
+  typedDiscordId String?
   expiresAt   DateTime
 
   @@index([expiresAt])
@@ -241,6 +243,9 @@ model Post {
   weeklyAnchorAt    DateTime?
   /// One forum thread is requested for this party, even if its time changes.
   forumThreadRequested Boolean @default(false)
+  partyThreadId String?
+  reminderOffsets Int[] @default([])
+  remindersSent PostReminderSent[]
   /// Guilds whose channel received this run's announcement and has not had its closure notice yet.
   announcedGuildIds String[]     @default([])
   /// The "finalized" closure notice has gone out for this run (reset when the post is reopened).
@@ -269,6 +274,17 @@ model Post {
 
   @@index([status, expiresAt])
   @@index([weeklyTimeZone, scheduledAt])
+}
+
+model PostReminderSent {
+  postId String
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  offsetMinutes Int
+  runAt DateTime
+  sentAt DateTime @default(now())
+
+  @@id([postId, offsetMinutes, runAt])
+  @@index([runAt])
 }
 
 model PostBoss {
@@ -330,7 +346,7 @@ model Notification {
   id        String    @id @default(cuid())
   userId    String
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  /// join_request | invite | accepted | declined | auto_declined | removed | member_left | time_set
+  /// join_request | invite | accepted | declined | auto_declined | removed | member_left | time_set | reminder
   kind      String
   text      String
   /// app-relative path, e.g. /posts/abc
