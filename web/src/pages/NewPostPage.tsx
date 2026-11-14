@@ -230,6 +230,13 @@ function PostForm({ characters, bosses, post }: FormProps) {
           ))}
         </select>
       </label>
+      <div>
+        <label>
+          Title
+          <input type="text" value={v.title} maxLength={TITLE_MAX} placeholder={defaultTitle} onChange={(e) => set({ title: e.target.value })} />
+        </label>
+        <small>{`Optional. Used as the Discord notification title; leave blank for "${defaultTitle}". ${v.title.length}/${TITLE_MAX}`}</small>
+      </div>
       <DiscordDestinationFields
         choices={choices} loading={destinations.isPending} failed={destinations.isError} worldId={worldId}
         notificationGuildId={v.notificationGuildId} partyForumGuildId={v.partyForumGuildId}
@@ -269,13 +276,6 @@ function PostForm({ characters, bosses, post }: FormProps) {
           </label>
         </>
       )}
-      <div>
-        <label>
-          Title
-          <input type="text" value={v.title} maxLength={TITLE_MAX} placeholder={defaultTitle} onChange={(e) => set({ title: e.target.value })} />
-        </label>
-        <small>{`Optional. Used as the Discord notification title; leave blank for "${defaultTitle}". ${v.title.length}/${TITLE_MAX}`}</small>
-      </div>
       {v.type !== 'lfp' && <ReminderEditor value={v.reminderOffsets} onChange={(reminderOffsets) => set({ reminderOffsets })} disabled={saving} />}
       <div>
         <label>
